@@ -61,7 +61,7 @@ export function useCreateTreatmentPlan() {
       items?: { description: string; quantity: number; cost: number; toothNumber?: string; treatmentCategoryId?: string }[];
     }) =>
       apiRequest('/api/treatment-plans', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
-    onSuccess: (_: unknown, vars: { patientId: string }) =>
+    onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: ['treatment-plans', vars.patientId] }),
   });
 }

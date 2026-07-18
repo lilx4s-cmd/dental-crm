@@ -131,7 +131,7 @@ export default function ReportsPage() {
                   </defs>
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} width={48} />
-                  <Tooltip formatter={(v: number) => [fmt(v), 'Revenue']} />
+                  <Tooltip formatter={(v) => [fmt(Number(v)), 'Revenue']} />
                   <Area type="monotone" dataKey="revenue" stroke="#6366f1" fill="url(#revGrad)" strokeWidth={2} dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -147,7 +147,7 @@ export default function ReportsPage() {
             {apptLoading ? <Skeleton className="h-56 w-full" /> : hasAppts ? (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
-                  <Pie data={apptStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ status, percent }) => `${String(status).replace(/_/g, ' ')} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
+                  <Pie data={apptStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ status, percent }: { status?: string; percent?: number }) => `${String(status).replace(/_/g, ' ')} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
                     {apptStats?.map((entry, i) => (
                       <Cell key={i} fill={APPT_COLORS[entry.status] ?? PIE_PALETTE[i % PIE_PALETTE.length]} />
                     ))}

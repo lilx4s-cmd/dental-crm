@@ -3,8 +3,8 @@ services:
     name: dental-crm-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build --workspace=apps/api
-    startCommand: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && node apps/api/dist/main.js
+    buildCommand: "npm install && cd apps/api && ../../node_modules/.bin/prisma generate && ../../node_modules/.bin/nest build"
+    startCommand: "cd apps/api && npx prisma migrate deploy && node dist/main.js"
     envVars:
       - key: NODE_ENV
         value: production

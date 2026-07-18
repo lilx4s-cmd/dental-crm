@@ -5,6 +5,7 @@ import { apiRequest } from '@/lib/api-client';
 export interface ConversationSummary {
   id: string;
   channel: string;
+  externalThreadId: string | null;
   isArchived: boolean;
   lastMessageAt: string | null;
   createdAt: string;
