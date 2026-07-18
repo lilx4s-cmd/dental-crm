@@ -57,8 +57,8 @@ function NewCampaignDialog() {
       reset();
       setPlatform('');
       setOpen(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? 'Failed to create campaign');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create campaign');
     }
   }
 

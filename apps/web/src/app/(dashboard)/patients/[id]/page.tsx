@@ -332,7 +332,7 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
 }
 
 function AppointmentRow({ appt }: { appt: NonNullable<ReturnType<typeof useAppointments>['data']>[number] }) {
-  const update = useUpdateAppointment(appt.id);
+  const _update = useUpdateAppointment(appt.id);
   return (
     <TableRow>
       <TableCell className="text-sm">{format(new Date(appt.startTime), 'MMM d, yyyy HH:mm')}</TableCell>
