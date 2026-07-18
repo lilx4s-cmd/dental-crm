@@ -5,10 +5,7 @@ providers = ["node"]
 cmds = ["npm ci"]
 
 [phases.build]
-cmds = [
-  "npm run build --workspace=packages/shared",
-  "npm run build --workspace=apps/api"
-]
+cmds = ["npm run build --workspace=apps/api"]
 
 [start]
 cmd = "npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && node apps/api/dist/main.js"
