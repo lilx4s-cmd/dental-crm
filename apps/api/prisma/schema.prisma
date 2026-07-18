@@ -1,0 +1,705 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── ENUMS ───────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  CLINIC_MANAGER
+  RECEPTION
+  SALES_CONSULTANT
+  DENTIST
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum LeadSource {
+  FACEBOOK_ADS
+  INSTAGRAM_ADS
+  WHATSAPP
+  WEBSITE
+  PHONE
+  WALK_IN
+  REFERRAL
+  GOOGLE
+  OTHER
+}
+
+enum PipelineStage {
+  NEW_LEAD
+  CONTACTED
+  QUALIFIED
+  CONSULTATION_SCHEDULED
+  CONSULTATION_DONE
+  TREATMENT_PROPOSED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadStatus {
+  ACTIVE
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum ResourceType {
+  CHAIR
+  ROOM
+}
+
+enum AppointmentType {
+  CONSULTATION
+  TREATMENT
+  FOLLOW_UP
+  CLEANING
+  EMERGENCY
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum TreatmentStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  INSTALLMENT
+  ONLINE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum InstallmentFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  FACEBOOK_MESSENGER
+  IN_APP
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallOutcome {
+  ANSWERED
+  MISSED
+  VOICEMAIL
+  BUSY
+  FAILED
+}
+
+enum CampaignPlatform {
+  FACEBOOK
+  INSTAGRAM
+  GOOGLE
+  TIKTOK
+  OTHER
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum AttachableType {
+  PATIENT
+  LEAD
+  TREATMENT_PLAN
+  INVOICE
+  APPOINTMENT
+  USER
+  OTHER
+}
+
+enum FileCategory {
+  XRAY
+  CT_SCAN
+  PHOTO
+  DOCUMENT
+  INVOICE_PDF
+  OTHER
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  IN_APP
+  BROWSER_PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  OTHER
+}
+
+// ─────────────────────────── CORE / AUTH ───────────────────────────
+
+model User {
+  id               String           @id @default(uuid())
+  email            String           @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  phone            String?
+  avatarUrl        String?
+  role             Role
+  isActive         Boolean          @default(true)
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  hireDate         DateTime?
+  specialization   String?
+  calendarColor    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  refreshTokens         RefreshToken[]
+  assignedLeads         Lead[]         @relation("LeadAssignee")
+  leadActivities        LeadActivity[]
+  appointmentsAsDentist Appointment[]  @relation("AppointmentDentist")
+  appointmentsCreated   Appointment[]  @relation("AppointmentCreatedBy")
+  treatmentPlans        TreatmentPlan[] @relation("TreatmentPlanCreatedBy")
+  invoicesCreated       Invoice[]      @relation("InvoiceCreatedBy")
+  paymentsRecorded      Payment[]      @relation("PaymentCreatedBy")
+  conversationsAssigned Conversation[] @relation("ConversationAssignee")
+  messagesSent          Message[]      @relation("MessageSender")
+  callLogs              CallLog[]      @relation("CallLogUser")
+  filesUploaded         File[]         @relation("FileUploadedBy")
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id                  String    @id @default(uuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash           String    @unique
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  replacedByTokenHash String?
+  createdByIp         String?
+  userAgent           String?
+  createdAt           DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model ClinicSettings {
+  id           String   @id @default("singleton")
+  clinicName   String
+  address      String?
+  city         String?
+  country      String?
+  timezone     String   @default("Europe/Istanbul")
+  logoUrl      String?
+  workingHours Json?
+  currency     String   @default("USD")
+  updatedAt    DateTime @updatedAt
+
+  @@map("clinic_settings")
+}
+
+// ─────────────────────────── PATIENTS / LEADS / PIPELINE ───────────────────────────
+
+model Patient {
+  id                  String    @id @default(uuid())
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  whatsappNumber      String?
+  dateOfBirth         DateTime?
+  gender              Gender?   @default(UNKNOWN)
+  address             String?
+  city                String?
+  country             String?
+  nationalId          String?
+  notes               String?
+  isActive            Boolean   @default(true)
+  convertedFromLeadId String?   @unique
+  convertedFromLead   Lead?     @relation("LeadToPatient", fields: [convertedFromLeadId], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tags           PatientTag[]
+  appointments   Appointment[]
+  treatmentPlans TreatmentPlan[]
+  invoices       Invoice[]
+  conversations  Conversation[]
+  callLogs       CallLog[]
+
+  @@index([phone])
+  @@index([email])
+  @@map("patients")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now())
+
+  patients PatientTag[]
+
+  @@map("tags")
+}
+
+model PatientTag {
+  patientId String
+  tagId     String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([patientId, tagId])
+  @@map("patient_tags")
+}
+
+model Campaign {
+  id          String           @id @default(uuid())
+  name        String
+  platform    CampaignPlatform
+  externalId  String?
+  adAccountId String?
+  status      CampaignStatus   @default(ACTIVE)
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Decimal?         @db.Decimal(12, 2)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  leads Lead[]
+
+  @@map("campaigns")
+}
+
+model Lead {
+  id             String        @id @default(uuid())
+  firstName      String
+  lastName       String?
+  email          String?
+  phone          String?
+  whatsappNumber String?
+  source         LeadSource
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id])
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  utmTerm        String?
+  utmContent     String?
+  stage          PipelineStage @default(NEW_LEAD)
+  status         LeadStatus    @default(ACTIVE)
+  assignedToId   String?
+  assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  estimatedValue Decimal?      @db.Decimal(12, 2)
+  currency       String?
+  lostReason     String?
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  activities    LeadActivity[]
+  conversations Conversation[]
+  callLogs      CallLog[]
+  patient       Patient?       @relation("LeadToPatient")
+
+  @@index([stage])
+  @@index([assignedToId])
+  @@map("leads")
+}
+
+model LeadActivity {
+  id        String         @id @default(uuid())
+  leadId    String
+  lead      Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?          @relation(fields: [userId], references: [id])
+  fromStage PipelineStage?
+  toStage   PipelineStage?
+  note      String?
+  createdAt DateTime       @default(now())
+
+  @@map("lead_activities")
+}
+
+// ─────────────────────────── APPOINTMENTS ───────────────────────────
+
+model Resource {
+  id       String       @id @default(uuid())
+  name     String
+  type     ResourceType
+  isActive Boolean      @default(true)
+
+  appointments Appointment[]
+
+  @@map("resources")
+}
+
+model Appointment {
+  id                    String            @id @default(uuid())
+  patientId             String
+  patient               Patient           @relation(fields: [patientId], references: [id])
+  dentistId             String?
+  dentist               User?             @relation("AppointmentDentist", fields: [dentistId], references: [id])
+  resourceId            String?
+  resource              Resource?         @relation(fields: [resourceId], references: [id])
+  createdById           String
+  createdBy             User              @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  type                  AppointmentType   @default(CONSULTATION)
+  status                AppointmentStatus @default(SCHEDULED)
+  startTime             DateTime
+  endTime               DateTime
+  notes                 String?
+  cancelReason          String?
+  googleCalendarEventId String?
+  reminderSentAt        DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([startTime])
+  @@index([dentistId, startTime])
+  @@map("appointments")
+}
+
+// ─────────────────────────── TREATMENTS / FINANCE ───────────────────────────
+
+model TreatmentCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+
+  items TreatmentPlanItem[]
+
+  @@map("treatment_categories")
+}
+
+model TreatmentPlan {
+  id          String          @id @default(uuid())
+  patientId   String
+  patient     Patient         @relation(fields: [patientId], references: [id])
+  createdById String
+  createdBy   User            @relation("TreatmentPlanCreatedBy", fields: [createdById], references: [id])
+  title       String
+  status      TreatmentStatus @default(PLANNED)
+  totalCost   Decimal         @default(0) @db.Decimal(12, 2)
+  currency    String          @default("USD")
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  items    TreatmentPlanItem[]
+  invoices Invoice[]
+
+  @@map("treatment_plans")
+}
+
+model TreatmentPlanItem {
+  id                  String             @id @default(uuid())
+  treatmentPlanId     String
+  treatmentPlan       TreatmentPlan      @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  treatmentCategoryId String?
+  treatmentCategory   TreatmentCategory? @relation(fields: [treatmentCategoryId], references: [id])
+  toothNumber         String?
+  description         String
+  quantity            Int                @default(1)
+  cost                Decimal            @db.Decimal(12, 2)
+  status              TreatmentStatus    @default(PLANNED)
+
+  invoiceItems InvoiceItem[]
+
+  @@map("treatment_plan_items")
+}
+
+model Invoice {
+  id              String         @id @default(uuid())
+  invoiceNumber   String         @unique
+  patientId       String
+  patient         Patient        @relation(fields: [patientId], references: [id])
+  treatmentPlanId String?
+  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id])
+  status          InvoiceStatus  @default(DRAFT)
+  subtotal        Decimal        @db.Decimal(12, 2)
+  discount        Decimal        @default(0) @db.Decimal(12, 2)
+  tax             Decimal        @default(0) @db.Decimal(12, 2)
+  total           Decimal        @db.Decimal(12, 2)
+  currency        String         @default("USD")
+  dueDate         DateTime?
+  issuedAt        DateTime?
+  createdById     String
+  createdBy       User           @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items           InvoiceItem[]
+  payments        Payment[]
+  installmentPlan InstallmentPlan?
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id                  String             @id @default(uuid())
+  invoiceId           String
+  invoice             Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  treatmentPlanItemId String?
+  treatmentPlanItem   TreatmentPlanItem? @relation(fields: [treatmentPlanItemId], references: [id])
+  description         String
+  quantity            Int                @default(1)
+  unitPrice           Decimal            @db.Decimal(12, 2)
+  total               Decimal            @db.Decimal(12, 2)
+
+  @@map("invoice_items")
+}
+
+model InstallmentPlan {
+  id                   String               @id @default(uuid())
+  invoiceId            String               @unique
+  invoice              Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  numberOfInstallments Int
+  frequency            InstallmentFrequency
+  startDate            DateTime
+  createdAt            DateTime             @default(now())
+
+  schedules InstallmentSchedule[]
+
+  @@map("installment_plans")
+}
+
+model InstallmentSchedule {
+  id                String          @id @default(uuid())
+  installmentPlanId String
+  installmentPlan   InstallmentPlan @relation(fields: [installmentPlanId], references: [id], onDelete: Cascade)
+  dueDate           DateTime
+  amount            Decimal         @db.Decimal(12, 2)
+  isPaid            Boolean         @default(false)
+  paidAt            DateTime?
+  paymentId         String?         @unique
+  payment           Payment?        @relation(fields: [paymentId], references: [id])
+
+  @@map("installment_schedules")
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice       @relation(fields: [invoiceId], references: [id])
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String        @default("USD")
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  paidAt      DateTime?
+  reference   String?
+  createdById String
+  createdBy   User          @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+
+  installmentSchedule InstallmentSchedule?
+
+  @@map("payments")
+}
+
+// ─────────────────────────── COMMUNICATIONS ───────────────────────────
+
+model Conversation {
+  id               String              @id @default(uuid())
+  channel          ConversationChannel
+  patientId        String?
+  patient          Patient?            @relation(fields: [patientId], references: [id])
+  leadId           String?
+  lead             Lead?               @relation(fields: [leadId], references: [id])
+  externalThreadId String?
+  assignedToId     String?
+  assignedTo       User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
+  lastMessageAt    DateTime?
+  isArchived       Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+
+  messages Message[]
+
+  @@index([channel])
+  @@map("conversations")
+}
+
+model Message {
+  id                String           @id @default(uuid())
+  conversationId    String
+  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction         MessageDirection
+  senderUserId      String?
+  senderUser        User?            @relation("MessageSender", fields: [senderUserId], references: [id])
+  content           String?
+  mediaUrl          String?
+  templateName      String?
+  status            MessageStatus    @default(QUEUED)
+  externalMessageId String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model CallLog {
+  id              String        @id @default(uuid())
+  patientId       String?
+  patient         Patient?      @relation(fields: [patientId], references: [id])
+  leadId          String?
+  lead            Lead?         @relation(fields: [leadId], references: [id])
+  userId          String
+  user            User          @relation("CallLogUser", fields: [userId], references: [id])
+  phoneNumber     String
+  direction       CallDirection
+  outcome         CallOutcome
+  durationSeconds Int?
+  recordingUrl    String?
+  notes           String?
+  occurredAt      DateTime
+  createdAt       DateTime      @default(now())
+
+  @@map("call_logs")
+}
+
+// ─────────────────────────── FILES ───────────────────────────
+
+model File {
+  id           String         @id @default(uuid())
+  ownerType    AttachableType
+  ownerId      String
+  category     FileCategory   @default(OTHER)
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  s3Bucket     String
+  s3Key        String
+  uploadedById String
+  uploadedBy   User           @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime       @default(now())
+
+  @@index([ownerType, ownerId])
+  @@map("files")
+}
+
+// ─────────────────────────── NOTIFICATIONS / AUDIT ───────────────────────────
+
+model Notification {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  channel           NotificationChannel
+  title             String
+  body              String
+  status            NotificationStatus  @default(PENDING)
+  relatedEntityType String?
+  relatedEntityId   String?
+  sentAt            DateTime?
+  readAt            DateTime?
+  createdAt         DateTime            @default(now())
+
+  @@index([userId, status])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+  action     AuditAction
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

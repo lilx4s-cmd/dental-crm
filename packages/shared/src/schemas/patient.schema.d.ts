@@ -1,0 +1,84 @@
+import { z } from 'zod';
+export declare const CreatePatientSchema: z.ZodObject<{
+    firstName: z.ZodString;
+    lastName: z.ZodString;
+    email: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    phone: z.ZodOptional<z.ZodString>;
+    whatsappNumber: z.ZodOptional<z.ZodString>;
+    dateOfBirth: z.ZodOptional<z.ZodString>;
+    gender: z.ZodOptional<z.ZodNativeEnum<Record<string, string>>>;
+    address: z.ZodOptional<z.ZodString>;
+    city: z.ZodOptional<z.ZodString>;
+    country: z.ZodOptional<z.ZodString>;
+    nationalId: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    firstName: string;
+    lastName: string;
+    email?: string | undefined;
+    phone?: string | undefined;
+    whatsappNumber?: string | undefined;
+    dateOfBirth?: string | undefined;
+    gender?: string | undefined;
+    address?: string | undefined;
+    city?: string | undefined;
+    country?: string | undefined;
+    nationalId?: string | undefined;
+    notes?: string | undefined;
+}, {
+    firstName: string;
+    lastName: string;
+    email?: string | undefined;
+    phone?: string | undefined;
+    whatsappNumber?: string | undefined;
+    dateOfBirth?: string | undefined;
+    gender?: string | undefined;
+    address?: string | undefined;
+    city?: string | undefined;
+    country?: string | undefined;
+    nationalId?: string | undefined;
+    notes?: string | undefined;
+}>;
+export declare const UpdatePatientSchema: z.ZodObject<{
+    firstName: z.ZodOptional<z.ZodString>;
+    lastName: z.ZodOptional<z.ZodString>;
+    email: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    phone: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    whatsappNumber: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    dateOfBirth: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    gender: z.ZodOptional<z.ZodOptional<z.ZodNativeEnum<Record<string, string>>>>;
+    address: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    city: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    country: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    nationalId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+}, "strip", z.ZodTypeAny, {
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    email?: string | undefined;
+    phone?: string | undefined;
+    whatsappNumber?: string | undefined;
+    dateOfBirth?: string | undefined;
+    gender?: string | undefined;
+    address?: string | undefined;
+    city?: string | undefined;
+    country?: string | undefined;
+    nationalId?: string | undefined;
+    notes?: string | undefined;
+}, {
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    email?: string | undefined;
+    phone?: string | undefined;
+    whatsappNumber?: string | undefined;
+    dateOfBirth?: string | undefined;
+    gender?: string | undefined;
+    address?: string | undefined;
+    city?: string | undefined;
+    country?: string | undefined;
+    nationalId?: string | undefined;
+    notes?: string | undefined;
+}>;
+export type CreatePatientInput = z.infer<typeof CreatePatientSchema>;
+export type UpdatePatientInput = z.infer<typeof UpdatePatientSchema>;
+//# sourceMappingURL=patient.schema.d.ts.map

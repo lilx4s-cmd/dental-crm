@@ -1,0 +1,13 @@
+node_modules
+# built output (apps only — packages/shared/dist is committed so platforms can resolve it)
+apps/api/dist
+apps/web/.next
+apps/web/build
+.env
+.env.local
+*.log
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt
+.DS_Store
+coverage
