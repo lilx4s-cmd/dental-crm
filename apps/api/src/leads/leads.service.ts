@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
+import { TransferLeadsDto } from './dto/transfer-leads.dto';
+import { ActivityQueryDto } from './dto/activity-query.dto';
 import { LeadStatus, PipelineStage, Role, JwtPayload } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
@@ -215,5 +217,93 @@ export class LeadsService {
       stage,
       leads: leads.filter((l) => l.stage === stage),
     }));
+  }
+
+  // Bulk-reassign leads from one salesperson to another. Two modes:
+  //  - leadIds: move exactly those leads (takes precedence if provided)
+  //  - fromUserId: move that person's ACTIVE pipeline only. WON/LOST/ARCHIVED
+  //    leads are left alone so historical deal attribution (and any commission
+  //    reporting built on top of it) isn't rewritten by a routine reassignment.
+  //    Use leadIds if a closed lead genuinely needs to move.
+  // Each moved lead gets a LeadActivity row so the reassignment shows up in the
+  // sales history feed. fromStage/toStage are set to the lead's current stage
+  // (no stage change happened) — the note carries the reassignment detail.
+  async transferLeads(dto: TransferLeadsDto, currentUser: JwtPayload) {
+    const { toUserId, fromUserId, leadIds, note } = dto;
+
+    const toUser = await this.prisma.user.findUnique({
+      where: { id: toUserId },
+      select: { id: true, firstName: true, lastName: true, isActive: true },
+    });
+    if (!toUser) throw new NotFoundException('Target salesperson not found');
+
+    const where: Prisma.LeadWhereInput = {};
+    if (leadIds && leadIds.length > 0) {
+      where.id = { in: leadIds };
+    } else if (fromUserId) {
+      where.assignedToId = fromUserId;
+      where.status = $Enums.LeadStatus.ACTIVE;
+    } else {
+      throw new BadRequestException('Provide either leadIds or fromUserId');
+    }
+
+    const leads = await this.prisma.lead.findMany({
+      where,
+      select: { id: true, stage: true },
+    });
+    if (leads.length === 0) return { transferred: 0, toUserId };
+
+    const toName = `${toUser.firstName} ${toUser.lastName ?? ''}`.trim();
+    const movingIds = leads.map((l) => l.id);
+    const reassignNote = note?.trim() || `Reassigned to ${toName}`;
+
+    await this.prisma.$transaction([
+      this.prisma.lead.updateMany({
+        where: { id: { in: movingIds } },
+        data: { assignedToId: toUserId },
+      }),
+      this.prisma.leadActivity.createMany({
+        data: leads.map((l) => ({
+          leadId: l.id,
+          userId: currentUser.sub,
+          fromStage: l.stage,
+          toStage: l.stage,
+          note: reassignNote,
+        })),
+      }),
+    ]);
+
+    return { transferred: leads.length, toUserId };
+  }
+
+  // Sales oversight feed: every stage change / reassignment, newest first.
+  // Super Admin sees all activity (optionally filtered to one salesperson);
+  // everyone else is pinned to their own actions.
+  async getActivityFeed(query: ActivityQueryDto, currentUser: JwtPayload) {
+    const { page, limit, userId } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.LeadActivityWhereInput = {};
+    if (!this.canSeeAll(currentUser)) {
+      where.userId = currentUser.sub;
+    } else if (userId) {
+      where.userId = userId;
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.leadActivity.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
+          lead: { select: { id: true, firstName: true, lastName: true, stage: true, status: true } },
+        },
+      }),
+      this.prisma.leadActivity.count({ where }),
+    ]);
+
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 }

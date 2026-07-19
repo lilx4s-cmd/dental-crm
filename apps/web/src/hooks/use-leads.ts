@@ -34,6 +34,14 @@ export interface LeadsQuery {
   search?: string;
   stage?: string;
   status?: string;
+  assignedToId?: string;
+  /** Set false to skip firing the query (e.g. while a dependent selection is empty). Defaults to true. */
+  enabled?: boolean;
+}
+
+export interface LeadsListResponse {
+  data: Lead[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
 export function useLeadsByStage() {
@@ -46,16 +54,19 @@ export function useLeadsByStage() {
 
 export function useLeads(query: LeadsQuery = {}) {
   const { accessToken } = useAuth();
+  const { enabled = true, ...rest } = query;
   const params = new URLSearchParams();
-  if (query.page) params.set('page', String(query.page));
-  if (query.limit) params.set('limit', String(query.limit));
-  if (query.search) params.set('search', query.search);
-  if (query.stage) params.set('stage', query.stage);
-  if (query.status) params.set('status', query.status);
+  if (rest.page) params.set('page', String(rest.page));
+  if (rest.limit) params.set('limit', String(rest.limit));
+  if (rest.search) params.set('search', rest.search);
+  if (rest.stage) params.set('stage', rest.stage);
+  if (rest.status) params.set('status', rest.status);
+  if (rest.assignedToId) params.set('assignedToId', rest.assignedToId);
 
-  return useQuery({
-    queryKey: ['leads', query],
+  return useQuery<LeadsListResponse>({
+    queryKey: ['leads', rest],
     queryFn: () => apiRequest(`/api/leads?${params}`, {}, accessToken ?? undefined),
+    enabled: enabled && !!accessToken,
   });
 }
 
@@ -105,5 +116,63 @@ export function useConvertLeadToPatient() {
       qc.invalidateQueries({ queryKey: ['patients'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
+  });
+}
+
+// ─── Sales team: transfer + activity history ──────────────────────────────────
+
+export interface TransferPayload {
+  toUserId: string;
+  fromUserId?: string;
+  leadIds?: string[];
+  note?: string;
+}
+
+export interface TransferResult {
+  transferred: number;
+  toUserId: string;
+}
+
+export function useTransferLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<TransferResult, Error, TransferPayload>({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/transfer', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['sales-activity'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export interface SalesActivity {
+  id: string;
+  leadId: string;
+  userId: string | null;
+  fromStage: string | null;
+  toStage: string | null;
+  note: string | null;
+  createdAt: string;
+  user: { id: string; firstName: string; lastName: string; email: string } | null;
+  lead: { id: string; firstName: string; lastName: string | null; stage: string; status: string } | null;
+}
+
+export interface SalesActivityResponse {
+  data: SalesActivity[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+}
+
+export function useSalesActivity(query: { page?: number; limit?: number; userId?: string } = {}) {
+  const { accessToken } = useAuth();
+  const params = new URLSearchParams();
+  if (query.page) params.set('page', String(query.page));
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.userId) params.set('userId', query.userId);
+
+  return useQuery<SalesActivityResponse>({
+    queryKey: ['sales-activity', query],
+    queryFn: () => apiRequest(`/api/leads/activity?${params}`, {}, accessToken ?? undefined),
   });
 }

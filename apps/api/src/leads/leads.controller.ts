@@ -11,6 +11,8 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
+import { TransferLeadsDto } from './dto/transfer-leads.dto';
+import { ActivityQueryDto } from './dto/activity-query.dto';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
 const WRITE_ROLES = [...PIPELINE_ROLES, Role.RECEPTION];
@@ -34,6 +36,24 @@ export class LeadsController {
   @ApiOperation({ summary: 'List leads grouped by pipeline stage (kanban board)' })
   findAllByStage(@CurrentUser() user: JwtPayload) {
     return this.leadsService.findAllByStage(user);
+  }
+
+  // Sales oversight feed. Declared before ':id'. Service scopes non-admins to
+  // their own actions; Super Admin sees everyone (optionally filtered by userId).
+  @Get('activity')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'Sales activity history (stage changes + reassignments)' })
+  getActivityFeed(@Query() query: ActivityQueryDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.getActivityFeed(query, user);
+  }
+
+  // Reassign leads between salespeople. Super Admin only — this moves data
+  // ownership. Declared before ':id'.
+  @Post('transfer')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Transfer (reassign) leads between salespeople' })
+  transferLeads(@Body() dto: TransferLeadsDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.transferLeads(dto, user);
   }
 
   @Post()

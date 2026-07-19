@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, Calendar, DollarSign,
-  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone,
+  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone, ArrowLeftRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, phase: 1 },
   { href: '/patients', label: 'Patients', icon: Users, phase: 2 },
   { href: '/pipeline', label: 'Pipeline', icon: GitBranch, phase: 2 },
+  { href: '/team', label: 'Sales Team', icon: ArrowLeftRight, phase: 2 },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone, phase: 3 },
   { href: '/inbox', label: 'Inbox', icon: MessageSquare, phase: 3 },
   { href: '/appointments', label: 'Appointments', icon: Calendar, phase: 4 },
