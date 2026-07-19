@@ -24,8 +24,16 @@ export class LeadsController {
   @Get()
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'List leads with filters and pagination' })
-  findAll(@Query() query: LeadsQueryDto) {
-    return this.leadsService.findAll(query);
+  findAll(@Query() query: LeadsQueryDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.findAll(query, user);
+  }
+
+  // Must be declared before ':id' so it is not captured by the param route.
+  @Get('by-stage')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'List leads grouped by pipeline stage (kanban board)' })
+  findAllByStage(@CurrentUser() user: JwtPayload) {
+    return this.leadsService.findAllByStage(user);
   }
 
   @Post()
@@ -38,15 +46,15 @@ export class LeadsController {
   @Get(':id')
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'Get a lead by ID' })
-  findOne(@Param('id') id: string) {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.findOne(id, user);
   }
 
   @Patch(':id')
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'Update lead fields' })
-  update(@Param('id') id: string, @Body() dto: UpdateLeadDto) {
-    return this.leadsService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateLeadDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.update(id, dto, user);
   }
 
   @Patch(':id/stage')
@@ -57,20 +65,20 @@ export class LeadsController {
     @Body() dto: UpdateLeadStageDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.leadsService.updateStage(id, dto, user.sub);
+    return this.leadsService.updateStage(id, dto, user);
   }
 
   @Get(':id/activities')
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'Get stage activity history for a lead' })
-  getActivities(@Param('id') id: string) {
-    return this.leadsService.getActivities(id);
+  getActivities(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.getActivities(id, user);
   }
 
   @Post(':id/convert')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Convert lead to patient' })
-  convert(@Param('id') id: string) {
-    return this.leadsService.convertToPatient(id);
+  convert(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.convertToPatient(id, user);
   }
 }

@@ -5,7 +5,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
-import { LeadStatus, PipelineStage } from '@dental-crm/shared';
+import { LeadStatus, PipelineStage, Role, JwtPayload } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
   id: true,
@@ -32,7 +32,13 @@ const LEAD_SELECT = {
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: LeadsQueryDto) {
+  // Only Super Admin sees every salesperson's data. Everyone else (Clinic Manager,
+  // Sales Consultant, Reception, Dentist) is limited to the leads assigned to them.
+  private canSeeAll(user?: JwtPayload): boolean {
+    return user?.role === Role.SUPER_ADMIN;
+  }
+
+  async findAll(query: LeadsQueryDto, currentUser: JwtPayload) {
     const { page, limit, search, stage, status, assignedToId } = query;
     const skip = (page - 1) * limit;
 
@@ -48,7 +54,14 @@ export class LeadsService {
     }
     if (stage) where.stage = stage as $Enums.PipelineStage;
     where.status = status ? (status as $Enums.LeadStatus) : $Enums.LeadStatus.ACTIVE;
-    if (assignedToId) where.assignedToId = assignedToId;
+
+    // Access scope: a non-admin can only ever see their own leads, so we pin
+    // assignedToId to their own id and ignore any assignedToId they tried to pass.
+    if (this.canSeeAll(currentUser)) {
+      if (assignedToId) where.assignedToId = assignedToId;
+    } else {
+      where.assignedToId = currentUser.sub;
+    }
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.lead.findMany({ where, select: LEAD_SELECT, skip, take: limit, orderBy: { createdAt: 'desc' } }),
@@ -58,9 +71,13 @@ export class LeadsService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, currentUser?: JwtPayload) {
     const lead = await this.prisma.lead.findUnique({ where: { id }, select: LEAD_SELECT });
     if (!lead) throw new NotFoundException('Lead not found');
+    // Hide existence of leads a non-admin isn't assigned to (same 404, no info leak).
+    if (currentUser && !this.canSeeAll(currentUser) && lead.assignedTo?.id !== currentUser.sub) {
+      throw new NotFoundException('Lead not found');
+    }
     return lead;
   }
 
@@ -85,8 +102,8 @@ export class LeadsService {
     });
   }
 
-  async update(id: string, dto: UpdateLeadDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateLeadDto, currentUser?: JwtPayload) {
+    await this.findOne(id, currentUser);
     return this.prisma.lead.update({
       where: { id },
       data: {
@@ -106,8 +123,8 @@ export class LeadsService {
     });
   }
 
-  async updateStage(id: string, dto: UpdateLeadStageDto, currentUserId: string) {
-    const lead = await this.findOne(id);
+  async updateStage(id: string, dto: UpdateLeadStageDto, currentUser: JwtPayload) {
+    const lead = await this.findOne(id, currentUser);
 
     const newStatus =
       dto.stage === PipelineStage.WON
@@ -125,7 +142,7 @@ export class LeadsService {
       this.prisma.leadActivity.create({
         data: {
           leadId: id,
-          userId: currentUserId,
+          userId: currentUser.sub,
           fromStage: lead.stage as $Enums.PipelineStage,
           toStage: dto.stage as $Enums.PipelineStage,
           note: dto.note,
@@ -136,8 +153,8 @@ export class LeadsService {
     return updatedLead;
   }
 
-  async getActivities(id: string) {
-    await this.findOne(id);
+  async getActivities(id: string, currentUser?: JwtPayload) {
+    await this.findOne(id, currentUser);
     return this.prisma.leadActivity.findMany({
       where: { leadId: id },
       orderBy: { createdAt: 'desc' },
@@ -145,9 +162,8 @@ export class LeadsService {
     });
   }
 
-  async convertToPatient(id: string) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
-    if (!lead) throw new NotFoundException('Lead not found');
+  async convertToPatient(id: string, currentUser?: JwtPayload) {
+    const lead = await this.findOne(id, currentUser);
 
     const [patient, updatedLead] = await this.prisma.$transaction(async (tx) => {
       const newPatient = await tx.patient.create({
@@ -167,12 +183,12 @@ export class LeadsService {
         select: LEAD_SELECT,
       });
 
-      if (lead.assignedToId) {
+      if (lead.assignedTo?.id) {
         await tx.leadActivity.create({
           data: {
             leadId: id,
-            userId: lead.assignedToId,
-            fromStage: lead.stage,
+            userId: lead.assignedTo.id,
+            fromStage: lead.stage as $Enums.PipelineStage,
             toStage: $Enums.PipelineStage.WON,
             note: 'Converted to patient',
           },
@@ -185,9 +201,12 @@ export class LeadsService {
     return { patient, lead: updatedLead };
   }
 
-  async findAllByStage() {
+  async findAllByStage(currentUser: JwtPayload) {
+    const where: Prisma.LeadWhereInput = { status: $Enums.LeadStatus.ACTIVE };
+    if (!this.canSeeAll(currentUser)) where.assignedToId = currentUser.sub;
+
     const leads = await this.prisma.lead.findMany({
-      where: { status: $Enums.LeadStatus.ACTIVE },
+      where,
       select: LEAD_SELECT,
       orderBy: { createdAt: 'desc' },
     });
