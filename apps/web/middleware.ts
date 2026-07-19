@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const PUBLIC_PATHS = ['/login'];
-const DASHBOARD_PREFIX = ['/dashboard', '/patients', '/pipeline', '/team', '/campaigns', '/appointments', '/finance', '/settings', '/inbox', '/reports'];
+import { PUBLIC_PATHS, PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 
 function getTokenFromCookie(req: NextRequest): string | null {
   return req.cookies.get('access_token')?.value ?? null;
@@ -24,8 +22,8 @@ function isTokenExpired(payload: { exp?: number }): boolean {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p));
-  const isDashboard = DASHBOARD_PREFIX.some((p) => pathname === p || pathname.startsWith(p));
+  const isPublic = matchesPrefix(pathname, PUBLIC_PATHS);
+  const isDashboard = matchesPrefix(pathname, PROTECTED_PATH_PREFIXES);
 
   const token = getTokenFromCookie(req);
   const payload = token ? decodeJwtPayload(token) : null;

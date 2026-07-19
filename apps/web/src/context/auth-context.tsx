@@ -1,8 +1,9 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { apiRequest } from '@/lib/api-client';
+import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 import { JwtPayload, AuthTokens } from '@dental-crm/shared';
 
 interface AuthContextValue {
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<JwtPayload | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   // Restore the session on load. The access token lives in a cookie that survives
   // refreshes, but the in-memory user state does not — without rehydrating it here,
@@ -63,6 +65,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.cookie = 'access_token=; path=/; max-age=0';
     }
   }, []);
+
+  // Client-side fallback for route protection, checked on every navigation.
+  // middleware.ts is supposed to redirect unauthenticated requests away from
+  // dashboard routes, but Vercel can serve a prerendered dashboard page straight
+  // from its edge cache without re-invoking Edge Middleware, so a logged-out
+  // visitor can land here with a 200 and no session. Catch that case here instead
+  // of leaving them staring at an empty shell with every data fetch failing silently.
+  useEffect(() => {
+    if (!matchesPrefix(pathname, PROTECTED_PATH_PREFIXES)) return;
+    const token = readCookie('access_token');
+    const payload = token ? decodeJwt(token) : null;
+    const valid = !!payload && (!payload.exp || payload.exp * 1000 > Date.now());
+    if (!valid) {
+      router.replace(`/login?from=${encodeURIComponent(pathname)}`);
+    }
+  }, [pathname, router]);
 
   const setAuth = useCallback((u: JwtPayload, token: string) => {
     setUser(u);
