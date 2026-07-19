@@ -88,11 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { accessToken: token } = await apiRequest<AuthTokens>('/auth/login', {
+    const { accessToken: token } = await apiRequest<AuthTokens>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    const me = await apiRequest<JwtPayload>('/auth/me', {}, token);
+    const me = await apiRequest<JwtPayload>('/api/auth/me', {}, token);
     setUser(me);
     setAccessToken(token);
     document.cookie = `access_token=${token}; path=/; SameSite=Strict`;
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   const logout = useCallback(async () => {
-    await apiRequest('/auth/logout', { method: 'POST' }, accessToken ?? undefined).catch(() => {});
+    await apiRequest('/api/auth/logout', { method: 'POST' }, accessToken ?? undefined).catch(() => {});
     setUser(null);
     setAccessToken(null);
     document.cookie = 'access_token=; path=/; max-age=0';

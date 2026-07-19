@@ -1,3 +1,6 @@
+// NEXT_PUBLIC_API_URL is the bare API origin (no /api suffix) — every call site
+// below is responsible for including the `/api` prefix itself, matching the
+// NestJS app's global prefix (see apps/api/src/main.ts's setGlobalPrefix('api')).
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 let isRefreshing = false;
