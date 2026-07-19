@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const PUBLIC_PATHS = ['/login'];
-const DASHBOARD_PREFIX = ['/dashboard', '/patients', '/pipeline', '/appointments', '/finance', '/settings', '/inbox', '/reports'];
+const DASHBOARD_PREFIX = ['/dashboard', '/patients', '/pipeline', '/team', '/campaigns', '/appointments', '/finance', '/settings', '/inbox', '/reports'];
 
 function getTokenFromCookie(req: NextRequest): string | null {
   return req.cookies.get('access_token')?.value ?? null;
