@@ -9,9 +9,13 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),
-  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
-  SUPABASE_STORAGE_BUCKET: z.string().min(1, 'SUPABASE_STORAGE_BUCKET is required'),
+  // File storage (uploads, PDFs) via Supabase. Optional at boot so a missing/unset bucket
+  // doesn't take down the entire API — only the specific files/pdf endpoints that need it
+  // will fail (gracefully, per-request) when actually called without it configured. Same
+  // degrade-gracefully posture as the AI vars below.
+  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL').optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via
   // xAI's Grok API degrade gracefully when unset — see ai/ai.service.ts.
   XAI_API_KEY: z.string().optional(),
