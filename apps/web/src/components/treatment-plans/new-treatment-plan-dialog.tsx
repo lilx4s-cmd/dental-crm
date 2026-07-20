@@ -71,15 +71,16 @@ export function NewTreatmentPlanDialog({
 
   const total = useMemo(() => items.reduce((s, i) => s + lineCost(i), 0), [items]);
 
-  // Map tooth -> planned procedure descriptions so the chart can highlight + tooltip them.
+  // Map tooth -> planned procedure(s) so the chart can highlight + color + tooltip them.
   const itemsByTooth = useMemo(() => {
-    const map: Record<string, string[]> = {};
+    const map: Record<string, { description: string; category?: string }[]> = {};
     for (const it of items) {
       if (!it.toothNumber) continue;
-      (map[it.toothNumber] ??= []).push(it.description || 'Untitled procedure');
+      const category = categories?.find((c) => c.id === it.treatmentCategoryId)?.name;
+      (map[it.toothNumber] ??= []).push({ description: it.description || 'Untitled procedure', category });
     }
     return map;
-  }, [items]);
+  }, [items, categories]);
 
   // Clicking a tooth on the chart: fill the first blank-tooth row if one exists, otherwise
   // append a fresh row pre-filled with that tooth — so a click always lands somewhere sensible.
