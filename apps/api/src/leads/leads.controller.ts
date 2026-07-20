@@ -59,8 +59,8 @@ export class LeadsController {
   @Post()
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Create a lead' })
-  create(@Body() dto: CreateLeadDto) {
-    return this.leadsService.create(dto);
+  create(@Body() dto: CreateLeadDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.create(dto, user);
   }
 
   @Get(':id')

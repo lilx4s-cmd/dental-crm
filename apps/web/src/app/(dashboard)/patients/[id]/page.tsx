@@ -22,10 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { usePatient, useUpdatePatient } from '@/hooks/use-patients';
-import { useAppointments, useCreateAppointment, useUpdateAppointment } from '@/hooks/use-appointments';
+import { useAppointments, useCreateAppointment } from '@/hooks/use-appointments';
 import { useInvoices, useCreateInvoice, useRecordPayment } from '@/hooks/use-invoices';
-import { useTreatmentPlans, useCreateTreatmentPlan, useUpdateTreatmentPlanStatus } from '@/hooks/use-treatment-plans';
 import { useDentists } from '@/hooks/use-users';
+import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number, currency = 'USD') {
@@ -47,14 +47,6 @@ const INV_STATUS_COLORS: Record<string, string> = {
   PARTIALLY_PAID: 'bg-yellow-100 text-yellow-800',
   PAID: 'bg-green-100 text-green-800',
   OVERDUE: 'bg-red-100 text-red-800',
-};
-
-const PLAN_STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  ACTIVE: 'bg-blue-100 text-blue-800',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
 };
 
 const APPT_TYPES = [
@@ -87,6 +79,8 @@ function EditPatientDialog({
     city: patient?.city ?? '',
     country: patient?.country ?? '',
     notes: patient?.notes ?? '',
+    diagnosis: patient?.diagnosis ?? '',
+    insuranceInfo: patient?.insuranceInfo ?? '',
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -120,6 +114,8 @@ function EditPatientDialog({
             <div className="space-y-1"><Label>Country</Label><Input value={form.country} onChange={(e) => set('country', e.target.value)} /></div>
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+          <div className="space-y-1"><Label>Diagnosis</Label><Textarea rows={2} value={form.diagnosis} onChange={(e) => set('diagnosis', e.target.value)} /></div>
+          <div className="space-y-1"><Label>Insurance</Label><Input value={form.insuranceInfo} onChange={(e) => set('insuranceInfo', e.target.value)} placeholder="Provider — Policy #" /></div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -235,58 +231,6 @@ function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; o
   );
 }
 
-// ─── New Treatment Plan ───────────────────────────────────────────────────────
-function NewTreatmentPlanDialog({ patientId, open, onClose }: { patientId: string; open: boolean; onClose: () => void }) {
-  const create = useCreateTreatmentPlan();
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [items, setItems] = useState([{ description: '', quantity: 1, cost: 0, toothNumber: '' }]);
-
-  const updateItem = (idx: number, k: string, v: string | number) =>
-    setItems((prev) => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it));
-
-  const handleSubmit = () => {
-    if (!title.trim()) { toast.error('Title is required'); return; }
-    create.mutate(
-      { patientId, title, notes: notes || undefined, items: items.filter((i) => i.description).map((i) => ({ description: i.description, quantity: Number(i.quantity), cost: Number(i.cost), toothNumber: i.toothNumber || undefined })) },
-      { onSuccess: () => { toast.success('Treatment plan created'); onClose(); }, onError: () => toast.error('Failed') },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>New Treatment Plan</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1"><Label>Plan Title *</Label><Input placeholder="e.g. Orthodontic Treatment 2026" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
-          <div className="space-y-1"><Label>Notes</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-          <div>
-            <Label className="mb-2 block">Treatments</Label>
-            {items.map((item, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-center mb-2">
-                <Input className="col-span-5" placeholder="Treatment description" value={item.description} onChange={(e) => updateItem(i, 'description', e.target.value)} />
-                <Input className="col-span-2" placeholder="Tooth #" value={item.toothNumber} onChange={(e) => updateItem(i, 'toothNumber', e.target.value)} />
-                <Input className="col-span-2" type="number" placeholder="Qty" min="1" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', parseInt(e.target.value) || 1)} />
-                <Input className="col-span-2" type="number" placeholder="Cost" step="0.01" value={item.cost} onChange={(e) => updateItem(i, 'cost', parseFloat(e.target.value) || 0)} />
-                <button className="col-span-1 text-muted-foreground hover:text-destructive" onClick={() => items.length > 1 && setItems((p) => p.filter((_, idx) => idx !== i))}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => setItems((p) => [...p, { description: '', quantity: 1, cost: 0, toothNumber: '' }])}>
-              <Plus className="h-3 w-3 mr-1" /> Add Treatment
-            </Button>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={create.isPending}>{create.isPending ? 'Creating…' : 'Create Plan'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── Appointments Tab ─────────────────────────────────────────────────────────
 function AppointmentsTab({ patientId }: { patientId: string }) {
   const { data: appts, isLoading } = useAppointments(undefined, undefined, undefined, patientId);
@@ -332,7 +276,6 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
 }
 
 function AppointmentRow({ appt }: { appt: NonNullable<ReturnType<typeof useAppointments>['data']>[number] }) {
-  const _update = useUpdateAppointment(appt.id);
   return (
     <TableRow>
       <TableCell className="text-sm">{format(new Date(appt.startTime), 'MMM d, yyyy HH:mm')}</TableCell>
@@ -451,78 +394,6 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
   );
 }
 
-// ─── Treatment Plans Tab ──────────────────────────────────────────────────────
-function TreatmentPlansTab({ patientId }: { patientId: string }) {
-  const { data: plans, isLoading } = useTreatmentPlans(patientId);
-  const updateStatus = useUpdateTreatmentPlanStatus(patientId);
-  const [newOpen, setNewOpen] = useState(false);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setNewOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New Plan
-        </Button>
-      </div>
-      {isLoading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
-      ) : !plans?.length ? (
-        <div className="text-center py-10 text-muted-foreground">
-          <Stethoscope className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No treatment plans yet</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {plans.map((plan) => (
-            <Card key={plan.id}>
-              <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">{plan.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Created {format(new Date(plan.createdAt), 'MMM d, yyyy')} · {plan.items.length} treatment{plan.items.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">{fmt(Number(plan.totalCost), plan.currency)}</span>
-                  <Badge className={PLAN_STATUS_COLORS[plan.status] ?? ''} variant="outline">{plan.status}</Badge>
-                </div>
-              </CardHeader>
-              {plan.items.length > 0 && (
-                <CardContent className="pt-0 px-4 pb-3">
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead className="bg-muted"><tr><th className="text-left px-3 py-1.5">Treatment</th><th className="text-center px-2 py-1.5">Tooth</th><th className="text-right px-3 py-1.5">Qty</th><th className="text-right px-3 py-1.5">Cost</th></tr></thead>
-                      <tbody>
-                        {plan.items.map((item) => (
-                          <tr key={item.id} className="border-t">
-                            <td className="px-3 py-1.5">{item.description}</td>
-                            <td className="text-center px-2 py-1.5 text-muted-foreground">{item.toothNumber ?? '—'}</td>
-                            <td className="text-right px-3 py-1.5">{item.quantity}</td>
-                            <td className="text-right px-3 py-1.5">{fmt(Number(item.cost), plan.currency)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {plan.status !== 'COMPLETED' && plan.status !== 'CANCELLED' && (
-                    <div className="flex gap-2 mt-2">
-                      {plan.status === 'DRAFT' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => updateStatus.mutate({ id: plan.id, status: 'ACTIVE' })}>Activate</Button>}
-                      {plan.status === 'ACTIVE' && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => updateStatus.mutate({ id: plan.id, status: 'IN_PROGRESS' })}>Start</Button>}
-                      {plan.status === 'IN_PROGRESS' && <Button size="sm" className="h-7 text-xs" onClick={() => updateStatus.mutate({ id: plan.id, status: 'COMPLETED' })}>Complete</Button>}
-                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => updateStatus.mutate({ id: plan.id, status: 'CANCELLED' })}>Cancel</Button>
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
-      <NewTreatmentPlanDialog patientId={patientId} open={newOpen} onClose={() => setNewOpen(false)} />
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -592,7 +463,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             {patient.dateOfBirth && <div className="flex justify-between"><span className="text-muted-foreground">Date of Birth</span><span>{format(new Date(patient.dateOfBirth), 'MMM d, yyyy')}</span></div>}
             {patient.gender && <div className="flex justify-between"><span className="text-muted-foreground">Gender</span><span className="capitalize">{patient.gender.toLowerCase()}</span></div>}
             {patient.nationalId && <div className="flex justify-between"><span className="text-muted-foreground">National ID</span><span>{patient.nationalId}</span></div>}
+            {patient.insuranceInfo && <div className="flex justify-between"><span className="text-muted-foreground">Insurance</span><span>{patient.insuranceInfo}</span></div>}
             <div className="flex justify-between"><span className="text-muted-foreground">Patient since</span><span>{format(new Date(patient.createdAt), 'MMM d, yyyy')}</span></div>
+            {patient.diagnosis && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Diagnosis</p><p className="text-xs leading-relaxed">{patient.diagnosis}</p></div>}
             {patient.notes && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Notes</p><p className="text-xs leading-relaxed">{patient.notes}</p></div>}
           </CardContent>
         </Card>
@@ -613,7 +486,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <InvoicesTab patientId={id} />
         </TabsContent>
         <TabsContent value="plans" className="mt-4">
-          <TreatmentPlansTab patientId={id} />
+          <TreatmentPlansTab patientId={id} patientPhone={patient.whatsappNumber || patient.phone} />
         </TabsContent>
       </Tabs>
 

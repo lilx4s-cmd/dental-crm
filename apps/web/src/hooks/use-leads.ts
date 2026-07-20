@@ -16,6 +16,8 @@ export interface Lead {
   currency: string;
   lostReason: string | null;
   notes: string | null;
+  /** Original Bitrix24 deal ID, recovered for leads migrated from the clinic's old CRM. Null for leads created directly here. */
+  bitrixDealId: number | null;
   createdAt: string;
   updatedAt: string;
   assignedTo: { id: string; firstName: string; lastName: string; email: string } | null;
@@ -79,12 +81,29 @@ export function useLead(id: string) {
   });
 }
 
+// Partial<Lead> was a loose fit for creation (Lead includes server-assigned
+// fields like id/stage/assignedTo-as-object) — this is the actual create payload.
+export interface CreateLeadPayload {
+  firstName: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  whatsappNumber?: string;
+  source: string;
+  campaignId?: string;
+  estimatedValue?: number;
+  currency?: string;
+  notes?: string;
+  /** Defaults to the creating user on the backend when omitted. */
+  assignedToId?: string;
+}
+
 export function useCreateLead() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Lead>) =>
-      apiRequest('/api/leads', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
+    mutationFn: (data: CreateLeadPayload) =>
+      apiRequest<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -96,12 +115,38 @@ export function useUpdateLeadStage() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, stage, note }: { id: string; stage: string; note?: string }) =>
-      apiRequest(`/api/leads/${id}/stage`, { method: 'PATCH', body: JSON.stringify({ stage, note }) }, accessToken ?? undefined),
+    mutationFn: ({ id, stage, note, lostReason }: { id: string; stage: string; note?: string; lostReason?: string }) =>
+      apiRequest(
+        `/api/leads/${id}/stage`,
+        { method: 'PATCH', body: JSON.stringify({ stage, note, lostReason }) },
+        accessToken ?? undefined,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
+  });
+}
+
+// ─── Per-lead stage/activity history, shown in the pipeline detail sheet ──────
+
+export interface LeadActivityItem {
+  id: string;
+  leadId: string;
+  userId: string | null;
+  fromStage: string | null;
+  toStage: string | null;
+  note: string | null;
+  createdAt: string;
+  user: { id: string; firstName: string; lastName: string } | null;
+}
+
+export function useLeadActivities(id: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<LeadActivityItem[]>({
+    queryKey: ['leads', id, 'activities'],
+    queryFn: () => apiRequest(`/api/leads/${id}/activities`, {}, accessToken ?? undefined),
+    enabled: !!id,
   });
 }
 

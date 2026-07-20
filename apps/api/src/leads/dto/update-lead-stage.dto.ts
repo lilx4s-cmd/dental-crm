@@ -11,4 +11,9 @@ export class UpdateLeadStageDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @ApiPropertyOptional({ example: 'Lost / No enough budget' })
+  @IsString()
+  @IsOptional()
+  lostReason?: string;
 }

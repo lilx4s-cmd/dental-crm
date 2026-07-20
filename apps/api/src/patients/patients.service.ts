@@ -19,6 +19,8 @@ const PATIENT_SELECT = {
   country: true,
   nationalId: true,
   notes: true,
+  diagnosis: true,
+  insuranceInfo: true,
   isActive: true,
   convertedFromLeadId: true,
   createdAt: true,
@@ -78,6 +80,8 @@ export class PatientsService {
         country: dto.country,
         nationalId: dto.nationalId,
         notes: dto.notes,
+        diagnosis: dto.diagnosis,
+        insuranceInfo: dto.insuranceInfo,
       },
       select: PATIENT_SELECT,
     });
@@ -100,6 +104,8 @@ export class PatientsService {
         country: dto.country,
         nationalId: dto.nationalId,
         notes: dto.notes,
+        diagnosis: dto.diagnosis,
+        insuranceInfo: dto.insuranceInfo,
       },
       select: PATIENT_SELECT,
     });

@@ -25,3 +25,10 @@ export function useDentists() {
   const { data: users, ...rest } = useUsers();
   return { data: users?.filter((u) => u.role === 'DENTIST' && u.isActive), ...rest };
 }
+
+// Treatment coordinators reuse the SALES_CONSULTANT role (confirmed product decision:
+// no dedicated TREATMENT_COORDINATOR role). Mirrors useDentists().
+export function useCoordinators() {
+  const { data: users, ...rest } = useUsers();
+  return { data: users?.filter((u) => u.role === 'SALES_CONSULTANT' && u.isActive), ...rest };
+}

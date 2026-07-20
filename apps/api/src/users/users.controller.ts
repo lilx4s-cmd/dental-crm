@@ -6,6 +6,8 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+const ASSIGNEE_LOOKUP_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION];
+
 @ApiTags('Users')
 @ApiBearerAuth()
 @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
@@ -19,7 +21,12 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
+  // Widened past the controller's default (Super Admin/Clinic Manager only) so
+  // Sales Consultants and Reception — the roles that actually create leads — can
+  // populate an assignee picker. Read-only, and UsersService.findAll() already
+  // excludes passwordHash, so this doesn't expose anything sensitive.
   @Get()
+  @Roles(...ASSIGNEE_LOOKUP_ROLES)
   @ApiOperation({ summary: 'List all users' })
   findAll() {
     return this.usersService.findAll();

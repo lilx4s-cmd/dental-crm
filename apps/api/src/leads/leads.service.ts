@@ -7,7 +7,7 @@ import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
 import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
-import { LeadStatus, PipelineStage, Role, JwtPayload } from '@dental-crm/shared';
+import { PipelineStage, Role, JwtPayload } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
   id: true,
@@ -23,6 +23,7 @@ const LEAD_SELECT = {
   currency: true,
   lostReason: true,
   notes: true,
+  bitrixDealId: true,
   createdAt: true,
   updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -83,7 +84,7 @@ export class LeadsService {
     return lead;
   }
 
-  async create(dto: CreateLeadDto) {
+  async create(dto: CreateLeadDto, currentUser?: JwtPayload) {
     return this.prisma.lead.create({
       data: {
         firstName: dto.firstName,
@@ -96,7 +97,10 @@ export class LeadsService {
         estimatedValue: dto.estimatedValue,
         currency: dto.currency ?? 'USD',
         notes: dto.notes,
-        assignedToId: dto.assignedToId,
+        // Falls back to whoever is creating the lead so it never silently lands
+        // unassigned — a non-admin's pipeline view is scoped to assignedToId, so
+        // an unassigned lead used to vanish from every salesperson's board.
+        assignedToId: dto.assignedToId ?? currentUser?.sub,
         stage: $Enums.PipelineStage.NEW_LEAD,
         status: $Enums.LeadStatus.ACTIVE,
       },
@@ -135,10 +139,16 @@ export class LeadsService {
           ? $Enums.LeadStatus.LOST
           : $Enums.LeadStatus.ACTIVE;
 
+    // Lost reason only ever applies while a lead is actually in the LOST stage:
+    // persist it when moving in (falling back to whatever was already there, so
+    // re-confirming a move doesn't blank it out), clear it the moment the lead
+    // moves anywhere else so a reopened deal doesn't carry a stale reason.
+    const lostReason = dto.stage === PipelineStage.LOST ? (dto.lostReason ?? lead.lostReason) : null;
+
     const [updatedLead] = await this.prisma.$transaction([
       this.prisma.lead.update({
         where: { id },
-        data: { stage: dto.stage as $Enums.PipelineStage, status: newStatus },
+        data: { stage: dto.stage as $Enums.PipelineStage, status: newStatus, lostReason },
         select: LEAD_SELECT,
       }),
       this.prisma.leadActivity.create({
@@ -147,7 +157,10 @@ export class LeadsService {
           userId: currentUser.sub,
           fromStage: lead.stage as $Enums.PipelineStage,
           toStage: dto.stage as $Enums.PipelineStage,
-          note: dto.note,
+          note:
+            dto.stage === PipelineStage.LOST && dto.lostReason
+              ? `${dto.lostReason}${dto.note ? ` — ${dto.note}` : ''}`
+              : dto.note,
         },
       }),
     ]);

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LeadStatus = exports.PaymentMethod = exports.InvoiceStatus = exports.Gender = exports.AppointmentStatus = exports.LeadSource = exports.PipelineStage = exports.Role = void 0;
+exports.CommentAuthorType = exports.TimelineStepStatus = exports.WarrantyStatus = exports.PatientApprovalStatus = exports.FileCategory = exports.AttachableType = exports.TreatmentStatus = exports.LeadStatus = exports.PaymentMethod = exports.InvoiceStatus = exports.Gender = exports.AppointmentStatus = exports.LeadSource = exports.PipelineStage = exports.Role = void 0;
 exports.Role = {
     SUPER_ADMIN: 'SUPER_ADMIN',
     CLINIC_MANAGER: 'CLINIC_MANAGER',
@@ -68,5 +68,57 @@ exports.LeadStatus = {
     WON: 'WON',
     LOST: 'LOST',
     ARCHIVED: 'ARCHIVED',
+};
+// Backfilled — already existed in Prisma but was never mirrored here.
+exports.TreatmentStatus = {
+    PLANNED: 'PLANNED',
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    CANCELLED: 'CANCELLED',
+};
+// Backfilled + extended for the treatment-plan/warranty module.
+exports.AttachableType = {
+    PATIENT: 'PATIENT',
+    LEAD: 'LEAD',
+    TREATMENT_PLAN: 'TREATMENT_PLAN',
+    TREATMENT_PLAN_ITEM: 'TREATMENT_PLAN_ITEM',
+    WARRANTY: 'WARRANTY',
+    INVOICE: 'INVOICE',
+    APPOINTMENT: 'APPOINTMENT',
+    USER: 'USER',
+    OTHER: 'OTHER',
+};
+// Backfilled + extended for before/after clinical photos and warranty PDFs.
+exports.FileCategory = {
+    XRAY: 'XRAY',
+    CT_SCAN: 'CT_SCAN',
+    PHOTO: 'PHOTO',
+    BEFORE_PHOTO: 'BEFORE_PHOTO',
+    AFTER_PHOTO: 'AFTER_PHOTO',
+    DOCUMENT: 'DOCUMENT',
+    INVOICE_PDF: 'INVOICE_PDF',
+    WARRANTY_PDF: 'WARRANTY_PDF',
+    OTHER: 'OTHER',
+};
+exports.PatientApprovalStatus = {
+    PENDING: 'PENDING',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED',
+};
+exports.WarrantyStatus = {
+    ACTIVE: 'ACTIVE',
+    EXPIRED: 'EXPIRED',
+    VOIDED: 'VOIDED',
+    CLAIMED: 'CLAIMED',
+};
+exports.TimelineStepStatus = {
+    PENDING: 'PENDING',
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    SKIPPED: 'SKIPPED',
+};
+exports.CommentAuthorType = {
+    STAFF: 'STAFF',
+    PATIENT: 'PATIENT',
 };
 //# sourceMappingURL=index.js.map

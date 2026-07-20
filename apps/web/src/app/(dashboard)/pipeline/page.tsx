@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
+import { LostReasonDialog } from '@/components/pipeline/lost-reason-dialog';
+import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
 import { useLeadsByStage, useUpdateLeadStage, type Lead, type PipelineGroup } from '@/hooks/use-leads';
 
 const STAGES = [
@@ -32,6 +34,19 @@ const STAGES = [
   { id: 'LOST', label: 'Lost', color: 'border-red-400' },
 ];
 
+// Bitrix's Kanban shows each column's deal count *and* its total pipeline value —
+// sum estimatedValue per currency (almost always a single currency in practice,
+// but grouping avoids silently mixing e.g. USD and TRY into one misleading number).
+function columnTotals(leads: Lead[]): Array<[string, number]> {
+  const totals = new Map<string, number>();
+  for (const l of leads) {
+    if (l.estimatedValue == null) continue;
+    const currency = l.currency || 'USD';
+    totals.set(currency, (totals.get(currency) ?? 0) + l.estimatedValue);
+  }
+  return Array.from(totals.entries());
+}
+
 function DroppableColumn({
   stage,
   leads,
@@ -42,6 +57,7 @@ function DroppableColumn({
   onLeadClick: (lead: Lead) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  const totals = columnTotals(leads);
 
   return (
     <div
@@ -54,6 +70,11 @@ function DroppableColumn({
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.label}</span>
           <span className="text-xs font-bold tabular-nums bg-background rounded-full px-1.5 py-0.5">{leads.length}</span>
         </div>
+        {totals.length > 0 && (
+          <div className="mt-1 text-[11px] font-medium text-muted-foreground/70 truncate">
+            {totals.map(([currency, amount]) => `${amount.toLocaleString()} ${currency}`).join(' · ')}
+          </div>
+        )}
       </div>
       <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-220px)]">
         <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
@@ -75,6 +96,8 @@ export default function PipelinePage() {
 
   const [localGroups, setLocalGroups] = useState<PipelineGroup[]>([]);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
+  const [detailLead, setDetailLead] = useState<Lead | null>(null);
 
   useEffect(() => {
     if (groups) setLocalGroups(groups);
@@ -87,34 +110,56 @@ export default function PipelinePage() {
     setActiveLead(lead ?? null);
   }
 
+  // Optimistically moves `lead` to `toStage` and persists it, reverting to the
+  // last known-good server state on failure. Shared by the plain drag-and-drop
+  // path and the lost-reason-confirmed path below.
+  async function commitMove(lead: Lead, toStage: string, extra?: { lostReason?: string; note?: string }) {
+    const fromStage = lead.stage;
+    setLocalGroups((prev) =>
+      prev.map((g) => {
+        if (g.stage === fromStage) return { ...g, leads: (g.leads as Lead[]).filter((l) => l.id !== lead.id) };
+        if (g.stage === toStage) return { ...g, leads: [...(g.leads as Lead[]), { ...lead, stage: toStage }] };
+        return g;
+      }),
+    );
+    try {
+      await updateStage.mutateAsync({ id: lead.id, stage: toStage, ...extra });
+    } catch {
+      toast.error('Failed to move lead');
+      if (groups) setLocalGroups(groups);
+    }
+  }
+
   async function onDragEnd(event: DragEndEvent) {
     setActiveLead(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
     const fromGroup = localGroups.find((g) => (g.leads as Lead[]).some((l) => l.id === active.id));
-    const toStageId = String(over.id);
-    const toGroup = localGroups.find((g) => g.stage === toStageId);
+
+    // `over.id` is a stage id when dropped on empty column space, but dnd-kit
+    // reports the *card's* id when dropped on top of another lead (each card is
+    // itself a sortable droppable). Resolve either shape back to its column so a
+    // drop landing on a card doesn't silently no-op — with 900+ leads in some
+    // columns, empty space is rare and most drops land on a card.
+    const overId = String(over.id);
+    const toGroup =
+      localGroups.find((g) => g.stage === overId) ??
+      localGroups.find((g) => (g.leads as Lead[]).some((l) => l.id === overId));
 
     if (!fromGroup || !toGroup || fromGroup.stage === toGroup.stage) return;
 
     const lead = (fromGroup.leads as Lead[]).find((l) => l.id === active.id)!;
 
-    // Optimistic update
-    setLocalGroups((prev) =>
-      prev.map((g) => {
-        if (g.stage === fromGroup.stage) return { ...g, leads: (g.leads as Lead[]).filter((l) => l.id !== active.id) };
-        if (g.stage === toGroup.stage) return { ...g, leads: [...(g.leads as Lead[]), { ...lead, stage: toStageId }] };
-        return g;
-      }),
-    );
-
-    try {
-      await updateStage.mutateAsync({ id: String(active.id), stage: toStageId });
-    } catch {
-      toast.error('Failed to move lead');
-      if (groups) setLocalGroups(groups);
+    if (toGroup.stage === 'LOST') {
+      // Marking a deal lost always carried a reason in the clinic's old Bitrix
+      // setup — hold the move until the dialog confirms instead of committing it
+      // optimistically like every other stage change.
+      setPendingLostMove(lead);
+      return;
     }
+
+    await commitMove(lead, toGroup.stage);
   }
 
   return (
@@ -148,7 +193,7 @@ export default function PipelinePage() {
                   key={stage.id}
                   stage={stage}
                   leads={(group?.leads as Lead[]) ?? []}
-                  onLeadClick={(lead) => toast.info(`${lead.firstName} ${lead.lastName ?? ''} — detail view coming soon`)}
+                  onLeadClick={setDetailLead}
                 />
               );
             })}
@@ -158,6 +203,22 @@ export default function PipelinePage() {
           </DragOverlay>
         </DndContext>
       )}
+
+      <LostReasonDialog
+        open={!!pendingLostMove}
+        leadName={pendingLostMove ? `${pendingLostMove.firstName} ${pendingLostMove.lastName ?? ''}`.trim() : ''}
+        onCancel={() => setPendingLostMove(null)}
+        onConfirm={async (reason, note) => {
+          const lead = pendingLostMove;
+          setPendingLostMove(null);
+          if (lead) await commitMove(lead, 'LOST', { lostReason: reason, note });
+        }}
+      />
+      <LeadDetailSheet
+        lead={detailLead}
+        open={!!detailLead}
+        onOpenChange={(open) => { if (!open) setDetailLead(null); }}
+      />
     </div>
   );
 }

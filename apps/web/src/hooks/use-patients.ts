@@ -16,6 +16,8 @@ export interface Patient {
   country: string | null;
   nationalId: string | null;
   notes: string | null;
+  diagnosis: string | null;
+  insuranceInfo: string | null;
   isActive: boolean;
   convertedFromLeadId: string | null;
   createdAt: string;

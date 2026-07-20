@@ -21,4 +21,14 @@ export default () => ({
     bucket: process.env.S3_BUCKET ?? 'dental-crm',
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   },
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    bucket: process.env.SUPABASE_STORAGE_BUCKET,
+  },
+  xai: {
+    apiKey: process.env.XAI_API_KEY,
+    model: process.env.XAI_MODEL || 'grok-4.5',
+    baseUrl: process.env.XAI_BASE_URL || 'https://api.x.ai/v1',
+  },
 });

@@ -62,4 +62,14 @@ export class CreatePatientDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'Class II malocclusion' })
+  @IsString()
+  @IsOptional()
+  diagnosis?: string;
+
+  @ApiPropertyOptional({ example: 'Allianz — Policy #123456' })
+  @IsString()
+  @IsOptional()
+  insuranceInfo?: string;
 }

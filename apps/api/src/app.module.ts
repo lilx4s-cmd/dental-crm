@@ -16,9 +16,14 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { TreatmentPlansModule } from './treatment-plans/treatment-plans.module';
+import { WarrantiesModule } from './warranties/warranties.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
+import { FilesModule } from './files/files.module';
+import { PdfModule } from './pdf/pdf.module';
+import { PortalModule } from './portal/portal.module';
+import { AiModule } from './ai/ai.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -45,9 +50,14 @@ import { HealthController } from './health/health.controller';
     FacebookModule,
     AppointmentsModule,
     TreatmentPlansModule,
+    WarrantiesModule,
     InvoicesModule,
     ReportsModule,
     SettingsModule,
+    FilesModule,
+    PdfModule,
+    PortalModule,
+    AiModule,
   ],
   controllers: [HealthController],
   providers: [

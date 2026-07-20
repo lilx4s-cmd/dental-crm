@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateLead } from '@/hooks/use-leads';
+import { useCreateLead, type CreateLeadPayload } from '@/hooks/use-leads';
+import { useUsers } from '@/hooks/use-users';
+import { useAuth } from '@/context/auth-context';
 
 const LEAD_SOURCES = [
   { value: 'WALK_IN', label: 'Walk-in' },
@@ -24,6 +26,8 @@ const LEAD_SOURCES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
+const ASSIGNABLE_ROLES = ['SUPER_ADMIN', 'CLINIC_MANAGER', 'SALES_CONSULTANT', 'RECEPTION'];
+
 const schema = z.object({
   firstName: z.string().min(1, 'Required'),
   lastName: z.string().optional(),
@@ -33,6 +37,7 @@ const schema = z.object({
   whatsappNumber: z.string().optional(),
   estimatedValue: z.coerce.number().optional(),
   notes: z.string().optional(),
+  assignedToId: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -41,14 +46,29 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const createLead = useCreateLead();
   const [source, setSource] = useState('');
+  const [assignedToId, setAssignedToId] = useState('');
+  const { user } = useAuth();
+  const { data: users } = useUsers();
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
+  // Default the assignee to whoever is creating the lead — otherwise a lead
+  // left on "unassigned" used to disappear from every non-admin's pipeline view
+  // the moment it was created, since that view is scoped to assignedToId.
+  useEffect(() => {
+    if (open && user?.sub && !assignedToId) {
+      setAssignedToId(user.sub);
+      setValue('assignedToId', user.sub);
+    }
+  }, [open, user?.sub, assignedToId, setValue]);
+
+  const assignableUsers = (users ?? []).filter((u) => u.isActive && ASSIGNABLE_ROLES.includes(u.role));
+
   async function onSubmit(data: FormValues) {
     try {
-      await createLead.mutateAsync({
+      const payload: CreateLeadPayload = {
         firstName: data.firstName,
         lastName: data.lastName || undefined,
         source: data.source,
@@ -57,10 +77,13 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
         whatsappNumber: data.whatsappNumber || undefined,
         estimatedValue: data.estimatedValue || undefined,
         notes: data.notes || undefined,
-      } as Parameters<typeof createLead.mutateAsync>[0]);
+        assignedToId: data.assignedToId || undefined,
+      };
+      await createLead.mutateAsync(payload);
       toast.success('Lead created');
       reset();
       setSource('');
+      setAssignedToId('');
       setOpen(false);
     } catch {
       toast.error('Failed to create lead');
@@ -99,6 +122,21 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
               </SelectContent>
             </Select>
             {errors.source && <p className="text-xs text-destructive">{errors.source.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Assigned to</Label>
+            <Select value={assignedToId} onValueChange={(v) => { setAssignedToId(v); setValue('assignedToId', v); }}>
+              <SelectTrigger>
+                <SelectValue placeholder="Assign to a team member" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignableUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.firstName} {u.lastName}{u.id === user?.sub ? ' (you)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

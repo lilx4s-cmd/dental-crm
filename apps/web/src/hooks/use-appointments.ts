@@ -17,7 +17,10 @@ export interface Appointment {
   createdBy: { id: string; firstName: string; lastName: string };
 }
 
-export function useAppointments(from?: string, to?: string, dentistId?: string, patientId?: string) {
+// `enabled` defaults to true so existing callers (full calendar views) are
+// unaffected; the lead detail sheet passes false until it actually needs a
+// converted patient's appointment history, keeping that fetch lazy.
+export function useAppointments(from?: string, to?: string, dentistId?: string, patientId?: string, enabled = true) {
   const { accessToken } = useAuth();
   const params = new URLSearchParams();
   if (from) params.set('from', from);
@@ -28,6 +31,7 @@ export function useAppointments(from?: string, to?: string, dentistId?: string, 
   return useQuery<Appointment[]>({
     queryKey: ['appointments', from, to, dentistId, patientId],
     queryFn: () => apiRequest(`/api/appointments?${params}`, {}, accessToken ?? undefined),
+    enabled,
   });
 }
 

@@ -29,6 +29,18 @@ async function bootstrap() {
     }),
   );
 
+  // Stricter limiter for the public, unauthenticated patient portal — path-scoped via the
+  // first argument so it stacks on top of (not replaces) the global limiter above.
+  app.use(
+    '/api/portal',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 30,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

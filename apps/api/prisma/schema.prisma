@@ -176,6 +176,8 @@ enum AttachableType {
   PATIENT
   LEAD
   TREATMENT_PLAN
+  TREATMENT_PLAN_ITEM
+  WARRANTY
   INVOICE
   APPOINTMENT
   USER
@@ -186,8 +188,11 @@ enum FileCategory {
   XRAY
   CT_SCAN
   PHOTO
+  BEFORE_PHOTO
+  AFTER_PHOTO
   DOCUMENT
   INVOICE_PDF
+  WARRANTY_PDF
   OTHER
 }
 
@@ -216,6 +221,31 @@ enum AuditAction {
   OTHER
 }
 
+enum PatientApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WarrantyStatus {
+  ACTIVE
+  EXPIRED
+  VOIDED
+  CLAIMED
+}
+
+enum TimelineStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum CommentAuthorType {
+  STAFF
+  PATIENT
+}
+
 // ─────────────────────────── CORE / AUTH ───────────────────────────
 
 model User {
@@ -235,20 +265,24 @@ model User {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  refreshTokens         RefreshToken[]
-  assignedLeads         Lead[]         @relation("LeadAssignee")
-  leadActivities        LeadActivity[]
-  appointmentsAsDentist Appointment[]  @relation("AppointmentDentist")
-  appointmentsCreated   Appointment[]  @relation("AppointmentCreatedBy")
-  treatmentPlans        TreatmentPlan[] @relation("TreatmentPlanCreatedBy")
-  invoicesCreated       Invoice[]      @relation("InvoiceCreatedBy")
-  paymentsRecorded      Payment[]      @relation("PaymentCreatedBy")
-  conversationsAssigned Conversation[] @relation("ConversationAssignee")
-  messagesSent          Message[]      @relation("MessageSender")
-  callLogs              CallLog[]      @relation("CallLogUser")
-  filesUploaded         File[]         @relation("FileUploadedBy")
-  notifications         Notification[]
-  auditLogs             AuditLog[]
+  refreshTokens               RefreshToken[]
+  assignedLeads               Lead[]                   @relation("LeadAssignee")
+  leadActivities              LeadActivity[]
+  appointmentsAsDentist       Appointment[]            @relation("AppointmentDentist")
+  appointmentsCreated         Appointment[]            @relation("AppointmentCreatedBy")
+  treatmentPlans              TreatmentPlan[]          @relation("TreatmentPlanCreatedBy")
+  treatmentPlansAsDentist     TreatmentPlan[]          @relation("TreatmentPlanDentist")
+  treatmentPlansAsCoordinator TreatmentPlan[]          @relation("TreatmentPlanCoordinator")
+  treatmentPlanComments       TreatmentPlanComment[]
+  shareLinksCreated           TreatmentPlanShareLink[] @relation("ShareLinkCreatedBy")
+  invoicesCreated             Invoice[]                @relation("InvoiceCreatedBy")
+  paymentsRecorded            Payment[]                @relation("PaymentCreatedBy")
+  conversationsAssigned       Conversation[]           @relation("ConversationAssignee")
+  messagesSent                Message[]                @relation("MessageSender")
+  callLogs                    CallLog[]                @relation("CallLogUser")
+  filesUploaded               File[]                   @relation("FileUploadedBy")
+  notifications               Notification[]
+  auditLogs                   AuditLog[]
 
   @@index([role])
   @@map("users")
@@ -301,6 +335,8 @@ model Patient {
   country             String?
   nationalId          String?
   notes               String?
+  diagnosis           String?
+  insuranceInfo       String?
   isActive            Boolean   @default(true)
   convertedFromLeadId String?   @unique
   convertedFromLead   Lead?     @relation("LeadToPatient", fields: [convertedFromLeadId], references: [id])
@@ -381,6 +417,11 @@ model Lead {
   currency       String?
   lostReason     String?
   notes          String?
+  // Original Bitrix24 deal ID (recovered from the migration's deterministic
+  // id mapping — see migration/import.mjs's detUuid()). Nullable since leads
+  // created directly in this CRM never had a Bitrix counterpart. Powers the
+  // "Open in Bitrix24" link in the lead detail view.
+  bitrixDealId   Int?          @unique
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -454,28 +495,47 @@ model TreatmentCategory {
   name        String  @unique
   description String?
 
-  items TreatmentPlanItem[]
+  items             TreatmentPlanItem[]
+  warrantyTemplates WarrantyTemplate[]
 
   @@map("treatment_categories")
 }
 
 model TreatmentPlan {
-  id          String          @id @default(uuid())
-  patientId   String
-  patient     Patient         @relation(fields: [patientId], references: [id])
-  createdById String
-  createdBy   User            @relation("TreatmentPlanCreatedBy", fields: [createdById], references: [id])
-  title       String
-  status      TreatmentStatus @default(PLANNED)
-  totalCost   Decimal         @default(0) @db.Decimal(12, 2)
-  currency    String          @default("USD")
-  notes       String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                    String                @id @default(uuid())
+  patientId             String
+  patient               Patient               @relation(fields: [patientId], references: [id])
+  createdById           String
+  createdBy             User                  @relation("TreatmentPlanCreatedBy", fields: [createdById], references: [id])
+  assignedDentistId     String?
+  assignedDentist       User?                 @relation("TreatmentPlanDentist", fields: [assignedDentistId], references: [id])
+  assignedCoordinatorId String?
+  assignedCoordinator   User?                 @relation("TreatmentPlanCoordinator", fields: [assignedCoordinatorId], references: [id])
+  title                 String
+  status                TreatmentStatus       @default(PLANNED)
+  totalCost             Decimal               @default(0) @db.Decimal(12, 2)
+  currency              String                @default("USD")
+  notes                 String?
+  approvalStatus        PatientApprovalStatus @default(PENDING)
+  approvedAt            DateTime?
+  rejectionReason       String?
+  doctorRecommendation  String?
+  // Copied from Patient.diagnosis at creation so the patient-facing presentation
+  // stays stable even if the live diagnosis changes later.
+  diagnosisSnapshot     String?
+  // Patient-friendly summary, staff-generated and cached (see Phase E AI module).
+  aiSummary             String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
-  items    TreatmentPlanItem[]
-  invoices Invoice[]
+  items         TreatmentPlanItem[]
+  invoices      Invoice[]
+  timelineSteps TreatmentTimelineStep[]
+  comments      TreatmentPlanComment[]
+  shareLinks    TreatmentPlanShareLink[]
 
+  @@index([assignedDentistId])
+  @@index([assignedCoordinatorId])
   @@map("treatment_plans")
 }
 
@@ -487,11 +547,20 @@ model TreatmentPlanItem {
   treatmentCategory   TreatmentCategory? @relation(fields: [treatmentCategoryId], references: [id])
   toothNumber         String?
   description         String
+  material            String?
+  brand               String?
   quantity            Int                @default(1)
+  // `cost` stays the authoritative line total that flows into TreatmentPlan.totalCost
+  // and InvoiceItem. unitPrice/discount are additive input-convenience fields; the
+  // frontend computes cost = unitPrice*quantity - discount and submits it.
+  unitPrice           Decimal?           @db.Decimal(12, 2)
+  discount            Decimal            @default(0) @db.Decimal(12, 2)
   cost                Decimal            @db.Decimal(12, 2)
+  clinicalNotes       String?
   status              TreatmentStatus    @default(PLANNED)
 
   invoiceItems InvoiceItem[]
+  warranties   Warranty[]
 
   @@map("treatment_plan_items")
 }
@@ -702,4 +771,100 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ─────────────────────────── TREATMENT PLAN & WARRANTY ───────────────────────────
+
+model WarrantyTemplate {
+  id                      String             @id @default(uuid())
+  name                    String             @unique
+  treatmentCategoryId     String?
+  treatmentCategory       TreatmentCategory? @relation(fields: [treatmentCategoryId], references: [id])
+  durationMonths          Int
+  termsAndConditions      String
+  maintenanceRequirements String?
+  exclusions              String?
+  annualCheckupRequired   Boolean            @default(false)
+  isActive                Boolean            @default(true)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  warranties Warranty[]
+
+  @@map("warranty_templates")
+}
+
+model Warranty {
+  id                      String            @id @default(uuid())
+  treatmentPlanItemId     String
+  treatmentPlanItem       TreatmentPlanItem @relation(fields: [treatmentPlanItemId], references: [id])
+  warrantyTemplateId      String?
+  warrantyTemplate        WarrantyTemplate? @relation(fields: [warrantyTemplateId], references: [id])
+  startDate               DateTime
+  durationMonths          Int
+  status                  WarrantyStatus    @default(ACTIVE)
+  // Snapshotted from the template at issuance so later template edits don't
+  // retroactively change warranties already handed to a patient.
+  termsAndConditions      String
+  maintenanceRequirements String?
+  exclusions              String?
+  annualCheckupRequired   Boolean
+  // Soft-reference to File.id (category WARRANTY_PDF), same polymorphic style as
+  // File.ownerId — generated once at issue time.
+  certificateFileId       String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  @@index([treatmentPlanItemId])
+  @@map("warranties")
+}
+
+model TreatmentTimelineStep {
+  id              String             @id @default(uuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan      @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  status          TimelineStepStatus @default(PENDING)
+  order           Int
+  dueDate         DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([treatmentPlanId])
+  @@map("treatment_timeline_steps")
+}
+
+model TreatmentPlanComment {
+  id              String            @id @default(uuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan     @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  authorType      CommentAuthorType
+  authorUserId    String?
+  authorUser      User?             @relation(fields: [authorUserId], references: [id])
+  authorName      String?
+  body            String
+  createdAt       DateTime          @default(now())
+
+  @@index([treatmentPlanId])
+  @@map("treatment_plan_comments")
+}
+
+model TreatmentPlanShareLink {
+  id              String        @id @default(uuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  // sha256(rawToken) — deterministic hash for WHERE tokenHash = ? lookups on a
+  // public link that has no prior identifying context (unlike refresh tokens).
+  tokenHash       String        @unique
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  lastViewedAt    DateTime?
+  createdById     String
+  createdBy       User          @relation("ShareLinkCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@index([treatmentPlanId])
+  @@map("treatment_plan_share_links")
 }
