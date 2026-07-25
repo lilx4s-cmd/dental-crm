@@ -34,6 +34,33 @@ export interface TreatmentPlanDiagnosis {
   notes: string | null;
 }
 
+export interface TreatmentPlanStay {
+  id: string;
+  arrivalDate: string | null;
+  arrivalFlight: string | null;
+  departureDate: string | null;
+  departureFlight: string | null;
+  hotelName: string | null;
+  hotelAddress: string | null;
+  roomType: string | null;
+  nights: number | null;
+  companions: number | null;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  airportTransfer: string | null;
+  clinicTransfer: string | null;
+  notes: string | null;
+}
+
+export interface TreatmentPlanScheduleItem {
+  id: string;
+  date: string;
+  time: string | null;
+  title: string;
+  location: string | null;
+  notes: string | null;
+}
+
 export interface TreatmentPlanPhase {
   id: string;
   phaseNumber: number;
@@ -95,6 +122,8 @@ export interface TreatmentPlan {
   comments: TreatmentPlanComment[];
   diagnoses: TreatmentPlanDiagnosis[];
   phases: TreatmentPlanPhase[];
+  stay: TreatmentPlanStay | null;
+  scheduleItems: TreatmentPlanScheduleItem[];
 }
 
 export interface CreateTreatmentPlanItemInput {
@@ -287,6 +316,33 @@ export function useUpdateTimelineStep(patientId: string) {
       apiRequest(
         `/api/treatment-plans/${planId}/timeline-steps/${stepId}`,
         { method: 'PATCH', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['treatment-plans', patientId] }),
+  });
+}
+
+/**
+ * Replaces a plan's travel details and day-by-day schedule.
+ *
+ * Sent whole rather than field by field: a coordinator edits the itinerary as one thing, and
+ * replacing it means removing a day needs no separate delete call.
+ */
+export function useUpdateItinerary(patientId: string) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      stay?: CreateTreatmentPlanStayInput;
+      scheduleItems?: CreateTreatmentPlanScheduleItemInput[];
+    }) =>
+      apiRequest(
+        `/api/treatment-plans/${id}/itinerary`,
+        { method: 'PUT', body: JSON.stringify(data) },
         accessToken ?? undefined,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['treatment-plans', patientId] }),

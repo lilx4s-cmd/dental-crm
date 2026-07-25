@@ -40,6 +40,32 @@ export interface PortalDiagnosis {
   notes: string | null;
 }
 
+export interface PortalStay {
+  arrivalDate: string | null;
+  arrivalFlight: string | null;
+  departureDate: string | null;
+  departureFlight: string | null;
+  hotelName: string | null;
+  hotelAddress: string | null;
+  roomType: string | null;
+  nights: number | null;
+  companions: number | null;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  airportTransfer: string | null;
+  clinicTransfer: string | null;
+  notes: string | null;
+}
+
+export interface PortalScheduleItem {
+  id: string;
+  date: string;
+  time: string | null;
+  title: string;
+  location: string | null;
+  notes: string | null;
+}
+
 export interface PortalPhase {
   id: string;
   phaseNumber: number;
@@ -72,6 +98,8 @@ export interface PortalPlan {
   items: PortalPlanItem[];
   diagnoses: PortalDiagnosis[];
   phases: PortalPhase[];
+  stay: PortalStay | null;
+  scheduleItems: PortalScheduleItem[];
   timelineSteps: TimelineStep[];
   comments: PortalComment[];
 }

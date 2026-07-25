@@ -20,6 +20,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import { PlanAftercare, PlanSchedule, PlanStay } from '@/components/treatment-plans/plan-itinerary';
 import { PlanDiagnoses, PlanProcedures } from '@/components/treatment-plans/plan-summary';
 import { TimelineStepper } from '@/components/treatment-plans/timeline-stepper';
 
@@ -135,6 +136,12 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
           )}
 
           <PlanProcedures plan={plan} />
+
+          {/* The travel and aftercare pages of the printed dossier, so the link and the paper
+              agree. */}
+          <PlanStay stay={plan.stay} />
+          <PlanSchedule items={plan.scheduleItems} />
+          <PlanAftercare items={plan.items} />
 
           <div className="space-y-2">
             <p className="text-sm font-semibold text-muted-foreground">Treatment Timeline</p>

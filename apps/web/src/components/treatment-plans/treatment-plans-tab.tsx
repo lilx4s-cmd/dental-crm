@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Stethoscope, Send, MessageSquare, Link2, Download, Sparkles, MessageCircle } from 'lucide-react';
+import { Plus, Plane, Stethoscope, Send, MessageSquare, Link2, Download, Sparkles, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -26,6 +26,8 @@ import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { useGenerateSummary, useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai';
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
 import { NewTreatmentPlanDialog } from './new-treatment-plan-dialog';
+import { EditItineraryDialog } from './edit-itinerary-dialog';
+import { PlanAftercare, PlanSchedule, PlanStay } from './plan-itinerary';
 import { PlanDiagnoses, PlanProcedures } from './plan-summary';
 import { TimelineStepper } from './timeline-stepper';
 import { WarrantySection } from './warranty-section';
@@ -129,6 +131,7 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   // portal link" succeeds. Never persisted/recoverable later (by design, only its hash is
   // stored server-side), so it's used opportunistically to embed a working QR in the PDF.
   const [lastShareToken, setLastShareToken] = useState<string | null>(null);
+  const [editingItinerary, setEditingItinerary] = useState(false);
 
   const handleGenerateSummary = () => {
     generateSummary.mutate(
@@ -294,6 +297,26 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         {/* Charted findings, then the proposed work — the order the patient document reads in. */}
         <PlanDiagnoses plan={plan} />
         <PlanProcedures plan={plan} />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground">Travel &amp; itinerary</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingItinerary(true)}>
+              <Plane className="mr-1 h-3 w-3" /> Stay &amp; schedule
+            </Button>
+          </div>
+          <PlanStay stay={plan.stay} />
+          <PlanSchedule items={plan.scheduleItems} />
+        </div>
+
+        <PlanAftercare items={plan.items} />
+
+        <EditItineraryDialog
+          plan={plan}
+          patientId={patientId}
+          open={editingItinerary}
+          onClose={() => setEditingItinerary(false)}
+        />
 
         {/* Timeline */}
         <div className="space-y-2">

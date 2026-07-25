@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Patch, Param, Body, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -7,7 +7,7 @@ import { Role, JwtPayload } from '@dental-crm/shared';
 import { TreatmentPlansService } from './treatment-plans.service';
 import { PdfService } from '../pdf/pdf.service';
 import { SettingsService } from '../settings/settings.service';
-import { CreateTreatmentPlanDto } from './dto/create-treatment-plan.dto';
+import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatment-plan.dto';
 import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { UpdateTimelineStepDto } from './dto/update-timeline-step.dto';
@@ -117,6 +117,13 @@ export class TreatmentPlansController {
       'Content-Disposition': `attachment; filename="treatment-plan-${id}.pdf"`,
     });
     res.send(buffer);
+  }
+
+  @Put(':id/itinerary')
+  @Roles(...PLAN_COORDINATION_ROLES)
+  // Replaces the plan's travel details and day-by-day schedule.
+  updateItinerary(@Param('id') id: string, @Body() dto: UpdateItineraryDto) {
+    return this.service.updateItinerary(id, dto);
   }
 
   @Post(':id/share-link')

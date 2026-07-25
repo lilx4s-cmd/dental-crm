@@ -3,7 +3,7 @@ import { $Enums, Prisma } from '@prisma/client';
 import { computePlanTotal } from '@dental-crm/shared';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTreatmentPlanDto } from './dto/create-treatment-plan.dto';
+import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatment-plan.dto';
 import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
 
 // Declared outside PLAN_SELECT: the `as const` there would make this a readonly tuple, which
@@ -253,6 +253,59 @@ export class TreatmentPlansService {
       },
       select: PLAN_SELECT,
     });
+  }
+
+  /**
+   * Replaces the plan's travel and itinerary in one transaction.
+   *
+   * Schedule entries are deleted and recreated rather than diffed: they carry no identity anyone
+   * refers to elsewhere, and a diff would let a half-applied edit leave the printed itinerary
+   * disagreeing with the one on screen. The stay is upserted so a coordinator can fill it in
+   * progressively — hotel first, flight number a week later — which is the normal case.
+   */
+  async updateItinerary(id: string, dto: UpdateItineraryDto) {
+    await this.findOne(id);
+
+    const stayData = dto.stay
+      ? {
+          ...dto.stay,
+          arrivalDate: toDate(dto.stay.arrivalDate),
+          departureDate: toDate(dto.stay.departureDate),
+          checkInDate: toDate(dto.stay.checkInDate),
+          checkOutDate: toDate(dto.stay.checkOutDate),
+        }
+      : null;
+
+    await this.prisma.$transaction([
+      ...(stayData
+        ? [
+            this.prisma.treatmentPlanStay.upsert({
+              where: { treatmentPlanId: id },
+              create: { treatmentPlanId: id, ...stayData },
+              update: stayData,
+            }),
+          ]
+        : // An explicitly empty stay clears it, so a trip that falls through does not keep
+          // printing a hotel the patient never went to.
+          [this.prisma.treatmentPlanStay.deleteMany({ where: { treatmentPlanId: id } })]),
+      this.prisma.treatmentPlanScheduleItem.deleteMany({ where: { treatmentPlanId: id } }),
+      ...(dto.scheduleItems?.length
+        ? [
+            this.prisma.treatmentPlanScheduleItem.createMany({
+              data: dto.scheduleItems.map((s) => ({
+                treatmentPlanId: id,
+                date: new Date(s.date),
+                time: s.time,
+                title: s.title,
+                location: s.location,
+                notes: s.notes,
+              })),
+            }),
+          ]
+        : []),
+    ]);
+
+    return this.findOne(id);
   }
 
   async update(id: string, dto: UpdateTreatmentPlanDto) {

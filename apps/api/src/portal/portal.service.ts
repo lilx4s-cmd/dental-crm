@@ -47,6 +47,31 @@ const PORTAL_PLAN_SELECT = {
       },
     },
   },
+  // Travel, hotel and itinerary. This is the patient's own trip, so nothing here is a disclosure
+  // they do not already hold — and it is the part of the dossier they check most often.
+  stay: {
+    select: {
+      id: true,
+      arrivalDate: true,
+      arrivalFlight: true,
+      departureDate: true,
+      departureFlight: true,
+      hotelName: true,
+      hotelAddress: true,
+      roomType: true,
+      nights: true,
+      companions: true,
+      checkInDate: true,
+      checkOutDate: true,
+      airportTransfer: true,
+      clinicTransfer: true,
+      notes: true,
+    },
+  },
+  scheduleItems: {
+    select: { id: true, date: true, time: true, title: true, location: true, notes: true },
+    orderBy: { date: 'asc' as const },
+  },
   // The charted findings and phase structure the patient's own document shows. These carry no
   // identifying information of their own — a condition and a list of tooth numbers — so they fit
   // the sanitized posture above while letting the portal render the same charts as the PDF.
@@ -162,19 +187,14 @@ export class PortalService {
 
   async getPdf(token: string) {
     const link = await this.findActiveLink(token);
+    // Reuses the portal's own select so the patient's download is the same dossier the clinic
+    // prints — charts, phased pricing, travel and aftercare included. It previously took a much
+    // narrower slice, which quietly gave the patient a thinner document than the one discussed
+    // with them. Contact details stay out, matching the rest of this module: a share link can be
+    // forwarded, so the PDF behind it carries no more than the page does.
     const plan = await this.prisma.treatmentPlan.findUnique({
       where: { id: link.treatmentPlanId },
-      select: {
-        title: true,
-        totalCost: true,
-        currency: true,
-        doctorRecommendation: true,
-        patient: { select: { firstName: true, lastName: true } },
-        items: {
-          select: { description: true, toothNumber: true, material: true, brand: true, quantity: true, cost: true },
-        },
-        timelineSteps: { select: { title: true, status: true }, orderBy: { order: 'asc' } },
-      },
+      select: PORTAL_PLAN_SELECT,
     });
     if (!plan) throw new NotFoundException('Link not found');
 

@@ -71,6 +71,20 @@ export class TreatmentPlanScheduleItemDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+/**
+ * The whole itinerary in one call. Stay and schedule are replaced together rather than patched
+ * field by field because that is how a coordinator edits them — they open the itinerary, correct
+ * the flight and drop a day, and save. Sending the full picture also means removing a schedule
+ * entry needs no separate delete route.
+ */
+export class UpdateItineraryDto {
+  @IsOptional() @ValidateNested() @Type(() => TreatmentPlanStayDto)
+  stay?: TreatmentPlanStayDto;
+
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => TreatmentPlanScheduleItemDto)
+  scheduleItems?: TreatmentPlanScheduleItemDto[];
+}
+
 export class CreateTreatmentPlanDto {
   @IsString() @IsNotEmpty() patientId: string;
   @IsString() @IsNotEmpty() title: string;
