@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Role } from '@dental-crm/shared';
+import { Role, JwtPayload } from '@dental-crm/shared';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AdminResetPasswordDto } from './dto/admin-password.dto';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -44,9 +46,33 @@ export class UsersController {
     return this.usersService.update(id, dto);
   }
 
+  @Get(':id/sessions')
+  @ApiOperation({ summary: 'How many live sessions a user has' })
+  async sessions(@Param('id') id: string) {
+    return { active: await this.usersService.activeSessionCount(id) };
+  }
+
+  @Post(':id/revoke-sessions')
+  @ApiOperation({ summary: 'Sign a user out of every device' })
+  revokeSessions(@Param('id') id: string) {
+    return this.usersService.revokeSessions(id);
+  }
+
+  @Post(':id/reset-password')
+  @ApiOperation({ summary: 'Set a new password for a user and end their sessions' })
+  resetPassword(@Param('id') id: string, @Body() dto: AdminResetPasswordDto) {
+    return this.usersService.adminResetPassword(id, dto.newPassword);
+  }
+
+  @Patch(':id/activate')
+  @ApiOperation({ summary: 'Reactivate a deactivated user' })
+  activate(@Param('id') id: string) {
+    return this.usersService.activate(id);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Deactivate user (soft delete)' })
-  deactivate(@Param('id') id: string) {
-    return this.usersService.deactivate(id);
+  deactivate(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.usersService.deactivate(id, user.sub);
   }
 }

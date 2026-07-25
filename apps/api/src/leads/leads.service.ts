@@ -330,27 +330,82 @@ export class LeadsService {
   // Each moved lead gets a LeadActivity row so the reassignment shows up in the
   // sales history feed. fromStage/toStage are set to the lead's current stage
   // (no stage change happened) — the note carries the reassignment detail.
+  /**
+   * Resolves which leads a transfer covers.
+   *
+   * Explicit ids win. Otherwise the same where-builder the pipeline filters through is reused, so
+   * "transfer what I filtered" moves exactly the set the board was showing rather than a second
+   * interpretation of the same words.
+   */
+  private transferWhere(dto: TransferLeadsDto, currentUser: JwtPayload): Prisma.LeadWhereInput {
+    if (dto.leadIds && dto.leadIds.length > 0) return { id: { in: dto.leadIds } };
+
+    const hasSelection =
+      dto.fromUserId || dto.stage || dto.source || dto.taskDue || dto.stuck || dto.search?.trim();
+    // Refused rather than treated as "everything": reassigning an entire pipeline should take a
+    // deliberate act, not an empty form.
+    if (!hasSelection) {
+      throw new BadRequestException(
+        'Choose which leads to transfer — pick specific leads, a salesperson, or at least one filter.',
+      );
+    }
+
+    return this.buildWhere(
+      {
+        page: 1,
+        limit: 0,
+        assignedToId: dto.fromUserId,
+        stage: dto.stage,
+        source: dto.source,
+        taskDue: dto.taskDue,
+        stuck: dto.stuck,
+        search: dto.search,
+      } as LeadsQueryDto,
+      currentUser,
+    );
+  }
+
+  /** What a transfer would move, without moving it. Bulk reassignment deserves a look first. */
+  async previewTransfer(dto: TransferLeadsDto, currentUser: JwtPayload) {
+    const where = this.transferWhere(dto, currentUser);
+    const [leads, total] = await this.prisma.$transaction([
+      this.prisma.lead.findMany({
+        where,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          stage: true,
+          assignedTo: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.lead.count({ where }),
+    ]);
+    return { leads, total, showing: leads.length };
+  }
+
   async transferLeads(dto: TransferLeadsDto, currentUser: JwtPayload) {
-    const { toUserId, fromUserId, leadIds, note } = dto;
+    const { toUserId, note } = dto;
 
     const toUser = await this.prisma.user.findUnique({
       where: { id: toUserId },
       select: { id: true, firstName: true, lastName: true, isActive: true },
     });
     if (!toUser) throw new NotFoundException('Target salesperson not found');
-
-    const where: Prisma.LeadWhereInput = {};
-    if (leadIds && leadIds.length > 0) {
-      where.id = { in: leadIds };
-    } else if (fromUserId) {
-      where.assignedToId = fromUserId;
-      where.status = $Enums.LeadStatus.ACTIVE;
-    } else {
-      throw new BadRequestException('Provide either leadIds or fromUserId');
+    // Handing leads to a deactivated account hides them from everyone, since the pipeline scopes
+    // a non-admin's board to their own assignments.
+    if (!toUser.isActive) {
+      throw new BadRequestException('That salesperson is deactivated — reactivate them first.');
     }
 
+    const where = this.transferWhere(dto, currentUser);
+
     const leads = await this.prisma.lead.findMany({
-      where,
+      // Leads already owned by the target are excluded, so a repeated transfer does not fill the
+      // history with moves that changed nothing.
+      where: { ...where, NOT: { assignedToId: toUserId } },
       select: { id: true, stage: true },
     });
     if (leads.length === 0) return { transferred: 0, toUserId };

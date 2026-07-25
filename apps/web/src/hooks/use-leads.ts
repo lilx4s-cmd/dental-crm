@@ -227,11 +227,42 @@ export interface TransferPayload {
   fromUserId?: string;
   leadIds?: string[];
   note?: string;
+  // The same filters the pipeline board uses. The server resolves them through the same
+  // where-builder, so "transfer what I filtered" moves exactly the set that was on screen rather
+  // than a second interpretation of the same words.
+  stage?: string;
+  source?: string;
+  taskDue?: TaskDueFilter;
+  stuck?: boolean;
+  search?: string;
 }
 
 export interface TransferResult {
   transferred: number;
   toUserId: string;
+}
+
+export interface TransferPreviewLead {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+  stage: string;
+  assignedTo: { id: string; firstName: string; lastName: string } | null;
+}
+
+/**
+ * Shows exactly which leads a transfer would move, before it moves them. Bulk reassignment is hard
+ * to undo by hand, so the set is confirmed rather than described.
+ */
+export function useTransferPreview(payload: TransferPayload, enabled: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery<{ leads: TransferPreviewLead[]; total: number; showing: number }>({
+    queryKey: ['transfer-preview', payload],
+    queryFn: () =>
+      apiRequest('/api/leads/transfer/preview', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    enabled,
+    retry: false,
+  });
 }
 
 export function useTransferLeads() {

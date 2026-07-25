@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Save, UserPlus, Shield } from 'lucide-react';
+import { Save, UserPlus, Shield, KeyRound } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -13,7 +13,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useClinicSettings, useUpdateClinicSettings } from '@/hooks/use-reports';
-import { useUsers } from '@/hooks/use-users';
+import { useUsers, type User } from '@/hooks/use-users';
+import { useAuth } from '@/context/auth-context';
+import { UserAccessDialog } from '@/components/settings/user-access-dialog';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -129,6 +131,8 @@ function ClinicSettingsForm() {
 
 function UserManagement() {
   const { data: users, isLoading } = useUsers();
+  const { user: currentUser } = useAuth();
+  const [accessUser, setAccessUser] = useState<User | null>(null);
 
   return (
     <Card>
@@ -150,7 +154,12 @@ function UserManagement() {
         ) : (
           <div className="divide-y">
             {users?.map((u) => (
-              <div key={u.id} className="flex items-center justify-between px-6 py-4">
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setAccessUser(u)}
+                className="flex w-full items-center justify-between px-6 py-4 text-left transition-colors hover:bg-muted/50"
+              >
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
                     {u.firstName[0]}{u.lastName[0]}
@@ -168,12 +177,20 @@ function UserManagement() {
                     {u.role.replace(/_/g, ' ')}
                   </Badge>
                   {!u.isActive && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                  <KeyRound className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </CardContent>
+
+      <UserAccessDialog
+        user={accessUser}
+        currentUserId={currentUser?.sub}
+        open={!!accessUser}
+        onClose={() => setAccessUser(null)}
+      />
     </Card>
   );
 }

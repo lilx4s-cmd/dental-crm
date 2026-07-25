@@ -1,30 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { ArrowLeftRight, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from '@/components/ui/dialog';
 import { useAuth } from '@/context/auth-context';
 import { useUsers, type User } from '@/hooks/use-users';
-import { useLeads, useTransferLeads, useSalesActivity, type SalesActivity } from '@/hooks/use-leads';
+import { useSalesActivity, type SalesActivity } from '@/hooks/use-leads';
+import { TransferPanel } from '@/components/team/transfer-panel';
 
-const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN: 'Super Admin',
-  CLINIC_MANAGER: 'Clinic Manager',
-  RECEPTION: 'Reception',
-  SALES_CONSULTANT: 'Sales Consultant',
-  DENTIST: 'Dentist',
-};
 
 function userName(u: { firstName: string; lastName: string } | null | undefined) {
   return u ? `${u.firstName} ${u.lastName}`.trim() : '—';
@@ -38,140 +26,6 @@ function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
-}
-
-// ─── Transfer panel (Super Admin only) ────────────────────────────────────────
-
-function TransferPanel({ users }: { users: User[] }) {
-  const transfer = useTransferLeads();
-  const [fromUserId, setFromUserId] = useState('');
-  const [toUserId, setToUserId] = useState('');
-  const [note, setNote] = useState('');
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const fromUser = users.find((u) => u.id === fromUserId);
-  const toUser = users.find((u) => u.id === toUserId);
-
-  const { data: preview, isLoading: previewLoading } = useLeads({
-    assignedToId: fromUserId, limit: 1, status: 'ACTIVE', enabled: !!fromUserId,
-  });
-  const activeCount = preview?.meta.total ?? 0;
-
-  const canReview = !!fromUserId && !!toUserId && fromUserId !== toUserId;
-
-  const handleConfirm = () => {
-    transfer.mutate(
-      { fromUserId, toUserId, note: note.trim() || undefined },
-      {
-        onSuccess: (result) => {
-          toast.success(
-            result.transferred > 0
-              ? `Moved ${result.transferred} lead${result.transferred === 1 ? '' : 's'} to ${userName(toUser)}`
-              : 'No active leads to move — nothing changed',
-          );
-          setConfirmOpen(false);
-          setFromUserId('');
-          setToUserId('');
-          setNote('');
-        },
-        onError: (err) => toast.error(err.message || 'Transfer failed'),
-      },
-    );
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Transfer Leads</CardTitle>
-        <CardDescription>
-          Move a salesperson&apos;s entire active pipeline to someone else. Closed (won/lost) leads keep their
-          original owner so past results stay accurate — use this for handovers, not for editing history.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
-          <div className="space-y-1.5">
-            <Label>From</Label>
-            <Select value={fromUserId} onValueChange={setFromUserId}>
-              <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName} · {ROLE_LABELS[u.role] ?? u.role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="hidden sm:flex items-end justify-center pb-2.5">
-            <ArrowRight className="h-5 w-5 text-muted-foreground" />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>To</Label>
-            <Select value={toUserId} onValueChange={setToUserId}>
-              <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
-              <SelectContent>
-                {users.filter((u) => u.id !== fromUserId).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName} · {ROLE_LABELS[u.role] ?? u.role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {fromUserId && (
-          <p className="text-sm text-muted-foreground">
-            {previewLoading ? 'Checking pipeline…' : (
-              <>
-                <strong className="text-foreground">{activeCount}</strong> active lead{activeCount === 1 ? '' : 's'}{' '}
-                currently assigned to {userName(fromUser)}.
-              </>
-            )}
-          </p>
-        )}
-
-        <div className="space-y-1.5">
-          <Label>Note (optional)</Label>
-          <Textarea
-            placeholder="Reason for the reassignment — shown in the activity history"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-          />
-        </div>
-
-        <div className="flex justify-end">
-          <Button disabled={!canReview || activeCount === 0} onClick={() => setConfirmOpen(true)}>
-            <ArrowLeftRight className="h-4 w-4 mr-2" />
-            Review Transfer
-          </Button>
-        </div>
-      </CardContent>
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm transfer</DialogTitle>
-            <DialogDescription>
-              This moves <strong>{activeCount}</strong> active lead{activeCount === 1 ? '' : 's'} from{' '}
-              <strong>{userName(fromUser)}</strong> to <strong>{userName(toUser)}</strong>. Each lead gets a
-              history entry so this can be traced later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
-            <Button onClick={handleConfirm} disabled={transfer.isPending}>
-              {transfer.isPending ? 'Transferring…' : 'Confirm Transfer'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
 }
 
 // ─── Activity history feed ─────────────────────────────────────────────────────
