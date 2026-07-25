@@ -102,12 +102,28 @@ export function PipelineFilterBar({
   const [searchText, setSearchText] = useState(filters.search ?? '');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Reopening shows what is actually applied. Without this, filters changed elsewhere — a chip
+  // removed, a quick view toggled — left the panel displaying an abandoned draft.
+  useEffect(() => {
+    if (open) {
+      setDraft(filters);
+      setSearchText(filters.search ?? '');
+    }
+  }, [open, filters]);
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent) => {
       // The field picker is a portalled dialog, so a click inside it is outside this container —
       // ignore those or choosing a field would close the panel underneath.
       if (fieldPickerOpen) return;
+
+      // Radix renders Select menus into a portal on document.body, so picking "Responsible person"
+      // counted as a click outside and closed the whole panel before the choice registered — the
+      // filter looked broken because the selection never survived long enough to be applied.
+      const target = e.target as Element | null;
+      if (target?.closest?.('[data-radix-popper-content-wrapper]')) return;
+
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);

@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
-import { UserPlus } from 'lucide-react';
+import { Link2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
@@ -188,12 +188,29 @@ export default function PipelinePage() {
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-muted-foreground mt-1">Drag leads between stages to update their status</p>
         </div>
-        <NewLeadDialog>
-          <Button>
-            <UserPlus className="h-4 w-4 mr-2" />
-            New Lead
+        <div className="flex items-center gap-2">
+          {/* The enquiry form is only useful if staff can find its link. Without this the page
+              existed but nobody knew the URL to send. */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              const url = `${window.location.origin}/intake`;
+              navigator.clipboard
+                .writeText(url)
+                .then(() => toast.success('Enquiry form link copied — send it to a patient'))
+                .catch(() => toast.error('Could not copy the link'));
+            }}
+          >
+            <Link2 className="mr-2 h-4 w-4" />
+            Enquiry form link
           </Button>
-        </NewLeadDialog>
+          <NewLeadDialog>
+            <Button>
+              <UserPlus className="h-4 w-4 mr-2" />
+              New Lead
+            </Button>
+          </NewLeadDialog>
+        </div>
       </div>
 
       <PipelineFilterBar filters={filters} onChange={setFilters} />
