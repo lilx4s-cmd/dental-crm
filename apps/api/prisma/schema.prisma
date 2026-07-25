@@ -364,6 +364,10 @@ model Patient {
   country             String?
   nationalId          String?
   notes               String?
+  // Null means nobody has asked yet; an explicit "None" means asked and there are none. The
+  // distinction matters — patient-facing documents only print an allergies section when this is
+  // set, so a blank is never rendered as a clean bill of health.
+  allergies           String?
   diagnosis           String?
   insuranceInfo       String?
   isActive            Boolean   @default(true)

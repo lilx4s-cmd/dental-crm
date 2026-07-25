@@ -63,6 +63,11 @@ export class CreatePatientDto {
   @IsOptional()
   notes?: string;
 
+  @ApiPropertyOptional({ example: 'Penicillin, latex' })
+  @IsString()
+  @IsOptional()
+  allergies?: string;
+
   @ApiPropertyOptional({ example: 'Class II malocclusion' })
   @IsString()
   @IsOptional()

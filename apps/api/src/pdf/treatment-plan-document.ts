@@ -86,6 +86,7 @@ export interface PlanDocumentInput {
     dateOfBirth?: Date | string | null;
     city?: string | null;
     country?: string | null;
+    allergies?: string | null;
   };
   items: Array<{
     description: string;
@@ -215,6 +216,7 @@ function Field(label: string, value: string, key: string) {
 function PatientPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const p = plan.patient;
   const history = plan.diagnosisSnapshot?.trim();
+  const allergies = p.allergies?.trim();
   return el(
     Page,
     { size: 'A4', style: s.page, key: 'patient' },
@@ -230,14 +232,20 @@ function PatientPage(plan: PlanDocumentInput, branding: ClinicBranding) {
       Field('Currency', plan.currency, 'c'),
       Field('Location', [p.city, p.country].filter(Boolean).join(', ') || '—', 'l'),
     ),
-    // Only rendered when something was actually recorded. An empty "Medical Information" box reads
-    // as a cleared history, which is not something this document is in a position to state.
-    history
+    // Only rendered when something was actually recorded. A printed "Allergies: —" reads as a
+    // cleared allergy history rather than a question nobody asked, and that is not a claim this
+    // document is in a position to make.
+    history || allergies
       ? el(
           View,
           {},
           el(Text, { style: s.sectionTitle }, 'Medical Information'),
-          el(View, { style: s.card }, el(Text, { style: s.cardLabel }, 'DIAGNOSIS / HISTORY'), el(Text, {}, history)),
+          allergies
+            ? el(View, { style: s.card }, el(Text, { style: s.cardLabel }, 'ALLERGIES'), el(Text, {}, allergies))
+            : null,
+          history
+            ? el(View, { style: s.card }, el(Text, { style: s.cardLabel }, 'DIAGNOSIS / HISTORY'), el(Text, {}, history))
+            : null,
         )
       : null,
     plan.doctorRecommendation

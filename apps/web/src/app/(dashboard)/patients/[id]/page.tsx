@@ -79,6 +79,7 @@ function EditPatientDialog({
     city: patient?.city ?? '',
     country: patient?.country ?? '',
     notes: patient?.notes ?? '',
+    allergies: patient?.allergies ?? '',
     diagnosis: patient?.diagnosis ?? '',
     insuranceInfo: patient?.insuranceInfo ?? '',
   });
@@ -114,6 +115,7 @@ function EditPatientDialog({
             <div className="space-y-1"><Label>Country</Label><Input value={form.country} onChange={(e) => set('country', e.target.value)} /></div>
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+          <div className="space-y-1"><Label>Allergies</Label><Textarea rows={2} placeholder="Leave blank if not yet asked" value={form.allergies} onChange={(e) => set('allergies', e.target.value)} /></div>
           <div className="space-y-1"><Label>Diagnosis</Label><Textarea rows={2} value={form.diagnosis} onChange={(e) => set('diagnosis', e.target.value)} /></div>
           <div className="space-y-1"><Label>Insurance</Label><Input value={form.insuranceInfo} onChange={(e) => set('insuranceInfo', e.target.value)} placeholder="Provider — Policy #" /></div>
         </div>
@@ -465,6 +467,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             {patient.nationalId && <div className="flex justify-between"><span className="text-muted-foreground">National ID</span><span>{patient.nationalId}</span></div>}
             {patient.insuranceInfo && <div className="flex justify-between"><span className="text-muted-foreground">Insurance</span><span>{patient.insuranceInfo}</span></div>}
             <div className="flex justify-between"><span className="text-muted-foreground">Patient since</span><span>{format(new Date(patient.createdAt), 'MMM d, yyyy')}</span></div>
+            {patient.allergies && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Allergies</p><p className="text-xs leading-relaxed">{patient.allergies}</p></div>}
             {patient.diagnosis && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Diagnosis</p><p className="text-xs leading-relaxed">{patient.diagnosis}</p></div>}
             {patient.notes && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Notes</p><p className="text-xs leading-relaxed">{patient.notes}</p></div>}
           </CardContent>

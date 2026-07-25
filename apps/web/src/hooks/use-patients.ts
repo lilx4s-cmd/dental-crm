@@ -16,6 +16,7 @@ export interface Patient {
   country: string | null;
   nationalId: string | null;
   notes: string | null;
+  allergies: string | null;
   diagnosis: string | null;
   insuranceInfo: string | null;
   isActive: boolean;

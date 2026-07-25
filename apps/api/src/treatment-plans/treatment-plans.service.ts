@@ -34,6 +34,10 @@ const PLAN_SELECT = {
       dateOfBirth: true,
       city: true,
       country: true,
+      // Read live rather than snapshotted alongside diagnosisSnapshot: a treatment plan is a
+      // point-in-time quote, but an allergy list printed on a clinical document must never be
+      // stale. If it changes, every document reprinted from here should reflect that immediately.
+      allergies: true,
     },
   },
   createdBy: { select: { id: true, firstName: true, lastName: true } },
