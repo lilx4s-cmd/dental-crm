@@ -1,6 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { TaskDueFilter } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
+
+export interface LeadTask {
+  id: string;
+  title: string;
+  dueDate: string;
+  completedAt: string | null;
+  assignedTo: { id: string; firstName: string; lastName: string } | null;
+}
 
 export interface Lead {
   id: string;
@@ -20,7 +29,11 @@ export interface Lead {
   bitrixDealId: number | null;
   createdAt: string;
   updatedAt: string;
+  /** When the lead last moved stage — drives the "no movement" badge and filter. */
+  stageChangedAt: string;
   assignedTo: { id: string; firstName: string; lastName: string; email: string } | null;
+  /** Open tasks only, soonest due first. Completed ones are fetched per-lead on demand. */
+  tasks: LeadTask[];
   campaign: { id: string; name: string; platform: string } | null;
   patient: { id: string; firstName: string; lastName: string } | null;
 }
@@ -30,13 +43,19 @@ export interface PipelineGroup {
   leads: Lead[];
 }
 
-export interface LeadsQuery {
-  page?: number;
-  limit?: number;
+export interface PipelineFilters {
   search?: string;
   stage?: string;
-  status?: string;
   assignedToId?: string;
+  source?: string;
+  taskDue?: TaskDueFilter;
+  stuck?: boolean;
+}
+
+export interface LeadsQuery extends PipelineFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
   /** Set false to skip firing the query (e.g. while a dependent selection is empty). Defaults to true. */
   enabled?: boolean;
 }
@@ -46,11 +65,18 @@ export interface LeadsListResponse {
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
-export function useLeadsByStage() {
+export function useLeadsByStage(filters: PipelineFilters = {}) {
   const { accessToken } = useAuth();
+  const params = new URLSearchParams();
+  // Empty strings would filter on "" rather than meaning "unset", so only real values go on the URL.
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== false) params.set(key, String(value));
+  }
+  const qs = params.toString();
   return useQuery<PipelineGroup[]>({
-    queryKey: ['leads', 'by-stage'],
-    queryFn: () => apiRequest('/api/leads/by-stage', {}, accessToken ?? undefined),
+    // Filters are part of the key so switching them refetches instead of showing a stale board.
+    queryKey: ['leads', 'by-stage', qs],
+    queryFn: () => apiRequest(`/api/leads/by-stage${qs ? `?${qs}` : ''}`, {}, accessToken ?? undefined),
   });
 }
 
@@ -219,5 +245,82 @@ export function useSalesActivity(query: { page?: number; limit?: number; userId?
   return useQuery<SalesActivityResponse>({
     queryKey: ['sales-activity', query],
     queryFn: () => apiRequest(`/api/leads/activity?${params}`, {}, accessToken ?? undefined),
+  });
+}
+
+// ─────────────────────────── LEAD TASKS ───────────────────────────
+// Every mutation invalidates ['leads'], which covers both the kanban and the list: completing a
+// task can move a lead in or out of a due-date filter, so the board has to re-read.
+
+/** Full task history for one lead, open first. The board payload carries open tasks only. */
+export function useLeadTasks(leadId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<LeadTask[]>({
+    queryKey: ['lead-tasks', leadId],
+    queryFn: () => apiRequest(`/api/leads/${leadId}/tasks`, {}, accessToken ?? undefined),
+    enabled: !!leadId,
+  });
+}
+
+export interface CreateLeadTaskInput {
+  title: string;
+  dueDate: string;
+  assignedToId?: string;
+}
+
+export function useCreateLeadTask() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ leadId, ...data }: CreateLeadTaskInput & { leadId: string }) =>
+      apiRequest(
+        `/api/leads/${leadId}/tasks`,
+        { method: 'POST', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-tasks', vars.leadId] });
+    },
+  });
+}
+
+export function useUpdateLeadTask() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      ...data
+    }: {
+      taskId: string;
+      leadId?: string;
+      title?: string;
+      dueDate?: string;
+      assignedToId?: string;
+      completed?: boolean;
+    }) =>
+      apiRequest(
+        `/api/leads/tasks/${taskId}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-tasks'] });
+    },
+  });
+}
+
+export function useDeleteLeadTask() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      apiRequest(`/api/leads/tasks/${taskId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-tasks'] });
+    },
   });
 }

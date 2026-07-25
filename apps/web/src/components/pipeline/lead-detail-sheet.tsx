@@ -6,6 +6,7 @@ import {
   Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { LeadTasksSection } from './lead-tasks-section';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -255,6 +256,10 @@ export function LeadDetailSheet({
                 )
               )}
             </div>
+
+            <Separator className="my-4" />
+
+            <LeadTasksSection leadId={lead.id} />
 
             <Separator className="my-4" />
 

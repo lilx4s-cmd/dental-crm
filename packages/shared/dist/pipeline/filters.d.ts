@@ -9,28 +9,14 @@ export declare const TaskDueFilter: {
 };
 export type TaskDueFilter = (typeof TaskDueFilter)[keyof typeof TaskDueFilter];
 export declare const TASK_DUE_LABELS: Record<TaskDueFilter, string>;
+export interface PipelineFilterField {
+    key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'stuck';
+    label: string;
+    hint?: string;
+}
 /** Every field the filter bar can filter on. Drives the "Add field" picker and the chip labels. */
-export declare const PIPELINE_FILTER_FIELDS: readonly [{
-    readonly key: "search";
-    readonly label: "Patient";
-    readonly hint: "Name, email or phone";
-}, {
-    readonly key: "assignedToId";
-    readonly label: "Responsible person";
-}, {
-    readonly key: "stage";
-    readonly label: "Stage";
-}, {
-    readonly key: "taskDue";
-    readonly label: "Task due";
-}, {
-    readonly key: "source";
-    readonly label: "Source";
-}, {
-    readonly key: "stuck";
-    readonly label: "No movement";
-}];
-export type PipelineFilterKey = (typeof PIPELINE_FILTER_FIELDS)[number]['key'];
+export declare const PIPELINE_FILTER_FIELDS: PipelineFilterField[];
+export type PipelineFilterKey = PipelineFilterField['key'];
 /** Which fields the filter form shows before anyone customises it. */
 export declare const DEFAULT_PIPELINE_FILTER_FIELDS: PipelineFilterKey[];
 export interface DateRange {

@@ -6,9 +6,11 @@ import { Phone, Mail, DollarSign, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import type { Lead } from '@/hooks/use-leads';
+import { STUCK_LEAD_DAYS } from '@dental-crm/shared';
+import { useUpdateLeadTask, type Lead } from '@/hooks/use-leads';
 import { useClinicSettings } from '@/hooks/use-reports';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
+import { LeadTaskBadge } from './lead-task-badge';
 
 const SOURCE_LABELS: Record<string, string> = {
   WALK_IN: 'Walk-in',
@@ -26,8 +28,18 @@ function initials(firstName?: string, lastName?: string | null) {
   return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
 }
 
+/** Whole days since the lead last changed stage. */
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
 export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id });
+  const updateTask = useUpdateLeadTask();
+  // Tasks arrive soonest-due first, so the first open one is the next thing to do.
+  const nextTask = lead.tasks?.[0];
+  const idleDays = lead.stageChangedAt ? daysSince(lead.stageChangedAt) : 0;
+  const isStuck = idleDays >= STUCK_LEAD_DAYS;
   // Cached clinic-wide, so this fires once no matter how many cards are on screen.
   const { data: clinicSettings } = useClinicSettings();
   const whatsappLink = buildWhatsAppLink(
@@ -102,6 +114,19 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
             </div>
           )}
         </div>
+
+        {nextTask && (
+          <LeadTaskBadge
+            task={nextTask}
+            onComplete={(taskId) => updateTask.mutate({ taskId, leadId: lead.id, completed: true })}
+          />
+        )}
+
+        {isStuck && (
+          <p className="mt-2 text-[10px] font-medium text-amber-600 dark:text-amber-500">
+            No movement · {idleDays}d
+          </p>
+        )}
       </Card>
     </div>
   );

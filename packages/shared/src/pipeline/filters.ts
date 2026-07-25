@@ -22,17 +22,23 @@ export const TASK_DUE_LABELS: Record<TaskDueFilter, string> = {
   none: 'No task',
 };
 
+export interface PipelineFilterField {
+  key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'stuck';
+  label: string;
+  hint?: string;
+}
+
 /** Every field the filter bar can filter on. Drives the "Add field" picker and the chip labels. */
-export const PIPELINE_FILTER_FIELDS = [
+export const PIPELINE_FILTER_FIELDS: PipelineFilterField[] = [
   { key: 'search', label: 'Patient', hint: 'Name, email or phone' },
   { key: 'assignedToId', label: 'Responsible person' },
   { key: 'stage', label: 'Stage' },
   { key: 'taskDue', label: 'Task due' },
   { key: 'source', label: 'Source' },
   { key: 'stuck', label: 'No movement' },
-] as const;
+];
 
-export type PipelineFilterKey = (typeof PIPELINE_FILTER_FIELDS)[number]['key'];
+export type PipelineFilterKey = PipelineFilterField['key'];
 
 /** Which fields the filter form shows before anyone customises it. */
 export const DEFAULT_PIPELINE_FILTER_FIELDS: PipelineFilterKey[] = ['assignedToId', 'stage', 'taskDue'];

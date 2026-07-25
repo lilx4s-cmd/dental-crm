@@ -20,7 +20,14 @@ import { LeadCard } from '@/components/pipeline/lead-card';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
 import { LostReasonDialog } from '@/components/pipeline/lost-reason-dialog';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
-import { useLeadsByStage, useUpdateLeadStage, type Lead, type PipelineGroup } from '@/hooks/use-leads';
+import {
+  useLeadsByStage,
+  useUpdateLeadStage,
+  type Lead,
+  type PipelineFilters,
+  type PipelineGroup,
+} from '@/hooks/use-leads';
+import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
 
 const STAGES = [
   { id: 'NEW_LEAD', label: 'New Lead', color: 'border-indigo-400' },
@@ -90,8 +97,17 @@ function DroppableColumn({
   );
 }
 
+// Turns the API's error into something a receptionist can act on.
+function moveErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : '';
+  if (/forbidden/i.test(raw)) return 'Your role cannot move leads between stages.';
+  if (/not found/i.test(raw)) return 'This lead is assigned to someone else, so you cannot move it.';
+  return raw || 'Failed to move lead';
+}
+
 export default function PipelinePage() {
-  const { data: groups, isLoading } = useLeadsByStage();
+  const [filters, setFilters] = useState<PipelineFilters>({});
+  const { data: groups, isLoading } = useLeadsByStage(filters);
   const updateStage = useUpdateLeadStage();
 
   const [localGroups, setLocalGroups] = useState<PipelineGroup[]>([]);
@@ -124,8 +140,11 @@ export default function PipelinePage() {
     );
     try {
       await updateStage.mutateAsync({ id: lead.id, stage: toStage, ...extra });
-    } catch {
-      toast.error('Failed to move lead');
+    } catch (e) {
+      // The API's reason is the useful part. A blanket "Failed to move lead" hid the two things
+      // that actually go wrong here — the user's role cannot move cards, or the lead belongs to a
+      // colleague — leaving people to guess why the card kept snapping back.
+      toast.error(moveErrorMessage(e));
       if (groups) setLocalGroups(groups);
     }
   }
@@ -176,6 +195,8 @@ export default function PipelinePage() {
           </Button>
         </NewLeadDialog>
       </div>
+
+      <PipelineFilterBar filters={filters} onChange={setFilters} />
 
       {isLoading ? (
         <div className="flex gap-3 overflow-x-auto pb-4">
