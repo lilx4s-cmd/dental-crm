@@ -32,7 +32,7 @@ export function presetToForms(
     phases.push({
       ...emptyPhase(phase.phaseNumber),
       name: phase.name ?? '',
-      healingPeriodMonths: phase.healingPeriodMonths ?? 0,
+      healingPeriodMonths: phase.healingPeriodMonths ? String(phase.healingPeriodMonths) : '',
     });
 
     for (const item of phase.items) {
@@ -47,7 +47,7 @@ export function presetToForms(
         // One line covers the whole span at one unit price, which is how these are quoted; the
         // chart resolves the list back into individual teeth.
         toothNumber: item.teeth.join(' '),
-        quantity: item.teeth.length,
+        quantity: String(item.teeth.length),
         phaseNumber: phase.phaseNumber,
       });
     }

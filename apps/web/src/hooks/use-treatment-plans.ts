@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ToothCondition } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
-import { apiRequest } from '@/lib/api-client';
+import { apiRequest, apiRequestBlob } from '@/lib/api-client';
 
 export interface TreatmentCategory {
   id: string;
@@ -230,24 +230,23 @@ export function useCreateShareLink(patientId: string) {
 // trigger the browser's save dialog via a throwaway object URL.
 export function useDownloadPlanPdf() {
   const { accessToken } = useAuth();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
   // `portalToken` is the raw share-link token — only available in memory right after
   // useCreateShareLink resolves (it's never persisted, only its hash is). If the caller
   // doesn't have one on hand, we still download the PDF; it just won't have a QR code.
   return async (planId: string, fileName = `treatment-plan-${planId}.pdf`, portalToken?: string) => {
     const query = portalToken ? `?portalToken=${encodeURIComponent(portalToken)}` : '';
-    const res = await fetch(`${apiUrl}/api/treatment-plans/${planId}/pdf${query}`, {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-      credentials: 'include',
-    });
-    if (!res.ok) throw new Error('Failed to download PDF');
-    const blob = await res.blob();
+    const blob = await apiRequestBlob(`/api/treatment-plans/${planId}/pdf${query}`, accessToken ?? undefined);
+
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
+    // Firefox ignores a click on an anchor that was never in the document, and revoking the URL
+    // in the same tick can cancel the download before the browser has read it.
+    document.body.appendChild(a);
     a.click();
-    window.URL.revokeObjectURL(url);
+    a.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 0);
   };
 }
 

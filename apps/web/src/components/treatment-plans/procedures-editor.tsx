@@ -9,15 +9,18 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TreatmentCategory } from '@/hooks/use-treatment-plans';
 
+// Numeric fields are held as text, not numbers. A controlled number input backed by `number` can
+// never be emptied — clearing it parses to NaN, falls back to 0, and the field immediately refills
+// with "0", so typing a price appends after that zero instead of replacing it.
 export interface ItemForm {
   treatmentCategoryId: string;
   toothNumber: string;
   description: string;
   material: string;
   brand: string;
-  unitPrice: number;
-  quantity: number;
-  discount: number;
+  unitPrice: string;
+  quantity: string;
+  discount: string;
   clinicalNotes: string;
   phaseNumber: number;
 }
@@ -25,9 +28,15 @@ export interface ItemForm {
 export interface PhaseForm {
   phaseNumber: number;
   name: string;
-  discountAmount: number;
-  discountPercent: number;
-  healingPeriodMonths: number;
+  discountAmount: string;
+  discountPercent: string;
+  healingPeriodMonths: string;
+}
+
+/** Reads a numeric form field, treating blank or half-typed input as zero. */
+export function num(value: string, fallback = 0): number {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export const EMPTY_ITEM: ItemForm = {
@@ -36,21 +45,22 @@ export const EMPTY_ITEM: ItemForm = {
   description: '',
   material: '',
   brand: '',
-  unitPrice: 0,
-  quantity: 1,
-  discount: 0,
+  unitPrice: '',
+  quantity: '1',
+  discount: '',
   clinicalNotes: '',
   phaseNumber: 1,
 };
 
 export function emptyPhase(phaseNumber: number): PhaseForm {
-  return { phaseNumber, name: '', discountAmount: 0, discountPercent: 0, healingPeriodMonths: 0 };
+  return { phaseNumber, name: '', discountAmount: '', discountPercent: '', healingPeriodMonths: '' };
 }
 
 // The authoritative line total the backend stores and sums. Kept identical to the backend's
 // expectation: unitPrice * quantity - discount, floored at 0.
 export function lineCost(i: ItemForm) {
-  return Math.max(0, i.unitPrice * i.quantity - i.discount);
+  // Quantity defaults to 1 so a blank box prices one unit rather than wiping the line to zero.
+  return Math.max(0, num(i.unitPrice) * num(i.quantity, 1) - num(i.discount));
 }
 
 /** Strips the zero placeholders the number inputs carry so unset fields are omitted, not sent as 0. */
@@ -58,9 +68,9 @@ export function phasePayload(p: PhaseForm) {
   return {
     phaseNumber: p.phaseNumber,
     name: p.name || undefined,
-    discountAmount: p.discountAmount || undefined,
-    discountPercent: p.discountPercent || undefined,
-    healingPeriodMonths: p.healingPeriodMonths || undefined,
+    discountAmount: num(p.discountAmount) || undefined,
+    discountPercent: num(p.discountPercent) || undefined,
+    healingPeriodMonths: num(p.healingPeriodMonths) || undefined,
   };
 }
 
@@ -83,9 +93,9 @@ export function ProceduresEditor({
     items.map((i) => ({ cost: lineCost(i), phaseNumber: i.phaseNumber })),
     phases.map((p) => ({
       phaseNumber: p.phaseNumber,
-      discountAmount: p.discountAmount,
-      discountPercent: p.discountPercent,
-      healingPeriodMonths: p.healingPeriodMonths,
+      discountAmount: num(p.discountAmount),
+      discountPercent: num(p.discountPercent),
+      healingPeriodMonths: num(p.healingPeriodMonths),
     })),
   );
   const grandTotal = totals.reduce((s, t) => s + t.total, 0);
@@ -264,7 +274,7 @@ function PhaseBlock({
                 step="0.01"
                 placeholder="Unit price"
                 value={item.unitPrice}
-                onChange={(e) => onUpdateItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => onUpdateItem(idx, { unitPrice: e.target.value })}
               />
               <Input
                 className="col-span-1 h-8 text-xs"
@@ -272,7 +282,7 @@ function PhaseBlock({
                 min="1"
                 placeholder="Qty"
                 value={item.quantity}
-                onChange={(e) => onUpdateItem(idx, { quantity: parseInt(e.target.value) || 1 })}
+                onChange={(e) => onUpdateItem(idx, { quantity: e.target.value })}
               />
               <Input
                 className="col-span-2 h-8 text-xs"
@@ -280,7 +290,7 @@ function PhaseBlock({
                 step="0.01"
                 placeholder="Discount"
                 value={item.discount}
-                onChange={(e) => onUpdateItem(idx, { discount: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => onUpdateItem(idx, { discount: e.target.value })}
               />
               <div className="col-span-1 flex items-center justify-end text-xs font-medium tabular-nums">
                 {lineCost(item).toLocaleString()}
@@ -308,7 +318,7 @@ function PhaseBlock({
                 min="0"
                 max="100"
                 value={config.discountPercent}
-                onChange={(e) => onUpdatePhase(phase.phaseNumber, { discountPercent: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => onUpdatePhase(phase.phaseNumber, { discountPercent: e.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -319,7 +329,7 @@ function PhaseBlock({
                 min="0"
                 step="0.01"
                 value={config.discountAmount}
-                onChange={(e) => onUpdatePhase(phase.phaseNumber, { discountAmount: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => onUpdatePhase(phase.phaseNumber, { discountAmount: e.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -329,9 +339,7 @@ function PhaseBlock({
                 type="number"
                 min="0"
                 value={config.healingPeriodMonths}
-                onChange={(e) =>
-                  onUpdatePhase(phase.phaseNumber, { healingPeriodMonths: parseInt(e.target.value) || 0 })
-                }
+                onChange={(e) => onUpdatePhase(phase.phaseNumber, { healingPeriodMonths: e.target.value })}
               />
             </div>
           </div>

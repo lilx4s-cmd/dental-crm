@@ -28,6 +28,7 @@ import {
   ProceduresEditor,
   emptyPhase,
   lineCost,
+  num,
   phasePayload,
   type ItemForm,
   type PhaseForm,
@@ -61,7 +62,11 @@ export function NewTreatmentPlanDialog({
     () =>
       computePlanTotal(
         items.map((i) => ({ cost: lineCost(i), phaseNumber: i.phaseNumber })),
-        phases,
+        phases.map((p) => ({
+          phaseNumber: p.phaseNumber,
+          discountAmount: num(p.discountAmount),
+          discountPercent: num(p.discountPercent),
+        })),
       ),
     [items, phases],
   );
@@ -127,10 +132,11 @@ export function NewTreatmentPlanDialog({
       .filter((i) => i.description.trim())
       .map((i) => ({
         description: i.description,
-        quantity: Number(i.quantity),
+        // Quantity mirrors lineCost's fallback: a blank box means one unit, not zero.
+        quantity: num(i.quantity, 1),
         cost: lineCost(i),
-        unitPrice: Number(i.unitPrice),
-        discount: Number(i.discount),
+        unitPrice: num(i.unitPrice),
+        discount: num(i.discount),
         toothNumber: i.toothNumber || undefined,
         treatmentCategoryId: i.treatmentCategoryId || undefined,
         material: i.material || undefined,
@@ -139,6 +145,11 @@ export function NewTreatmentPlanDialog({
         phaseNumber: i.phaseNumber,
         toothCondition: parseToothNumbers(i.toothNumber).map((t) => plannedByTooth[t]).find(Boolean),
       }));
+
+    // A phase row is only worth storing when it carries something the items cannot imply.
+    const carriedPhases = phases.filter(
+      (p) => p.name || num(p.discountAmount) || num(p.discountPercent) || num(p.healingPeriodMonths),
+    );
 
     create.mutate(
       {
@@ -155,11 +166,7 @@ export function NewTreatmentPlanDialog({
           : undefined,
         // Only phases that actually carry something are worth persisting; the rest are implied
         // by the items' phaseNumber.
-        phases: phases.filter((p) => p.name || p.discountAmount || p.discountPercent || p.healingPeriodMonths).length
-          ? phases
-              .filter((p) => p.name || p.discountAmount || p.discountPercent || p.healingPeriodMonths)
-              .map(phasePayload)
-          : undefined,
+        phases: carriedPhases.length ? carriedPhases.map(phasePayload) : undefined,
       },
       {
         onSuccess: () => {

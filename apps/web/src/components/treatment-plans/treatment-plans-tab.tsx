@@ -177,8 +177,10 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   const handleDownloadPdf = () => {
     // If we don't have a raw token in memory (no share link created this session), the PDF
     // still downloads fine — it just won't include a QR code linking to the patient portal.
-    downloadPdf(plan.id, undefined, lastShareToken ?? undefined).catch(() =>
-      toast.error('Failed to download PDF'),
+    // Show what actually went wrong — an expired session and a server error need different
+    // responses from the user, and a single blanket message told them apart from neither.
+    downloadPdf(plan.id, undefined, lastShareToken ?? undefined).catch((e: unknown) =>
+      toast.error(e instanceof Error ? e.message : 'Failed to download PDF'),
     );
   };
 

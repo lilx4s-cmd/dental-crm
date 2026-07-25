@@ -39,6 +39,13 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Every shadcn overlay (select, dropdown, tooltip, the pipeline filter panel) styles
+        // itself with bg-popover. Without this entry the class never generated, so those menus
+        // rendered fully see-through over whatever was behind them.
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar))',
           foreground: 'hsl(var(--sidebar-foreground))',

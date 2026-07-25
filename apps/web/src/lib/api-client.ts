@@ -25,6 +25,41 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Fetches a binary response (PDFs) through the same expired-token refresh as apiRequest.
+ *
+ * Access tokens live 15 minutes. A download written as a bare fetch therefore starts failing
+ * quietly once a session passes that mark, while every other call keeps working because it
+ * refreshes — which reads as "the PDF is broken" rather than "you need a new token".
+ */
+export async function apiRequestBlob(path: string, accessToken?: string): Promise<Blob> {
+  const request = (token?: string) =>
+    fetch(`${API_URL}${path}`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+  let res = await request(accessToken);
+
+  if (res.status === 401 && accessToken) {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('Your session has expired. Please sign in again.');
+    res = await request(newToken);
+  }
+
+  if (!res.ok) {
+    // The API sends JSON errors even on endpoints that normally return a file.
+    const message = await res
+      .clone()
+      .json()
+      .then((e: { message?: string }) => e.message)
+      .catch(() => undefined);
+    throw new Error(message ?? `Download failed (${res.status})`);
+  }
+
+  return res.blob();
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
