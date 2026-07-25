@@ -44,6 +44,13 @@ export declare const UPPER_TEETH: string[];
 export declare const LOWER_TEETH: string[];
 export declare const ALL_TEETH: string[];
 export declare function isUpperTooth(fdi: string): boolean;
+/**
+ * Reads the tooth numbers out of a line item's free-text tooth field. One procedure routinely
+ * covers many teeth — a full-arch bridge is one price across twelve units — so the field accepts a
+ * separated list and every chart resolves it through here. A plain "16" yields a single entry, which
+ * keeps every plan written before multi-tooth items existed working unchanged.
+ */
+export declare function parseToothNumbers(value: string | null | undefined): string[];
 export declare function toothType(fdi: string): ToothType;
 export declare const PALETTE: {
     readonly enamel: "#ffffff";

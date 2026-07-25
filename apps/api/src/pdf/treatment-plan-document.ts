@@ -4,6 +4,7 @@ import {
   TOOTH_CONDITION_LABELS,
   computePhaseTotals,
   conditionFromText,
+  parseToothNumbers,
   type ToothCondition,
 } from '@dental-crm/shared';
 
@@ -138,9 +139,9 @@ function plannedConditions(plan: PlanDocumentInput): Record<string, ToothConditi
     if (d.condition === 'MISSING') for (const t of d.toothNumbers) map[t] = 'MISSING';
   }
   for (const item of plan.items) {
-    if (!item.toothNumber) continue;
     const condition = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
-    if (condition) map[item.toothNumber] = condition;
+    if (!condition) continue;
+    for (const tooth of parseToothNumbers(item.toothNumber)) map[tooth] = condition;
   }
   return map;
 }

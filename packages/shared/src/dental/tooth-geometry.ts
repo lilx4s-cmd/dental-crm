@@ -38,6 +38,20 @@ export function isUpperTooth(fdi: string): boolean {
   return fdi[0] === '1' || fdi[0] === '2';
 }
 
+/**
+ * Reads the tooth numbers out of a line item's free-text tooth field. One procedure routinely
+ * covers many teeth — a full-arch bridge is one price across twelve units — so the field accepts a
+ * separated list and every chart resolves it through here. A plain "16" yields a single entry, which
+ * keeps every plan written before multi-tooth items existed working unchanged.
+ */
+export function parseToothNumbers(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/[\s,;|/]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 export function toothType(fdi: string): ToothType {
   switch (fdi[1]) {
     case '1':

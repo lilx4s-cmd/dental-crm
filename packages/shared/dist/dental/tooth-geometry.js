@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LAYOUT = exports.MAX_ROOT_LENGTH = exports.MAX_CROWN_HEIGHT = exports.BONE_DEPTH = exports.BONE_TOP = exports.GUM_DEPTH = exports.ARCH_WIDTH = exports.MIDLINE_GAP = exports.SLOT_WIDTH = exports.PALETTE = exports.ALL_TEETH = exports.LOWER_TEETH = exports.UPPER_TEETH = exports.LOWER_LEFT = exports.LOWER_RIGHT = exports.UPPER_LEFT = exports.UPPER_RIGHT = void 0;
 exports.isUpperTooth = isUpperTooth;
+exports.parseToothNumbers = parseToothNumbers;
 exports.toothType = toothType;
 exports.toothSpec = toothSpec;
 exports.slotCenterX = slotCenterX;
@@ -21,6 +22,20 @@ exports.LOWER_TEETH = [...exports.LOWER_RIGHT, ...exports.LOWER_LEFT];
 exports.ALL_TEETH = [...exports.UPPER_TEETH, ...exports.LOWER_TEETH];
 function isUpperTooth(fdi) {
     return fdi[0] === '1' || fdi[0] === '2';
+}
+/**
+ * Reads the tooth numbers out of a line item's free-text tooth field. One procedure routinely
+ * covers many teeth — a full-arch bridge is one price across twelve units — so the field accepts a
+ * separated list and every chart resolves it through here. A plain "16" yields a single entry, which
+ * keeps every plan written before multi-tooth items existed working unchanged.
+ */
+function parseToothNumbers(value) {
+    if (!value)
+        return [];
+    return value
+        .split(/[\s,;|/]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
 }
 function toothType(fdi) {
     switch (fdi[1]) {

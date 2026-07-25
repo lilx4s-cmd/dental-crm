@@ -4,6 +4,7 @@ import {
   TOOTH_CONDITION_LABELS,
   computePhaseTotals,
   conditionFromText,
+  parseToothNumbers,
   type ToothCondition,
 } from '@dental-crm/shared';
 
@@ -63,9 +64,9 @@ export function plannedConditions(plan: PlanLike): Record<string, ToothCondition
     if (d.condition === 'MISSING') for (const tooth of d.toothNumbers) map[tooth] = 'MISSING';
   }
   for (const item of plan.items) {
-    if (!item.toothNumber) continue;
     const condition = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
-    if (condition) map[item.toothNumber] = condition;
+    if (!condition) continue;
+    for (const tooth of parseToothNumbers(item.toothNumber)) map[tooth] = condition;
   }
   return map;
 }
@@ -88,11 +89,13 @@ export function stageConditions(plan: PlanLike, stage: number): Record<string, T
   for (const phase of phasesInOrder) {
     if (phase > stage) break;
     for (const item of plan.items) {
-      if ((item.phaseNumber || 1) !== phase || !item.toothNumber) continue;
+      if ((item.phaseNumber || 1) !== phase) continue;
       const condition = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
       if (!condition) continue;
-      map[item.toothNumber] = condition;
-      appliedAtPhase[item.toothNumber] = phase;
+      for (const tooth of parseToothNumbers(item.toothNumber)) {
+        map[tooth] = condition;
+        appliedAtPhase[tooth] = phase;
+      }
     }
   }
 
@@ -105,11 +108,9 @@ export function stageConditions(plan: PlanLike, stage: number): Record<string, T
 export function plannedItemsByTooth(plan: PlanLike): Record<string, ToothItem[]> {
   const map: Record<string, ToothItem[]> = {};
   for (const item of plan.items) {
-    if (!item.toothNumber) continue;
-    (map[item.toothNumber] ??= []).push({
-      description: item.description,
-      category: item.treatmentCategory?.name,
-    });
+    for (const tooth of parseToothNumbers(item.toothNumber)) {
+      (map[tooth] ??= []).push({ description: item.description, category: item.treatmentCategory?.name });
+    }
   }
   return map;
 }

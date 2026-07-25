@@ -11,12 +11,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { computePlanTotal, conditionFromText, type ToothCondition } from '@dental-crm/shared';
+import {
+  computePlanTotal,
+  conditionFromText,
+  parseToothNumbers,
+  type ToothCondition,
+} from '@dental-crm/shared';
 
 import { useCreateTreatmentPlan, useTreatmentCategories } from '@/hooks/use-treatment-plans';
 import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { DentalChart } from './dental-chart';
 import { DiagnosesEditor, type DiagnosisEntry } from './diagnoses-editor';
+import { QuickPlanPicker } from './quick-plan-picker';
 import {
   EMPTY_ITEM,
   ProceduresEditor,
@@ -67,11 +73,14 @@ export function NewTreatmentPlanDialog({
     const byTooth: Record<string, { description: string; category?: string }[]> = {};
     const conditions: Record<string, ToothCondition> = {};
     for (const it of items) {
-      if (!it.toothNumber) continue;
+      const teeth = parseToothNumbers(it.toothNumber);
+      if (teeth.length === 0) continue;
       const category = categories?.find((c) => c.id === it.treatmentCategoryId)?.name;
-      (byTooth[it.toothNumber] ??= []).push({ description: it.description || 'Untitled procedure', category });
       const condition = conditionFromText(category, it.description);
-      if (condition) conditions[it.toothNumber] = condition;
+      for (const tooth of teeth) {
+        (byTooth[tooth] ??= []).push({ description: it.description || 'Untitled procedure', category });
+        if (condition) conditions[tooth] = condition;
+      }
     }
     return { itemsByTooth: byTooth, plannedByTooth: conditions };
   }, [items, categories]);
@@ -128,7 +137,7 @@ export function NewTreatmentPlanDialog({
         brand: i.brand || undefined,
         clinicalNotes: i.clinicalNotes || undefined,
         phaseNumber: i.phaseNumber,
-        toothCondition: i.toothNumber ? plannedByTooth[i.toothNumber] : undefined,
+        toothCondition: parseToothNumbers(i.toothNumber).map((t) => plannedByTooth[t]).find(Boolean),
       }));
 
     create.mutate(
@@ -245,6 +254,16 @@ export function NewTreatmentPlanDialog({
             </TabsContent>
 
             <TabsContent value="plan" className="space-y-3 pt-3">
+              <QuickPlanPicker
+                categories={categories}
+                hasExistingWork={items.some((i) => i.description.trim())}
+                onApply={({ items: nextItems, phases: nextPhases }) => {
+                  setItems(nextItems);
+                  setPhases(nextPhases);
+                  toast.success('Plan template applied — set your prices to finish.');
+                }}
+              />
+
               <Label>Proposed result — click a tooth to add it to a procedure</Label>
               <DentalChart
                 mode="plan"
