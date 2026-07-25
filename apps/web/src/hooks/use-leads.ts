@@ -11,6 +11,34 @@ export interface LeadTask {
   assignedTo: { id: string; firstName: string; lastName: string } | null;
 }
 
+/** What a patient declared on the public enquiry form. Present only on the single-lead view. */
+export interface LeadIntakeSubmission {
+  id: string;
+  createdAt: string;
+  dateOfBirth: string | null;
+  gender: string | null;
+  nationality: string | null;
+  countryOfResidence: string | null;
+  preferredLanguage: string | null;
+  treatmentInterest: string[];
+  chiefComplaint: string | null;
+  desiredTimeframe: string | null;
+  openToTravel: boolean | null;
+  allergies: string | null;
+  medications: string | null;
+  medicalConditions: string | null;
+  previousSurgeries: string | null;
+  isSmoker: boolean | null;
+  drinksAlcohol: boolean | null;
+  isPregnant: boolean | null;
+  takesBloodThinners: boolean | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  additionalNotes: string | null;
+  consentedAt: string;
+  attachments: { id: string; fileName: string; mimeType: string; sizeBytes: number }[];
+}
+
 export interface Lead {
   id: string;
   firstName: string;
@@ -36,6 +64,8 @@ export interface Lead {
   tasks: LeadTask[];
   campaign: { id: string; name: string; platform: string } | null;
   patient: { id: string; firstName: string; lastName: string } | null;
+  /** Only returned by GET /leads/:id — the kanban deliberately omits it. */
+  intakeSubmissions?: LeadIntakeSubmission[];
 }
 
 export interface PipelineGroup {

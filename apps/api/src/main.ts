@@ -41,6 +41,19 @@ async function bootstrap() {
     }),
   );
 
+  // Tighter still for the public enquiry form. It is an unauthenticated *write* endpoint that
+  // creates a lead on every call, so the cost of abuse is a polluted pipeline rather than just
+  // load — a genuine patient fills this in once.
+  app.use(
+    '/api/intake',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

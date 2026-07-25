@@ -6,12 +6,13 @@ import {
   Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { IntakeAnswers } from './intake-answers';
 import { LeadTasksSection } from './lead-tasks-section';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { useLeadActivities, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
+import { useLead, useLeadActivities, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
 import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
@@ -146,6 +147,10 @@ export function LeadDetailSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: activities, isLoading: activitiesLoading } = useLeadActivities(open ? lead?.id ?? null : null);
+  // The board's payload deliberately omits the enquiry questionnaire — it would ship every
+  // patient's medical history just to draw the cards — so the sheet fetches the full record.
+  const { data: fullLead } = useLead(open && lead ? lead.id : '');
+  const submission = fullLead?.intakeSubmissions?.[0];
   const convert = useConvertLeadToPatient();
   // Cached clinic-wide (see LeadCard), so this doesn't add an extra request beyond what the board already fires.
   const { data: clinicSettings } = useClinicSettings();
@@ -258,6 +263,13 @@ export function LeadDetailSheet({
             </div>
 
             <Separator className="my-4" />
+
+            {submission && (
+              <>
+                <IntakeAnswers submission={submission} />
+                <Separator className="my-4" />
+              </>
+            )}
 
             <LeadTasksSection leadId={lead.id} />
 

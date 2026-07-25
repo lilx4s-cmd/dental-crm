@@ -299,6 +299,7 @@ model User {
   leadActivities              LeadActivity[]
   leadTasksAssigned           LeadTask[]               @relation("LeadTaskAssignee")
   leadTasksCreated            LeadTask[]               @relation("LeadTaskCreatedBy")
+  intakeReviewed              IntakeSubmission[]       @relation("IntakeReviewedBy")
   appointmentsAsDentist       Appointment[]            @relation("AppointmentDentist")
   appointmentsCreated         Appointment[]            @relation("AppointmentCreatedBy")
   treatmentPlans              TreatmentPlan[]          @relation("TreatmentPlanCreatedBy")
@@ -468,12 +469,103 @@ model Lead {
   conversations Conversation[]
   callLogs      CallLog[]
   tasks         LeadTask[]
+  intakeSubmissions IntakeSubmission[]
   patient       Patient?       @relation("LeadToPatient")
 
   @@index([stage])
   @@index([assignedToId])
   @@index([stageChangedAt])
   @@map("leads")
+}
+
+// What a prospective patient filled in on the public intake form, kept exactly as they wrote it.
+//
+// This is a record of what someone declared about themselves at a point in time, so it is stored
+// separately from the Lead the submission creates rather than being merged into it — staff correct
+// and enrich the lead as they learn more, and that editing must never overwrite what the patient
+// originally said about their own health.
+model IntakeSubmission {
+  id     String @id @default(uuid())
+  // Set on submit so the enquiry lands in the pipeline where staff already work, rather than in a
+  // separate queue somebody has to remember to check. Nullable and SetNull so deleting a lead
+  // does not destroy the declaration that created it.
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  whatsappNumber     String?
+  dateOfBirth        DateTime?
+  gender             Gender?
+  nationality        String?
+  countryOfResidence String?
+  preferredLanguage  String?
+
+  // What they are asking for.
+  treatmentInterest String[]
+  chiefComplaint    String?
+  desiredTimeframe  String?
+  openToTravel      Boolean?
+
+  // Medical questionnaire. Every boolean here is tri-state on purpose: null means the question was
+  // not answered, which is clinically different from an explicit "no" — the same reasoning as
+  // Patient.allergies. Never default these to false.
+  allergies          String?
+  medications        String?
+  medicalConditions  String?
+  previousSurgeries  String?
+  isSmoker           Boolean?
+  drinksAlcohol      Boolean?
+  isPregnant         Boolean?
+  takesBloodThinners Boolean?
+  heightCm           Int?
+  weightKg           Int?
+  additionalNotes    String?
+
+  // The exact wording the patient agreed to, not just a boolean. Changing the copy later must not
+  // retroactively alter what somebody consented to.
+  consentedAt DateTime
+  consentText String
+
+  // sha256 of a token handed back once on submit; only a caller holding it can attach files. Stored
+  // hashed for the same reason TreatmentPlanShareLink.tokenHash is.
+  uploadTokenHash String?
+
+  sourceUrl   String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?     @relation("IntakeReviewedBy", fields: [reviewedById], references: [id])
+
+  attachments IntakeAttachment[]
+  createdAt   DateTime           @default(now())
+
+  @@index([leadId])
+  @@map("intake_submissions")
+}
+
+// Files attached by an anonymous submitter, deliberately held apart from the clinic's File store.
+// File.uploadedById is a required relation to User, so an unauthenticated upload cannot write there
+// — and it should not: unverified content from a public form has no business in the patient file
+// system until a human has looked at it.
+model IntakeAttachment {
+  id           String           @id @default(uuid())
+  submissionId String
+  submission   IntakeSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  s3Bucket     String
+  s3Key        String
+  createdAt    DateTime         @default(now())
+
+  @@index([submissionId])
+  @@map("intake_attachments")
 }
 
 // A single thing somebody has to do about a lead — "call back", "send photos to the doctor". The

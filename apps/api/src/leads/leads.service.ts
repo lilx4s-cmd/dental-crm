@@ -53,6 +53,44 @@ const LEAD_SELECT = {
   patient: { select: { id: true, firstName: true, lastName: true } },
 } as const;
 
+// Only for the single-lead view. The intake questionnaire is a page of answers per lead, and the
+// kanban renders hundreds of cards at once — putting it in LEAD_SELECT would download every
+// patient's medical history to draw a board that never shows it.
+const LEAD_DETAIL_SELECT = {
+  ...LEAD_SELECT,
+  // Held alongside the lead rather than merged into it: staff edit the lead as they learn more,
+  // and that must never overwrite what the patient originally said about their own health.
+  intakeSubmissions: {
+    select: {
+      id: true,
+      createdAt: true,
+      dateOfBirth: true,
+      gender: true,
+      nationality: true,
+      countryOfResidence: true,
+      preferredLanguage: true,
+      treatmentInterest: true,
+      chiefComplaint: true,
+      desiredTimeframe: true,
+      openToTravel: true,
+      allergies: true,
+      medications: true,
+      medicalConditions: true,
+      previousSurgeries: true,
+      isSmoker: true,
+      drinksAlcohol: true,
+      isPregnant: true,
+      takesBloodThinners: true,
+      heightCm: true,
+      weightKg: true,
+      additionalNotes: true,
+      consentedAt: true,
+      attachments: { select: { id: true, fileName: true, mimeType: true, sizeBytes: true } },
+    },
+    orderBy: { createdAt: 'desc' as const },
+  },
+} as const;
+
 @Injectable()
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -120,7 +158,7 @@ export class LeadsService {
   }
 
   async findOne(id: string, currentUser?: JwtPayload) {
-    const lead = await this.prisma.lead.findUnique({ where: { id }, select: LEAD_SELECT });
+    const lead = await this.prisma.lead.findUnique({ where: { id }, select: LEAD_DETAIL_SELECT });
     if (!lead) throw new NotFoundException('Lead not found');
     // Hide existence of leads a non-admin isn't assigned to (same 404, no info leak).
     if (currentUser && !this.canSeeAll(currentUser) && lead.assignedTo?.id !== currentUser.sub) {

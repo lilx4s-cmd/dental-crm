@@ -23,6 +23,7 @@ import { SettingsModule } from './settings/settings.module';
 import { FilesModule } from './files/files.module';
 import { PdfModule } from './pdf/pdf.module';
 import { PortalModule } from './portal/portal.module';
+import { IntakeModule } from './intake/intake.module';
 import { AiModule } from './ai/ai.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -57,6 +58,7 @@ import { HealthController } from './health/health.controller';
     FilesModule,
     PdfModule,
     PortalModule,
+    IntakeModule,
     AiModule,
   ],
   controllers: [HealthController],

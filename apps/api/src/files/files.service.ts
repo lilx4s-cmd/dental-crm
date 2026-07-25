@@ -28,6 +28,11 @@ export class FilesService {
     this.bucket = this.config.get<string>('supabase.bucket') ?? '';
   }
 
+  /** The configured bucket, or undefined when storage has not been set up for this clinic. */
+  bucketName(): string | undefined {
+    return this.bucket || undefined;
+  }
+
   private getClient(): SupabaseClient {
     if (!this.url || !this.serviceRoleKey || !this.bucket) {
       throw new ServiceUnavailableException(
