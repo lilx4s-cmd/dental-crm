@@ -24,6 +24,14 @@ import { DentalChart } from './dental-chart';
 import { DiagnosesEditor, type DiagnosisEntry } from './diagnoses-editor';
 import { QuickPlanPicker } from './quick-plan-picker';
 import {
+  EMPTY_STAY,
+  StayScheduleEditor,
+  schedulePayload,
+  stayPayload,
+  type ScheduleItemForm,
+  type StayForm,
+} from './stay-schedule-editor';
+import {
   EMPTY_ITEM,
   ProceduresEditor,
   emptyPhase,
@@ -57,6 +65,8 @@ export function NewTreatmentPlanDialog({
   const [diagnoses, setDiagnoses] = useState<DiagnosisEntry[]>([]);
   const [items, setItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }]);
   const [phases, setPhases] = useState<PhaseForm[]>([emptyPhase(1)]);
+  const [stay, setStay] = useState<StayForm>({ ...EMPTY_STAY });
+  const [schedule, setSchedule] = useState<ScheduleItemForm[]>([]);
 
   const total = useMemo(
     () =>
@@ -121,6 +131,8 @@ export function NewTreatmentPlanDialog({
     setDiagnoses([]);
     setItems([{ ...EMPTY_ITEM }]);
     setPhases([emptyPhase(1)]);
+    setStay({ ...EMPTY_STAY });
+    setSchedule([]);
   };
 
   const handleSubmit = () => {
@@ -167,6 +179,8 @@ export function NewTreatmentPlanDialog({
         // Only phases that actually carry something are worth persisting; the rest are implied
         // by the items' phaseNumber.
         phases: carriedPhases.length ? carriedPhases.map(phasePayload) : undefined,
+        stay: stayPayload(stay),
+        scheduleItems: schedulePayload(schedule),
       },
       {
         onSuccess: () => {
@@ -254,6 +268,9 @@ export function NewTreatmentPlanDialog({
                 Diagnosis{diagnoses.length > 0 && ` (${diagnoses.length})`}
               </TabsTrigger>
               <TabsTrigger value="plan">Treatment Plan</TabsTrigger>
+              <TabsTrigger value="stay">
+                Stay &amp; Schedule{schedule.length > 0 && ` (${schedule.length})`}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="diagnosis" className="pt-3">
@@ -285,6 +302,14 @@ export function NewTreatmentPlanDialog({
                 currency={currency}
                 onItemsChange={setItems}
                 onPhasesChange={setPhases}
+              />
+            </TabsContent>
+            <TabsContent value="stay" className="pt-3">
+              <StayScheduleEditor
+                stay={stay}
+                schedule={schedule}
+                onStayChange={setStay}
+                onScheduleChange={setSchedule}
               />
             </TabsContent>
           </Tabs>

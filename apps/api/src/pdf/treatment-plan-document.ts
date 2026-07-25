@@ -1,7 +1,10 @@
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Path } from '@react-pdf/renderer';
 import React from 'react';
 import {
+  AFTERCARE_SECTIONS,
   TOOTH_CONDITION_LABELS,
+  TRAVEL_GUIDANCE,
+  aftercareFor,
   computePhaseTotals,
   conditionFromText,
   parseToothNumbers,
@@ -55,6 +58,19 @@ const s = StyleSheet.create({
   qrCaption: { fontSize: 11, marginTop: 14, color: '#52525b' },
   qrUrl: { fontSize: 9, marginTop: 6, color: '#0f766e' },
 
+  bullet: { flexDirection: 'row', marginBottom: 5 },
+  bulletDot: { width: 12, fontSize: 9.5, color: '#0f766e' },
+  bulletText: { flex: 1, fontSize: 9.5, lineHeight: 1.5 },
+  lead: { fontSize: 10, lineHeight: 1.55, color: '#3f3f46', marginBottom: 8 },
+  subTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 12, marginBottom: 5 },
+  warnCard: { borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', borderRadius: 4, padding: 9, marginTop: 6 },
+  warnLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#b91c1c', marginBottom: 4 },
+  // No flex here. bulletText sets flex:1, which is correct inside a row but makes stacked
+  // siblings in a column share one line and render on top of each other.
+  warnText: { fontSize: 9.5, lineHeight: 1.5, marginBottom: 2 },
+  dayRow: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: '#f4f4f5' },
+  emptyNote: { fontSize: 10, color: '#71717a', marginTop: 12 },
+
   footer: { position: 'absolute', bottom: 26, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 8, color: '#a1a1aa' },
 });
@@ -102,6 +118,29 @@ export interface PlanDocumentInput {
     treatmentCategory?: { name: string } | null;
   }>;
   diagnoses?: Array<{ condition: ToothCondition; toothNumbers: string[]; notes?: string | null }>;
+  stay?: {
+    arrivalDate?: Date | string | null;
+    arrivalFlight?: string | null;
+    departureDate?: Date | string | null;
+    departureFlight?: string | null;
+    hotelName?: string | null;
+    hotelAddress?: string | null;
+    roomType?: string | null;
+    nights?: number | null;
+    companions?: number | null;
+    checkInDate?: Date | string | null;
+    checkOutDate?: Date | string | null;
+    airportTransfer?: string | null;
+    clinicTransfer?: string | null;
+    notes?: string | null;
+  } | null;
+  scheduleItems?: Array<{
+    date: Date | string;
+    time?: string | null;
+    title: string;
+    location?: string | null;
+    notes?: string | null;
+  }>;
   phases?: Array<{
     phaseNumber: number;
     name?: string | null;
@@ -119,6 +158,18 @@ function fmtDate(d?: Date | string | null): string {
 
 function money(n: number, currency: string): string {
   return `${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency}`;
+}
+
+/**
+ * How a line item's teeth read in the pricing table. A full-arch span lists twelve numbers, which
+ * wraps a narrow column into a mess — and the chart on the same page already shows precisely which
+ * teeth they are, so past a handful the count is the more useful thing to print.
+ */
+function toothCell(toothNumber?: string | null): string {
+  const teeth = parseToothNumbers(toothNumber);
+  if (teeth.length === 0) return '—';
+  if (teeth.length <= 4) return teeth.join(', ');
+  return `${teeth.length} teeth`;
 }
 
 /** The mouth as charted today. */
@@ -341,12 +392,14 @@ function TreatmentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
             Text,
             { style: [s.td, { width: '46%' }] },
             item.description +
-              (item.treatmentCategory ? ` · ${item.treatmentCategory.name}` : '') +
+              (item.treatmentCategory && item.treatmentCategory.name !== item.description
+                ? ` · ${item.treatmentCategory.name}`
+                : '') +
               ([item.material, item.brand].filter(Boolean).length
                 ? ` (${[item.material, item.brand].filter(Boolean).join(' / ')})`
                 : ''),
           ),
-          el(Text, { style: [s.td, s.center, { width: '12%' }] }, item.toothNumber ?? '—'),
+          el(Text, { style: [s.td, s.center, { width: '12%' }] }, toothCell(item.toothNumber)),
           el(Text, { style: [s.td, s.center, { width: '20%' }] }, String(item.quantity)),
           el(Text, { style: [s.td, s.right, { width: '22%' }] }, money(num(item.cost), plan.currency)),
         ),
@@ -379,8 +432,19 @@ function TreatmentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
     { size: 'A4', style: s.page, key: 'treatment' },
     el(Text, { style: s.h1 }, 'Treatment Plan'),
     el(Text, { style: s.h2 }, 'The proposed result'),
-    el(View, { style: s.chartWrap }, el(DentalChartPdf, { conditions: plannedConditions(plan), mode: 'plan', width: CONTENT_WIDTH })),
-    el(
+    plan.items.length === 0
+      ? el(
+          Text,
+          { style: s.emptyNote },
+          'No procedures have been added to this plan yet. Your dentist is still preparing it — this document will be reissued once the plan is complete.',
+        )
+      : null,
+    plan.items.length === 0
+      ? null
+      : el(View, { style: s.chartWrap }, el(DentalChartPdf, { conditions: plannedConditions(plan), mode: 'plan', width: CONTENT_WIDTH })),
+    plan.items.length === 0
+      ? null
+      : el(
       View,
       { style: s.table },
       el(
@@ -420,6 +484,145 @@ function PortalPage(qrDataUrl: string, portalUrl: string, branding: ClinicBrandi
   );
 }
 
+function Bullets(lines: readonly string[], keyPrefix: string) {
+  return lines.map((line, i) =>
+    el(
+      View,
+      { style: s.bullet, key: `${keyPrefix}-${i}`, wrap: false },
+      el(Text, { style: s.bulletDot }, '•'),
+      el(Text, { style: s.bulletText }, line),
+    ),
+  );
+}
+
+/** Travel, hotel and transfers. Rows with nothing recorded are dropped rather than printed blank. */
+function StayPage(plan: PlanDocumentInput, branding: ClinicBranding) {
+  const stay = plan.stay!;
+  const rows: [string, string][] = [];
+  const add = (label: string, value?: string | number | null) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') rows.push([label, String(value)]);
+  };
+
+  add('Arrival', [fmtDate(stay.arrivalDate), stay.arrivalFlight].filter((v) => v && v !== '—').join('  ·  '));
+  add('Departure', [fmtDate(stay.departureDate), stay.departureFlight].filter((v) => v && v !== '—').join('  ·  '));
+  add('Hotel', stay.hotelName);
+  add('Hotel address', stay.hotelAddress);
+  add('Room', stay.roomType);
+  add('Nights', stay.nights);
+  add('Travelling with', stay.companions ? `${stay.companions} companion(s)` : null);
+  add('Check-in', stay.checkInDate ? fmtDate(stay.checkInDate) : null);
+  add('Check-out', stay.checkOutDate ? fmtDate(stay.checkOutDate) : null);
+  add('Airport transfer', stay.airportTransfer);
+  add('Clinic transfer', stay.clinicTransfer);
+
+  return el(
+    Page,
+    { size: 'A4', style: s.page, key: 'stay' },
+    el(Text, { style: s.h1 }, 'Your Stay'),
+    el(Text, { style: s.h2 }, 'Travel, accommodation and transfers'),
+    el(
+      View,
+      { style: s.fieldGrid },
+      ...rows.map(([label, value], i) => Field(label, value, `stay-${i}`)),
+    ),
+    stay.notes ? el(View, { style: s.card }, el(Text, { style: s.cardLabel }, 'NOTES'), el(Text, {}, stay.notes)) : null,
+    el(Text, { style: s.subTitle }, 'Before you travel'),
+    ...Bullets(TRAVEL_GUIDANCE.beforeYouTravel, 'bt'),
+    el(Text, { style: s.subTitle }, 'During your stay'),
+    ...Bullets(TRAVEL_GUIDANCE.duringYourStay, 'ds'),
+    el(Text, { style: s.subTitle }, 'Before you fly home'),
+    ...Bullets(TRAVEL_GUIDANCE.beforeYouFly, 'bf'),
+    Footer(branding),
+  );
+}
+
+/** Day-by-day itinerary, grouped so each date is announced once. */
+function SchedulePage(plan: PlanDocumentInput, branding: ClinicBranding) {
+  const items = [...(plan.scheduleItems ?? [])].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+
+  const rows: React.ReactElement[] = [];
+  let lastDate = '';
+  for (const [i, item] of items.entries()) {
+    const dateKey = fmtDate(item.date);
+    if (dateKey !== lastDate) {
+      rows.push(
+        el(
+          View,
+          { style: s.trPhase, key: `d-${i}`, wrap: false },
+          el(Text, { style: [s.td, s.bold] }, dateKey),
+        ),
+      );
+      lastDate = dateKey;
+    }
+    rows.push(
+      el(
+        View,
+        { style: s.dayRow, key: `i-${i}`, wrap: false },
+        el(Text, { style: [s.td, { width: '18%' }] }, item.time ?? ''),
+        el(
+          Text,
+          { style: [s.td, { width: '52%' }] },
+          item.title + (item.notes ? ` — ${item.notes}` : ''),
+        ),
+        el(Text, { style: [s.td, { width: '30%' }] }, item.location ?? ''),
+      ),
+    );
+  }
+
+  return el(
+    Page,
+    { size: 'A4', style: s.page, key: 'schedule' },
+    el(Text, { style: s.h1 }, 'Your Schedule'),
+    el(Text, { style: s.h2 }, 'What happens on each day of your visit'),
+    el(
+      View,
+      { style: s.table },
+      el(
+        View,
+        { style: s.thead, fixed: true },
+        el(Text, { style: [s.th, { width: '18%' }] }, 'Time'),
+        el(Text, { style: [s.th, { width: '52%' }] }, 'Appointment'),
+        el(Text, { style: [s.th, { width: '30%' }] }, 'Where'),
+      ),
+      ...rows,
+    ),
+    el(
+      Text,
+      { style: s.emptyNote },
+      'Times may shift slightly on the day. Your coordinator will confirm each appointment with you in advance.',
+    ),
+    Footer(branding),
+  );
+}
+
+/** Aftercare for the procedures in this plan, and nothing else. */
+function AftercarePage(sections: typeof AFTERCARE_SECTIONS, branding: ClinicBranding) {
+  return el(
+    Page,
+    { size: 'A4', style: s.page, key: 'aftercare' },
+    el(Text, { style: s.h1 }, 'Your Treatment, Explained'),
+    el(Text, { style: s.h2 }, 'What to expect, and how to look after yourself afterwards'),
+    ...sections.flatMap((section, i) => [
+      el(Text, { style: s.subTitle, key: `t-${i}` }, section.title),
+      el(Text, { style: s.lead, key: `w-${i}` }, section.whatToExpect),
+      ...Bullets(section.aftercare, `a-${i}`),
+      section.warningSigns
+        ? el(
+            View,
+            { style: s.warnCard, key: `s-${i}`, wrap: false },
+            el(Text, { style: s.warnLabel }, 'CONTACT THE CLINIC IF YOU NOTICE'),
+            ...section.warningSigns.map((w, j) =>
+              el(Text, { style: s.warnText, key: `sw-${i}-${j}` }, `•  ${w}`),
+            ),
+          )
+        : null,
+    ]),
+    Footer(branding),
+  );
+}
+
 export function TreatmentPlanDocument(
   plan: PlanDocumentInput,
   branding: ClinicBranding,
@@ -428,7 +631,26 @@ export function TreatmentPlanDocument(
 ) {
   const pages: React.ReactElement[] = [CoverPage(plan, branding), PatientPage(plan, branding)];
   if ((plan.diagnoses ?? []).length > 0) pages.push(DiagnosesPage(plan, branding));
-  if (plan.items.length > 0) pages.push(TreatmentPage(plan, branding));
+  // Always print the treatment page, even with nothing on it. Silently dropping it produced a
+  // document that looked broken rather than one that said the plan is still being drawn up.
+  pages.push(TreatmentPage(plan, branding));
+
+  const stay = plan.stay;
+  const hasStay =
+    !!stay && Object.values(stay).some((v) => v !== null && v !== undefined && String(v).trim() !== '');
+  if (hasStay) pages.push(StayPage(plan, branding));
+  if ((plan.scheduleItems ?? []).length > 0) pages.push(SchedulePage(plan, branding));
+
+  // Aftercare covers only the procedures this patient is actually having, so a crown-only plan
+  // does not hand someone a page about sinus surgery.
+  const conditions = new Set<ToothCondition>();
+  for (const item of plan.items) {
+    const c = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
+    if (c) conditions.add(c);
+  }
+  const sections = aftercareFor(conditions);
+  if (sections.length > 0) pages.push(AftercarePage(sections, branding));
+
   if (qrDataUrl && portalUrl) pages.push(PortalPage(qrDataUrl, portalUrl, branding));
   return el(Document, {}, ...pages);
 }

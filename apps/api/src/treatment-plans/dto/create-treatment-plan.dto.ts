@@ -1,4 +1,16 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsNumber, IsEnum, IsInt, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  IsEnum,
+  IsInt,
+  IsDateString,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { $Enums } from '@prisma/client';
 
@@ -34,6 +46,31 @@ export class CreateTreatmentPlanPhaseDto {
   @IsOptional() @IsInt() @Min(0) healingPeriodMonths?: number;
 }
 
+export class TreatmentPlanStayDto {
+  @IsOptional() @IsDateString() arrivalDate?: string;
+  @IsOptional() @IsString() arrivalFlight?: string;
+  @IsOptional() @IsDateString() departureDate?: string;
+  @IsOptional() @IsString() departureFlight?: string;
+  @IsOptional() @IsString() hotelName?: string;
+  @IsOptional() @IsString() hotelAddress?: string;
+  @IsOptional() @IsString() roomType?: string;
+  @IsOptional() @IsInt() @Min(0) nights?: number;
+  @IsOptional() @IsInt() @Min(0) companions?: number;
+  @IsOptional() @IsDateString() checkInDate?: string;
+  @IsOptional() @IsDateString() checkOutDate?: string;
+  @IsOptional() @IsString() airportTransfer?: string;
+  @IsOptional() @IsString() clinicTransfer?: string;
+  @IsOptional() @IsString() notes?: string;
+}
+
+export class TreatmentPlanScheduleItemDto {
+  @IsDateString() date: string;
+  @IsOptional() @IsString() time?: string;
+  @IsString() @IsNotEmpty() title: string;
+  @IsOptional() @IsString() location?: string;
+  @IsOptional() @IsString() notes?: string;
+}
+
 export class CreateTreatmentPlanDto {
   @IsString() @IsNotEmpty() patientId: string;
   @IsString() @IsNotEmpty() title: string;
@@ -48,4 +85,10 @@ export class CreateTreatmentPlanDto {
   diagnoses?: CreateTreatmentPlanDiagnosisDto[];
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CreateTreatmentPlanPhaseDto)
   phases?: CreateTreatmentPlanPhaseDto[];
+
+  @IsOptional() @ValidateNested() @Type(() => TreatmentPlanStayDto)
+  stay?: TreatmentPlanStayDto;
+
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => TreatmentPlanScheduleItemDto)
+  scheduleItems?: TreatmentPlanScheduleItemDto[];
 }

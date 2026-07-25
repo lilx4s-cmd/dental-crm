@@ -1,10 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { $Enums } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { computePlanTotal } from '@dental-crm/shared';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTreatmentPlanDto } from './dto/create-treatment-plan.dto';
 import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
+
+// Declared outside PLAN_SELECT: the `as const` there would make this a readonly tuple, which
+// Prisma's orderBy input does not accept.
+const SCHEDULE_ORDER: Prisma.TreatmentPlanScheduleItemOrderByWithRelationInput[] = [
+  { date: 'asc' },
+  { createdAt: 'asc' },
+];
+
+/** Optional ISO date from a DTO to a Date, keeping "not provided" distinct from "invalid". */
+const toDate = (value?: string) => (value ? new Date(value) : undefined);
 
 const PLAN_SELECT = {
   id: true,
@@ -75,6 +85,31 @@ const PLAN_SELECT = {
       healingPeriodMonths: true,
     },
     orderBy: { phaseNumber: 'asc' as const },
+  },
+  stay: {
+    select: {
+      id: true,
+      arrivalDate: true,
+      arrivalFlight: true,
+      departureDate: true,
+      departureFlight: true,
+      hotelName: true,
+      hotelAddress: true,
+      roomType: true,
+      nights: true,
+      companions: true,
+      checkInDate: true,
+      checkOutDate: true,
+      airportTransfer: true,
+      clinicTransfer: true,
+      notes: true,
+    },
+  },
+  scheduleItems: {
+    select: { id: true, date: true, time: true, title: true, location: true, notes: true },
+    // Time is free text ("Morning", "09:30") so it cannot be sorted on in SQL; date orders the
+    // days and the entry order within a day is whatever the coordinator typed.
+    orderBy: SCHEDULE_ORDER,
   },
   timelineSteps: {
     select: {
@@ -189,6 +224,28 @@ export class TreatmentPlansService {
                 discountAmount: p.discountAmount ?? 0,
                 discountPercent: p.discountPercent,
                 healingPeriodMonths: p.healingPeriodMonths,
+              })),
+            }
+          : undefined,
+        stay: dto.stay
+          ? {
+              create: {
+                ...dto.stay,
+                arrivalDate: toDate(dto.stay.arrivalDate),
+                departureDate: toDate(dto.stay.departureDate),
+                checkInDate: toDate(dto.stay.checkInDate),
+                checkOutDate: toDate(dto.stay.checkOutDate),
+              },
+            }
+          : undefined,
+        scheduleItems: dto.scheduleItems?.length
+          ? {
+              create: dto.scheduleItems.map((s) => ({
+                date: new Date(s.date),
+                time: s.time,
+                title: s.title,
+                location: s.location,
+                notes: s.notes,
               })),
             }
           : undefined,

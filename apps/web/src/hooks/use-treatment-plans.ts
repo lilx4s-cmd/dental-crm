@@ -137,6 +137,35 @@ export interface CreateTreatmentPlanInput {
   items?: CreateTreatmentPlanItemInput[];
   diagnoses?: CreateTreatmentPlanDiagnosisInput[];
   phases?: CreateTreatmentPlanPhaseInput[];
+  stay?: CreateTreatmentPlanStayInput;
+  scheduleItems?: CreateTreatmentPlanScheduleItemInput[];
+}
+
+/** Travel, accommodation and transfers for a patient coming in from abroad. All optional — the
+ *  coordinator learns these at different times and the dossier prints at every stage. */
+export interface CreateTreatmentPlanStayInput {
+  arrivalDate?: string;
+  arrivalFlight?: string;
+  departureDate?: string;
+  departureFlight?: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  roomType?: string;
+  nights?: number;
+  companions?: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  airportTransfer?: string;
+  clinicTransfer?: string;
+  notes?: string;
+}
+
+export interface CreateTreatmentPlanScheduleItemInput {
+  date: string;
+  time?: string;
+  title: string;
+  location?: string;
+  notes?: string;
 }
 
 // Any subset of the plan's editable fields; backs the general PATCH :id endpoint.

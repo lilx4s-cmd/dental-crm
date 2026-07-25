@@ -600,10 +600,68 @@ model TreatmentPlan {
   shareLinks    TreatmentPlanShareLink[]
   diagnoses     TreatmentPlanDiagnosis[]
   phases        TreatmentPlanPhase[]
+  stay          TreatmentPlanStay?
+  scheduleItems TreatmentPlanScheduleItem[]
 
   @@index([assignedDentistId])
   @@index([assignedCoordinatorId])
   @@map("treatment_plans")
+}
+
+// Travel and accommodation for a patient coming in from abroad. One per plan — a trip is the
+// container the treatment happens inside, and a second trip is a second plan.
+//
+// Deliberately all optional: the coordinator learns the flight number days after the hotel is
+// booked, and the dossier has to be printable at every stage of that. Sections with nothing in
+// them are simply left out of the document rather than printed blank.
+model TreatmentPlanStay {
+  id              String        @id @default(uuid())
+  treatmentPlanId String        @unique
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+
+  arrivalDate     DateTime?
+  arrivalFlight   String?
+  departureDate   DateTime?
+  departureFlight String?
+
+  hotelName       String?
+  hotelAddress    String?
+  roomType        String?
+  nights          Int?
+  companions      Int?
+  checkInDate     DateTime?
+  checkOutDate    DateTime?
+
+  // Free text rather than booleans: "hotel to clinic each morning, driver waits" is the useful
+  // thing to print, and a checkbox cannot say it.
+  airportTransfer String?
+  clinicTransfer  String?
+  notes           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("treatment_plan_stays")
+}
+
+// A single dated entry in the patient's itinerary — "Day 2, 10:00, implant surgery". Separate from
+// TreatmentTimelineStep, which tracks plan progress with no fixed dates; this is the printed
+// day-by-day the patient carries with them.
+model TreatmentPlanScheduleItem {
+  id              String        @id @default(uuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+
+  date      DateTime
+  // Kept as text ("09:30", "Morning") so an itinerary can be issued before exact times are set.
+  time      String?
+  title     String
+  location  String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([treatmentPlanId])
+  @@map("treatment_plan_schedule_items")
 }
 
 // The patient's dental status as charted when the plan was drawn up. Held against the plan rather
