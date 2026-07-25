@@ -70,6 +70,38 @@ export function plannedConditions(plan: PlanLike): Record<string, ToothCondition
   return map;
 }
 
+/**
+ * The mouth part-way through treatment: everything charted today, plus the effect of every phase up
+ * to and including `stage`. Stage 0 is the starting point, so stepping the number forward walks the
+ * patient through their own treatment.
+ *
+ * A tooth extracted in an earlier phase is shown as missing from the next phase onward rather than
+ * keeping its extraction cross forever — the cross means "this is coming out", and once it has, the
+ * honest picture is a gap. A later implant or bridge on the same tooth overwrites it, which is why
+ * phases are applied in order.
+ */
+export function stageConditions(plan: PlanLike, stage: number): Record<string, ToothCondition> {
+  const map: Record<string, ToothCondition> = diagnosisConditions(plan);
+  const appliedAtPhase: Record<string, number> = {};
+
+  const phasesInOrder = [...new Set(plan.items.map((i) => i.phaseNumber || 1))].sort((a, b) => a - b);
+  for (const phase of phasesInOrder) {
+    if (phase > stage) break;
+    for (const item of plan.items) {
+      if ((item.phaseNumber || 1) !== phase || !item.toothNumber) continue;
+      const condition = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
+      if (!condition) continue;
+      map[item.toothNumber] = condition;
+      appliedAtPhase[item.toothNumber] = phase;
+    }
+  }
+
+  for (const [tooth, condition] of Object.entries(map)) {
+    if (condition === 'EXTRACTION' && appliedAtPhase[tooth] < stage) map[tooth] = 'MISSING';
+  }
+  return map;
+}
+
 export function plannedItemsByTooth(plan: PlanLike): Record<string, ToothItem[]> {
   const map: Record<string, ToothItem[]> = {};
   for (const item of plan.items) {

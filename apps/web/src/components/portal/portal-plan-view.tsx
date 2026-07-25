@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, Download, ShieldCheck, Sparkles } from 'lucide-react';
+import { CheckCircle2, XCircle, Download, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -118,6 +119,21 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
           {/* The same charts and phased pricing the printed document shows, rendered from the
               same components — a patient comparing the two should see one plan, not two. */}
           <PlanDiagnoses plan={plan} />
+
+          {plan.items.length > 0 && (
+            <Link href={`/portal/${token}/animation`} className="block">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10">
+                <div>
+                  <p className="text-sm font-semibold">See your treatment step by step</p>
+                  <p className="text-xs text-muted-foreground">
+                    Watch how your teeth change at each stage of the plan.
+                  </p>
+                </div>
+                <PlayCircle className="h-7 w-7 shrink-0 text-primary" />
+              </div>
+            </Link>
+          )}
+
           <PlanProcedures plan={plan} />
 
           <div className="space-y-2">
