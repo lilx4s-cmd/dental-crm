@@ -12,21 +12,22 @@ export declare const CreateLeadSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     assignedToId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    source: string;
     firstName: string;
     lastName: string;
-    source: string;
     currency: string;
+    assignedToId?: string | undefined;
     email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     notes?: string | undefined;
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
-    assignedToId?: string | undefined;
 }, {
+    source: string;
     firstName: string;
     lastName: string;
-    source: string;
+    assignedToId?: string | undefined;
     email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
@@ -34,7 +35,6 @@ export declare const CreateLeadSchema: z.ZodObject<{
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
-    assignedToId?: string | undefined;
 }>;
 export declare const UpdateLeadSchema: z.ZodObject<{
     firstName: z.ZodOptional<z.ZodString>;
@@ -49,29 +49,29 @@ export declare const UpdateLeadSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     assignedToId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
+    assignedToId?: string | undefined;
+    source?: string | undefined;
     email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     notes?: string | undefined;
-    source?: string | undefined;
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
-    assignedToId?: string | undefined;
 }, {
+    assignedToId?: string | undefined;
+    source?: string | undefined;
     email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     notes?: string | undefined;
-    source?: string | undefined;
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
-    assignedToId?: string | undefined;
 }>;
 export declare const UpdateLeadStageSchema: z.ZodObject<{
     stage: z.ZodNativeEnum<Record<string, string>>;

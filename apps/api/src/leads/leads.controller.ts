@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, Query,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
@@ -13,6 +13,7 @@ import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
 import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
+import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
 const WRITE_ROLES = [...PIPELINE_ROLES, Role.RECEPTION];
@@ -34,8 +35,8 @@ export class LeadsController {
   @Get('by-stage')
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'List leads grouped by pipeline stage (kanban board)' })
-  findAllByStage(@CurrentUser() user: JwtPayload) {
-    return this.leadsService.findAllByStage(user);
+  findAllByStage(@Query() query: LeadsQueryDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.findAllByStage(query, user);
   }
 
   // Sales oversight feed. Declared before ':id'. Service scopes non-admins to
@@ -77,8 +78,10 @@ export class LeadsController {
     return this.leadsService.update(id, dto, user);
   }
 
+  // WRITE_ROLES, not PIPELINE_ROLES: Reception already creates and converts leads, so blocking
+  // them from moving a card was an inconsistency that surfaced only as a silent drag failure.
   @Patch(':id/stage')
-  @Roles(...PIPELINE_ROLES)
+  @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Move lead to a new pipeline stage' })
   updateStage(
     @Param('id') id: string,
@@ -93,6 +96,42 @@ export class LeadsController {
   @ApiOperation({ summary: 'Get stage activity history for a lead' })
   getActivities(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.leadsService.getActivities(id, user);
+  }
+
+  @Get(':id/tasks')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'List tasks on a lead (open first, then completed)' })
+  findTasks(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.findTasks(id, user);
+  }
+
+  @Post(':id/tasks')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Add a task to a lead' })
+  createTask(
+    @Param('id') id: string,
+    @Body() dto: CreateLeadTaskDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.leadsService.createTask(id, dto, user);
+  }
+
+  @Patch('tasks/:taskId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Update a task, including completing or reopening it' })
+  updateTask(
+    @Param('taskId') taskId: string,
+    @Body() dto: UpdateLeadTaskDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.leadsService.updateTask(taskId, dto, user);
+  }
+
+  @Delete('tasks/:taskId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Delete a task' })
+  removeTask(@Param('taskId') taskId: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.removeTask(taskId, user);
   }
 
   @Post(':id/convert')

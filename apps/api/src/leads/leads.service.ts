@@ -7,7 +7,15 @@ import { UpdateLeadStageDto } from './dto/update-lead-stage.dto';
 import { LeadsQueryDto } from './dto/leads-query.dto';
 import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
-import { PipelineStage, Role, JwtPayload } from '@dental-crm/shared';
+import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
+import {
+  PipelineStage,
+  Role,
+  JwtPayload,
+  TaskDueFilter,
+  taskDueRange,
+  stuckBefore,
+} from '@dental-crm/shared';
 
 const LEAD_SELECT = {
   id: true,
@@ -26,7 +34,21 @@ const LEAD_SELECT = {
   bitrixDealId: true,
   createdAt: true,
   updatedAt: true,
+  stageChangedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
+  // Open tasks only, soonest first: the card shows the next thing to do, and completed history
+  // would bloat every kanban payload for no benefit.
+  tasks: {
+    where: { completedAt: null },
+    orderBy: { dueDate: 'asc' as const },
+    select: {
+      id: true,
+      title: true,
+      dueDate: true,
+      completedAt: true,
+      assignedTo: { select: { id: true, firstName: true, lastName: true } },
+    },
+  },
   campaign: { select: { id: true, name: true, platform: true } },
   patient: { select: { id: true, firstName: true, lastName: true } },
 } as const;
@@ -41,10 +63,13 @@ export class LeadsService {
     return user?.role === Role.SUPER_ADMIN;
   }
 
-  async findAll(query: LeadsQueryDto, currentUser: JwtPayload) {
-    const { page, limit, search, stage, status, assignedToId } = query;
-    const skip = (page - 1) * limit;
-
+  /**
+   * Turns the filter query into a where-clause. Shared by the paginated list and the kanban board
+   * so a filter cannot mean one thing in one view and something else in the other — the board used
+   * to accept no filters at all, which is how they drifted apart in the first place.
+   */
+  private buildWhere(query: LeadsQueryDto, currentUser: JwtPayload): Prisma.LeadWhereInput {
+    const { search, stage, status, assignedToId, source, taskDue, stuck } = query;
     const where: Prisma.LeadWhereInput = {};
 
     if (search) {
@@ -56,7 +81,19 @@ export class LeadsService {
       ];
     }
     if (stage) where.stage = stage as $Enums.PipelineStage;
+    if (source) where.source = source as $Enums.LeadSource;
     where.status = status ? (status as $Enums.LeadStatus) : $Enums.LeadStatus.ACTIVE;
+
+    if (taskDue) {
+      where.tasks =
+        taskDue === TaskDueFilter.NONE
+          ? // "No task" means nothing outstanding — a lead whose only tasks are done still needs
+            // picking up, so completed ones must not keep it out of this bucket.
+            { none: { completedAt: null } }
+          : { some: { completedAt: null, dueDate: taskDueRange(taskDue) ?? undefined } };
+    }
+
+    if (stuck) where.stageChangedAt = { lt: stuckBefore() };
 
     // Access scope: a non-admin can only ever see their own leads, so we pin
     // assignedToId to their own id and ignore any assignedToId they tried to pass.
@@ -65,6 +102,14 @@ export class LeadsService {
     } else {
       where.assignedToId = currentUser.sub;
     }
+
+    return where;
+  }
+
+  async findAll(query: LeadsQueryDto, currentUser: JwtPayload) {
+    const { page, limit } = query;
+    const skip = (page - 1) * limit;
+    const where = this.buildWhere(query, currentUser);
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.lead.findMany({ where, select: LEAD_SELECT, skip, take: limit, orderBy: { createdAt: 'desc' } }),
@@ -148,7 +193,12 @@ export class LeadsService {
     const [updatedLead] = await this.prisma.$transaction([
       this.prisma.lead.update({
         where: { id },
-        data: { stage: dto.stage as $Enums.PipelineStage, status: newStatus, lostReason },
+        data: {
+          stage: dto.stage as $Enums.PipelineStage,
+          status: newStatus,
+          lostReason,
+          stageChangedAt: new Date(),
+        },
         select: LEAD_SELECT,
       }),
       this.prisma.leadActivity.create({
@@ -216,9 +266,10 @@ export class LeadsService {
     return { patient, lead: updatedLead };
   }
 
-  async findAllByStage(currentUser: JwtPayload) {
-    const where: Prisma.LeadWhereInput = { status: $Enums.LeadStatus.ACTIVE };
-    if (!this.canSeeAll(currentUser)) where.assignedToId = currentUser.sub;
+  async findAllByStage(query: LeadsQueryDto, currentUser: JwtPayload) {
+    // The board deliberately ignores the `stage` filter: hiding columns would break the drag
+    // targets, and a stage filter on a stage-partitioned view is what the column already is.
+    const where = this.buildWhere({ ...query, stage: undefined }, currentUser);
 
     const leads = await this.prisma.lead.findMany({
       where,
@@ -318,5 +369,77 @@ export class LeadsService {
     ]);
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  // ─────────────────────────── LEAD TASKS ───────────────────────────
+
+  private static readonly TASK_SELECT = {
+    id: true,
+    title: true,
+    dueDate: true,
+    completedAt: true,
+    createdAt: true,
+    assignedTo: { select: { id: true, firstName: true, lastName: true } },
+  } as const;
+
+  /** Every task on a lead, open first and soonest-due first, then the completed history. */
+  async findTasks(leadId: string, currentUser: JwtPayload) {
+    await this.findOne(leadId, currentUser);
+    return this.prisma.leadTask.findMany({
+      where: { leadId },
+      select: LeadsService.TASK_SELECT,
+      orderBy: [{ completedAt: 'asc' }, { dueDate: 'asc' }],
+    });
+  }
+
+  async createTask(leadId: string, dto: CreateLeadTaskDto, currentUser: JwtPayload) {
+    // findOne enforces the same access scope as the rest of the module, so a non-admin cannot
+    // attach work to a lead they are not allowed to see.
+    const lead = await this.findOne(leadId, currentUser);
+    return this.prisma.leadTask.create({
+      data: {
+        leadId,
+        title: dto.title,
+        dueDate: new Date(dto.dueDate),
+        // Falls back to whoever owns the lead, then to the creator, so a task always has someone
+        // answerable for it — an unassigned task never surfaces in anybody's day.
+        assignedToId: dto.assignedToId ?? lead.assignedTo?.id ?? currentUser.sub,
+        createdById: currentUser.sub,
+      },
+      select: LeadsService.TASK_SELECT,
+    });
+  }
+
+  private async findTaskForUser(taskId: string, currentUser: JwtPayload) {
+    const task = await this.prisma.leadTask.findUnique({
+      where: { id: taskId },
+      select: { id: true, leadId: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    // Reuse the lead's access check rather than inventing a second rule for tasks.
+    await this.findOne(task.leadId, currentUser);
+    return task;
+  }
+
+  async updateTask(taskId: string, dto: UpdateLeadTaskDto, currentUser: JwtPayload) {
+    await this.findTaskForUser(taskId, currentUser);
+    return this.prisma.leadTask.update({
+      where: { id: taskId },
+      data: {
+        title: dto.title,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        assignedToId: dto.assignedToId,
+        // `completed` is a verb the client sends; the column stores when it happened. Undefined
+        // leaves it alone so a rename does not silently reopen a finished task.
+        completedAt: dto.completed === undefined ? undefined : dto.completed ? new Date() : null,
+      },
+      select: LeadsService.TASK_SELECT,
+    });
+  }
+
+  async removeTask(taskId: string, currentUser: JwtPayload) {
+    await this.findTaskForUser(taskId, currentUser);
+    await this.prisma.leadTask.delete({ where: { id: taskId } });
+    return { success: true };
   }
 }

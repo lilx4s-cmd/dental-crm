@@ -297,6 +297,8 @@ model User {
   refreshTokens               RefreshToken[]
   assignedLeads               Lead[]                   @relation("LeadAssignee")
   leadActivities              LeadActivity[]
+  leadTasksAssigned           LeadTask[]               @relation("LeadTaskAssignee")
+  leadTasksCreated            LeadTask[]               @relation("LeadTaskCreatedBy")
   appointmentsAsDentist       Appointment[]            @relation("AppointmentDentist")
   appointmentsCreated         Appointment[]            @relation("AppointmentCreatedBy")
   treatmentPlans              TreatmentPlan[]          @relation("TreatmentPlanCreatedBy")
@@ -450,6 +452,10 @@ model Lead {
   currency       String?
   lostReason     String?
   notes          String?
+  // When the lead last moved stage. Stored rather than derived from LeadActivity because the
+  // kanban needs it for every card at once, and the "no movement" filter has to be a WHERE
+  // clause — reconstructing it per lead would be a query per card.
+  stageChangedAt DateTime      @default(now())
   // Original Bitrix24 deal ID (recovered from the migration's deterministic
   // id mapping — see migration/import.mjs's detUuid()). Nullable since leads
   // created directly in this CRM never had a Bitrix counterpart. Powers the
@@ -461,11 +467,37 @@ model Lead {
   activities    LeadActivity[]
   conversations Conversation[]
   callLogs      CallLog[]
+  tasks         LeadTask[]
   patient       Patient?       @relation("LeadToPatient")
 
   @@index([stage])
   @@index([assignedToId])
+  @@index([stageChangedAt])
   @@map("leads")
+}
+
+// A single thing somebody has to do about a lead — "call back", "send photos to the doctor". The
+// due date is what drives the pipeline's Today / This week / This month filters, so it is required:
+// a task with no date cannot answer "who do I contact now", which is the whole point of having it.
+model LeadTask {
+  id           String    @id @default(uuid())
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title        String
+  dueDate      DateTime
+  assignedToId String?
+  assignedTo   User?     @relation("LeadTaskAssignee", fields: [assignedToId], references: [id])
+  // Null means open. A timestamp rather than a boolean so "done today" is answerable later.
+  completedAt  DateTime?
+  createdById  String
+  createdBy    User      @relation("LeadTaskCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([dueDate])
+  @@index([assignedToId])
+  @@map("lead_tasks")
 }
 
 model LeadActivity {

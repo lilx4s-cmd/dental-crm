@@ -18,6 +18,7 @@ __exportStar(require("./enums"), exports);
 __exportStar(require("./dental"), exports);
 __exportStar(require("./treatment-plan/pricing"), exports);
 __exportStar(require("./treatment-plan/presets"), exports);
+__exportStar(require("./pipeline/filters"), exports);
 __exportStar(require("./schemas/auth.schema"), exports);
 __exportStar(require("./schemas/user.schema"), exports);
 __exportStar(require("./schemas/patient.schema"), exports);
