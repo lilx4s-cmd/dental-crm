@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums } from '@prisma/client';
+import { computePlanTotal } from '@dental-crm/shared';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTreatmentPlanDto } from './dto/create-treatment-plan.dto';
@@ -39,8 +40,25 @@ const PLAN_SELECT = {
       brand: true,
       clinicalNotes: true,
       status: true,
+      phaseNumber: true,
+      toothCondition: true,
       treatmentCategory: { select: { id: true, name: true } },
     },
+  },
+  diagnoses: {
+    select: { id: true, condition: true, toothNumbers: true, notes: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  phases: {
+    select: {
+      id: true,
+      phaseNumber: true,
+      name: true,
+      discountAmount: true,
+      discountPercent: true,
+      healingPeriodMonths: true,
+    },
+    orderBy: { phaseNumber: 'asc' as const },
   },
   timelineSteps: {
     select: {
@@ -96,9 +114,10 @@ export class TreatmentPlansService {
 
   async create(dto: CreateTreatmentPlanDto, createdById: string) {
     // `cost` is already the authoritative per-line total (unitPrice*qty - discount, computed
-    // client-side), so the plan total is just the sum of the line costs — not re-derived from
-    // unitPrice/quantity, which would double-apply the discount.
-    const itemsTotal = (dto.items ?? []).reduce((sum, i) => sum + i.cost, 0);
+    // client-side), so phase subtotals are sums of line costs — not re-derived from
+    // unitPrice/quantity, which would double-apply the line discount. Phase-level discounts come
+    // off on top, via the shared pricing helper the builder and the PDF also use.
+    const itemsTotal = computePlanTotal(dto.items ?? [], dto.phases ?? []);
 
     // Snapshot the patient's current diagnosis so the patient-facing presentation stays stable
     // even if the live diagnosis is edited later.
@@ -132,6 +151,28 @@ export class TreatmentPlansService {
                 material: item.material,
                 brand: item.brand,
                 clinicalNotes: item.clinicalNotes,
+                phaseNumber: item.phaseNumber ?? 1,
+                toothCondition: item.toothCondition,
+              })),
+            }
+          : undefined,
+        diagnoses: dto.diagnoses?.length
+          ? {
+              create: dto.diagnoses.map((d) => ({
+                condition: d.condition,
+                toothNumbers: d.toothNumbers,
+                notes: d.notes,
+              })),
+            }
+          : undefined,
+        phases: dto.phases?.length
+          ? {
+              create: dto.phases.map((p) => ({
+                phaseNumber: p.phaseNumber,
+                name: p.name,
+                discountAmount: p.discountAmount ?? 0,
+                discountPercent: p.discountPercent,
+                healingPeriodMonths: p.healingPeriodMonths,
               })),
             }
           : undefined,

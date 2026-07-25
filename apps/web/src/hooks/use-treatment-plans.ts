@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ToothCondition } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
@@ -19,7 +20,27 @@ export interface TreatmentPlanItem {
   brand: string | null;
   clinicalNotes: string | null;
   status: string;
+  phaseNumber: number;
+  toothCondition: ToothCondition | null;
   treatmentCategory: TreatmentCategory | null;
+}
+
+// The patient's charted status at the time the plan was drawn up. One row per finding, listing
+// every tooth showing it.
+export interface TreatmentPlanDiagnosis {
+  id: string;
+  condition: ToothCondition;
+  toothNumbers: string[];
+  notes: string | null;
+}
+
+export interface TreatmentPlanPhase {
+  id: string;
+  phaseNumber: number;
+  name: string | null;
+  discountAmount: number;
+  discountPercent: number | null;
+  healingPeriodMonths: number | null;
 }
 
 export interface TimelineStep {
@@ -72,6 +93,8 @@ export interface TreatmentPlan {
   items: TreatmentPlanItem[];
   timelineSteps: TimelineStep[];
   comments: TreatmentPlanComment[];
+  diagnoses: TreatmentPlanDiagnosis[];
+  phases: TreatmentPlanPhase[];
 }
 
 export interface CreateTreatmentPlanItemInput {
@@ -85,6 +108,22 @@ export interface CreateTreatmentPlanItemInput {
   unitPrice?: number;
   discount?: number;
   clinicalNotes?: string;
+  phaseNumber?: number;
+  toothCondition?: ToothCondition;
+}
+
+export interface CreateTreatmentPlanDiagnosisInput {
+  condition: ToothCondition;
+  toothNumbers: string[];
+  notes?: string;
+}
+
+export interface CreateTreatmentPlanPhaseInput {
+  phaseNumber: number;
+  name?: string;
+  discountAmount?: number;
+  discountPercent?: number;
+  healingPeriodMonths?: number;
 }
 
 export interface CreateTreatmentPlanInput {
@@ -96,6 +135,8 @@ export interface CreateTreatmentPlanInput {
   assignedCoordinatorId?: string;
   doctorRecommendation?: string;
   items?: CreateTreatmentPlanItemInput[];
+  diagnoses?: CreateTreatmentPlanDiagnosisInput[];
+  phases?: CreateTreatmentPlanPhaseInput[];
 }
 
 // Any subset of the plan's editable fields; backs the general PATCH :id endpoint.

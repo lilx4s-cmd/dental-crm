@@ -73,7 +73,7 @@
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {
-      "^@dental-crm/shared$": "<rootDir>/../../packages/shared/src/index.ts"
+      "^@dental-crm/shared$": "<rootDir>/../../../packages/shared/src/index.ts"
     }
   }
 }
