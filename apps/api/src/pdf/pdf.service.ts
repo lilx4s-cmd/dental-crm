@@ -3,6 +3,14 @@ import { Document, Page, Text, View, StyleSheet, Image, renderToBuffer } from '@
 import * as QRCode from 'qrcode';
 import React from 'react';
 
+import {
+  TreatmentPlanDocument,
+  type ClinicBranding,
+  type PlanDocumentInput,
+} from './treatment-plan-document';
+
+// Styling for the warranty certificate, which stays a single self-contained page. The treatment
+// plan's own styles live with its document in treatment-plan-document.ts.
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: 'Helvetica' },
   header: { marginBottom: 16, borderBottom: 1, borderBottomColor: '#333', paddingBottom: 8 },
@@ -11,42 +19,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   label: { color: '#555', fontWeight: 700 },
   section: { marginTop: 12, marginBottom: 8 },
-  table: { marginTop: 8, borderTop: 1, borderTopColor: '#ccc' },
-  tableRow: { flexDirection: 'row', borderBottom: 1, borderBottomColor: '#eee', paddingVertical: 4 },
-  tableHeaderRow: { flexDirection: 'row', paddingVertical: 4, backgroundColor: '#f2f2f2' },
-  cell: { flex: 1, fontSize: 9 },
-  cellSmall: { flex: 0.6, fontSize: 9 },
-  totalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
   qr: { width: 90, height: 90, position: 'absolute', top: 32, right: 32 },
   footer: { marginTop: 24, fontSize: 8, color: '#888' },
 });
-
-interface ClinicBranding {
-  clinicName: string;
-  address?: string | null;
-  city?: string | null;
-  country?: string | null;
-}
-
-// Accepts Prisma's Decimal instances too — anything stringifiable.
-type Numeric = number | string | { toString(): string };
-
-interface PlanPdfInput {
-  title: string;
-  totalCost: Numeric;
-  currency: string;
-  doctorRecommendation?: string | null;
-  patient: { firstName: string; lastName: string };
-  items: Array<{
-    description: string;
-    toothNumber?: string | null;
-    material?: string | null;
-    brand?: string | null;
-    quantity: number;
-    cost: Numeric;
-  }>;
-  timelineSteps: Array<{ title: string; status: string }>;
-}
 
 interface WarrantyPdfInput {
   durationMonths: number;
@@ -79,98 +54,12 @@ async function buildQrDataUrl(portalUrl?: string): Promise<string | undefined> {
 @Injectable()
 export class PdfService {
   async generateTreatmentPlanPdf(
-    plan: PlanPdfInput,
+    plan: PlanDocumentInput,
     branding: ClinicBranding,
     portalUrl?: string,
   ): Promise<Buffer> {
     const qrDataUrl = await buildQrDataUrl(portalUrl);
-
-    const doc = React.createElement(
-      Document,
-      {},
-      React.createElement(
-        Page,
-        { size: 'A4', style: styles.page },
-        qrDataUrl && React.createElement(Image, { src: qrDataUrl, style: styles.qr }),
-        React.createElement(
-          View,
-          { style: styles.header },
-          React.createElement(Text, { style: styles.clinicName }, branding.clinicName),
-          [branding.address, branding.city, branding.country].filter(Boolean).length > 0 &&
-            React.createElement(
-              Text,
-              {},
-              [branding.address, branding.city, branding.country].filter(Boolean).join(', '),
-            ),
-        ),
-        React.createElement(Text, { style: styles.title }, plan.title),
-        React.createElement(
-          View,
-          { style: styles.row },
-          React.createElement(Text, { style: styles.label }, 'Patient'),
-          React.createElement(Text, {}, `${plan.patient.firstName} ${plan.patient.lastName}`),
-        ),
-        React.createElement(
-          View,
-          { style: styles.table },
-          React.createElement(
-            View,
-            { style: styles.tableHeaderRow },
-            React.createElement(Text, { style: styles.cell }, 'Description'),
-            React.createElement(Text, { style: styles.cellSmall }, 'Tooth'),
-            React.createElement(Text, { style: styles.cell }, 'Material / Brand'),
-            React.createElement(Text, { style: styles.cellSmall }, 'Qty'),
-            React.createElement(Text, { style: styles.cellSmall }, 'Cost'),
-          ),
-          ...plan.items.map((item, i) =>
-            React.createElement(
-              View,
-              { style: styles.tableRow, key: i },
-              React.createElement(Text, { style: styles.cell }, item.description),
-              React.createElement(Text, { style: styles.cellSmall }, item.toothNumber ?? '-'),
-              React.createElement(
-                Text,
-                { style: styles.cell },
-                [item.material, item.brand].filter(Boolean).join(' / ') || '-',
-              ),
-              React.createElement(Text, { style: styles.cellSmall }, String(item.quantity)),
-              React.createElement(Text, { style: styles.cellSmall }, `${plan.currency} ${item.cost}`),
-            ),
-          ),
-        ),
-        React.createElement(
-          View,
-          { style: styles.totalRow },
-          React.createElement(
-            Text,
-            { style: { fontWeight: 700 } },
-            `Total: ${plan.currency} ${plan.totalCost}`,
-          ),
-        ),
-        plan.doctorRecommendation &&
-          React.createElement(
-            View,
-            { style: styles.section },
-            React.createElement(Text, { style: styles.label }, "Doctor's Recommendation"),
-            React.createElement(Text, {}, plan.doctorRecommendation),
-          ),
-        plan.timelineSteps.length > 0 &&
-          React.createElement(
-            View,
-            { style: styles.section },
-            React.createElement(Text, { style: styles.label }, 'Treatment Timeline'),
-            ...plan.timelineSteps.map((step, i) =>
-              React.createElement(Text, { key: i }, `${i + 1}. ${step.title} — ${step.status}`),
-            ),
-          ),
-        React.createElement(
-          Text,
-          { style: styles.footer },
-          'This document is generated on demand and is not a substitute for a signed treatment consent form.',
-        ),
-      ),
-    );
-
+    const doc = TreatmentPlanDocument(plan, branding, qrDataUrl, portalUrl);
     return renderToBuffer(doc as never);
   }
 
