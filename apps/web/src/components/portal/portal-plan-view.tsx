@@ -19,6 +19,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import { PlanDiagnoses, PlanProcedures } from '@/components/treatment-plans/plan-summary';
 import { TimelineStepper } from '@/components/treatment-plans/timeline-stepper';
 
 import { usePortalApprove, usePortalReject, portalPdfUrl, type PortalResponse } from '@/hooks/use-portal';
@@ -67,7 +68,7 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
       <div className="space-y-1 text-center">
         <h1 className="text-xl font-semibold">{clinic.clinicName}</h1>
         {[clinic.address, clinic.city, clinic.country].filter(Boolean).length > 0 && (
@@ -114,34 +115,10 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
             </div>
           )}
 
-          {plan.items.length > 0 && (
-            <div className="overflow-hidden rounded-md border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Procedure</th>
-                    <th className="px-2 py-2 text-center">Tooth</th>
-                    <th className="px-2 py-2 text-left">Material / Brand</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.items.map((item) => (
-                    <tr key={item.id} className="border-t">
-                      <td className="px-3 py-2">{item.description}</td>
-                      <td className="px-2 py-2 text-center text-muted-foreground">{item.toothNumber ?? '—'}</td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {[item.material, item.brand].filter(Boolean).join(' / ') || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right">{item.quantity}</td>
-                      <td className="px-3 py-2 text-right">{fmt(Number(item.cost), plan.currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* The same charts and phased pricing the printed document shows, rendered from the
+              same components — a patient comparing the two should see one plan, not two. */}
+          <PlanDiagnoses plan={plan} />
+          <PlanProcedures plan={plan} />
 
           <div className="space-y-2">
             <p className="text-sm font-semibold text-muted-foreground">Treatment Timeline</p>

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { TimelineStep } from './use-treatment-plans';
+import type { ToothCondition } from '@dental-crm/shared';
+import type { TimelineStep, TreatmentCategory } from './use-treatment-plans';
 
 // Bare API origin — matches lib/api-client.ts's NEXT_PUBLIC_API_URL convention. The portal is
 // unauthenticated, so calls here use plain `fetch` directly rather than apiRequest() (which
@@ -26,7 +27,26 @@ export interface PortalPlanItem {
   material: string | null;
   brand: string | null;
   status: string;
+  phaseNumber: number;
+  toothCondition: ToothCondition | null;
+  treatmentCategory: TreatmentCategory | null;
   warranties: PortalWarranty[];
+}
+
+export interface PortalDiagnosis {
+  id: string;
+  condition: ToothCondition;
+  toothNumbers: string[];
+  notes: string | null;
+}
+
+export interface PortalPhase {
+  id: string;
+  phaseNumber: number;
+  name: string | null;
+  discountAmount: number;
+  discountPercent: number | null;
+  healingPeriodMonths: number | null;
 }
 
 export interface PortalComment {
@@ -50,6 +70,8 @@ export interface PortalPlan {
   createdAt: string;
   patient: { firstName: string; lastName: string };
   items: PortalPlanItem[];
+  diagnoses: PortalDiagnosis[];
+  phases: PortalPhase[];
   timelineSteps: TimelineStep[];
   comments: PortalComment[];
 }

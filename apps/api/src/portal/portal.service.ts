@@ -30,6 +30,9 @@ const PORTAL_PLAN_SELECT = {
       material: true,
       brand: true,
       status: true,
+      phaseNumber: true,
+      toothCondition: true,
+      treatmentCategory: { select: { id: true, name: true } },
       warranties: {
         select: {
           id: true,
@@ -43,6 +46,24 @@ const PORTAL_PLAN_SELECT = {
         },
       },
     },
+  },
+  // The charted findings and phase structure the patient's own document shows. These carry no
+  // identifying information of their own — a condition and a list of tooth numbers — so they fit
+  // the sanitized posture above while letting the portal render the same charts as the PDF.
+  diagnoses: {
+    select: { id: true, condition: true, toothNumbers: true, notes: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  phases: {
+    select: {
+      id: true,
+      phaseNumber: true,
+      name: true,
+      discountAmount: true,
+      discountPercent: true,
+      healingPeriodMonths: true,
+    },
+    orderBy: { phaseNumber: 'asc' as const },
   },
   timelineSteps: {
     select: { id: true, title: true, description: true, status: true, order: true, dueDate: true, completedAt: true },

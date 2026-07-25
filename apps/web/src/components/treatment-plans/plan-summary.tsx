@@ -7,15 +7,43 @@ import {
   type ToothCondition,
 } from '@dental-crm/shared';
 
-import type { TreatmentPlan } from '@/hooks/use-treatment-plans';
 import { DentalChart, type ToothItem } from './dental-chart';
+
+/**
+ * The subset of a plan these views actually draw. Declared structurally rather than importing the
+ * dashboard's TreatmentPlan so the patient portal — whose plan is deliberately sanitized and lacks
+ * several staff-only fields — can render the very same components.
+ */
+export interface PlanLike {
+  currency: string;
+  items: Array<{
+    id: string;
+    description: string;
+    toothNumber: string | null;
+    quantity: number;
+    cost: number;
+    material: string | null;
+    brand: string | null;
+    phaseNumber: number;
+    toothCondition: ToothCondition | null;
+    treatmentCategory: { name: string } | null;
+  }>;
+  diagnoses?: Array<{ id: string; condition: ToothCondition; toothNumbers: string[]; notes: string | null }>;
+  phases?: Array<{
+    phaseNumber: number;
+    name: string | null;
+    discountAmount: number;
+    discountPercent: number | null;
+    healingPeriodMonths: number | null;
+  }>;
+}
 
 function fmt(n: number, currency: string) {
   return `${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency}`;
 }
 
 /** What the mouth looks like today, straight from the charted findings. */
-export function diagnosisConditions(plan: TreatmentPlan): Record<string, ToothCondition> {
+export function diagnosisConditions(plan: PlanLike): Record<string, ToothCondition> {
   const map: Record<string, ToothCondition> = {};
   for (const d of plan.diagnoses ?? []) {
     for (const tooth of d.toothNumbers) map[tooth] = d.condition;
@@ -29,7 +57,7 @@ export function diagnosisConditions(plan: TreatmentPlan): Record<string, ToothCo
  * The per-item condition is used when set, and otherwise inferred from the category or description
  * — older plans predate the stored column and would otherwise chart as untouched.
  */
-export function plannedConditions(plan: TreatmentPlan): Record<string, ToothCondition> {
+export function plannedConditions(plan: PlanLike): Record<string, ToothCondition> {
   const map: Record<string, ToothCondition> = {};
   for (const d of plan.diagnoses ?? []) {
     if (d.condition === 'MISSING') for (const tooth of d.toothNumbers) map[tooth] = 'MISSING';
@@ -42,7 +70,7 @@ export function plannedConditions(plan: TreatmentPlan): Record<string, ToothCond
   return map;
 }
 
-export function plannedItemsByTooth(plan: TreatmentPlan): Record<string, ToothItem[]> {
+export function plannedItemsByTooth(plan: PlanLike): Record<string, ToothItem[]> {
   const map: Record<string, ToothItem[]> = {};
   for (const item of plan.items) {
     if (!item.toothNumber) continue;
@@ -54,7 +82,7 @@ export function plannedItemsByTooth(plan: TreatmentPlan): Record<string, ToothIt
   return map;
 }
 
-export function PlanDiagnoses({ plan }: { plan: TreatmentPlan }) {
+export function PlanDiagnoses({ plan }: { plan: PlanLike }) {
   const diagnoses = plan.diagnoses ?? [];
   if (diagnoses.length === 0) return null;
 
@@ -90,7 +118,7 @@ export function PlanDiagnoses({ plan }: { plan: TreatmentPlan }) {
 }
 
 /** Procedures grouped into the phases they are carried out in, each with its own subtotal. */
-export function PlanProcedures({ plan, showChart = true }: { plan: TreatmentPlan; showChart?: boolean }) {
+export function PlanProcedures({ plan, showChart = true }: { plan: PlanLike; showChart?: boolean }) {
   if (plan.items.length === 0) return null;
 
   const totals = computePhaseTotals(
@@ -163,7 +191,7 @@ function PhaseRows({
   discount,
   healingPeriodMonths,
 }: {
-  plan: TreatmentPlan;
+  plan: PlanLike;
   phaseNumber: number;
   heading: string | null;
   subtotal: number;
