@@ -1,0 +1,31 @@
+export declare const ToothCondition: {
+    readonly HEALTHY: "HEALTHY";
+    readonly CARIES: "CARIES";
+    readonly PLAQUE: "PLAQUE";
+    readonly AMALGAM_FILLING: "AMALGAM_FILLING";
+    readonly COMPOSITE_FILLING: "COMPOSITE_FILLING";
+    readonly MISSING: "MISSING";
+    readonly FRACTURED: "FRACTURED";
+    readonly WORN: "WORN";
+    readonly ONLY_ROOT: "ONLY_ROOT";
+    readonly ROOT_CANAL_TREATED: "ROOT_CANAL_TREATED";
+    readonly MOBILITY: "MOBILITY";
+    readonly RECEDING_BONE: "RECEDING_BONE";
+    readonly CYST: "CYST";
+    readonly EXTRACTION: "EXTRACTION";
+    readonly IMPLANT: "IMPLANT";
+    readonly CROWN: "CROWN";
+    readonly VENEER: "VENEER";
+    readonly BRIDGE: "BRIDGE";
+    readonly FILLING: "FILLING";
+    readonly ROOT_CANAL: "ROOT_CANAL";
+    readonly CLEANING: "CLEANING";
+    readonly BONE_GRAFT: "BONE_GRAFT";
+    readonly SINUS_LIFT: "SINUS_LIFT";
+};
+export type ToothCondition = (typeof ToothCondition)[keyof typeof ToothCondition];
+export declare const TOOTH_CONDITION_LABELS: Record<ToothCondition, string>;
+export declare const DIAGNOSIS_CONDITIONS: ToothCondition[];
+export declare const PLAN_CONDITIONS: ToothCondition[];
+export declare function conditionFromText(...texts: (string | null | undefined)[]): ToothCondition | undefined;
+//# sourceMappingURL=tooth-conditions.d.ts.map

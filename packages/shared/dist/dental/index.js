@@ -14,13 +14,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-__exportStar(require("./enums"), exports);
-__exportStar(require("./dental"), exports);
-__exportStar(require("./schemas/auth.schema"), exports);
-__exportStar(require("./schemas/user.schema"), exports);
-__exportStar(require("./schemas/patient.schema"), exports);
-__exportStar(require("./schemas/lead.schema"), exports);
-__exportStar(require("./types/user.types"), exports);
-__exportStar(require("./types/api-response.types"), exports);
-__exportStar(require("./types/pagination.types"), exports);
+__exportStar(require("./tooth-conditions"), exports);
+__exportStar(require("./tooth-geometry"), exports);
 //# sourceMappingURL=index.js.map

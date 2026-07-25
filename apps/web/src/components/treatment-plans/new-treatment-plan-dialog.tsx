@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+import { conditionFromText, type ToothCondition } from '@dental-crm/shared';
+
 import { useCreateTreatmentPlan, useTreatmentCategories } from '@/hooks/use-treatment-plans';
 import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { DentalChart } from './dental-chart';
@@ -71,15 +73,20 @@ export function NewTreatmentPlanDialog({
 
   const total = useMemo(() => items.reduce((s, i) => s + lineCost(i), 0), [items]);
 
-  // Map tooth -> planned procedure(s) so the chart can highlight + color + tooltip them.
-  const itemsByTooth = useMemo(() => {
-    const map: Record<string, { description: string; category?: string }[]> = {};
+  // Map tooth -> planned procedure(s) so the chart can highlight + tooltip them, and derive the
+  // condition to draw from the category or free-text description. Deriving it means the chart
+  // updates as the procedure is typed, without asking staff to pick a condition separately.
+  const { itemsByTooth, conditionsByTooth } = useMemo(() => {
+    const byTooth: Record<string, { description: string; category?: string }[]> = {};
+    const conditions: Record<string, ToothCondition> = {};
     for (const it of items) {
       if (!it.toothNumber) continue;
       const category = categories?.find((c) => c.id === it.treatmentCategoryId)?.name;
-      (map[it.toothNumber] ??= []).push({ description: it.description || 'Untitled procedure', category });
+      (byTooth[it.toothNumber] ??= []).push({ description: it.description || 'Untitled procedure', category });
+      const condition = conditionFromText(category, it.description);
+      if (condition) conditions[it.toothNumber] = condition;
     }
-    return map;
+    return { itemsByTooth: byTooth, conditionsByTooth: conditions };
   }, [items, categories]);
 
   // Clicking a tooth on the chart: fill the first blank-tooth row if one exists, otherwise
@@ -197,9 +204,12 @@ export function NewTreatmentPlanDialog({
 
           <div className="space-y-2">
             <Label>Tooth chart — click a tooth to add it to a procedure</Label>
-            <div className="flex justify-center">
-              <DentalChart itemsByTooth={itemsByTooth} onToothSelect={handleToothSelect} />
-            </div>
+            <DentalChart
+              mode="plan"
+              itemsByTooth={itemsByTooth}
+              conditionsByTooth={conditionsByTooth}
+              onToothSelect={handleToothSelect}
+            />
           </div>
 
           <div>
