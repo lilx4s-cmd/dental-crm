@@ -91,7 +91,7 @@ export default function ReportsPage() {
           label="Total Revenue"
           value={kpiLoading ? '—' : fmt(kpi?.totalRevenue ?? 0)}
           sub={kpiLoading ? undefined : `${fmt(kpi?.revenueThisMonth ?? 0)} this month`}
-          icon={DollarSign} color="text-green-500" loading={kpiLoading}
+          icon={DollarSign} color="text-success" loading={kpiLoading}
         />
         <KpiCard
           label="Active Patients"
@@ -103,7 +103,7 @@ export default function ReportsPage() {
           label="Appointments"
           value={kpiLoading ? '—' : String(kpi?.totalAppointments ?? 0)}
           sub={kpiLoading ? undefined : `${kpi?.completionRate ?? 0}% completion rate`}
-          icon={Calendar} color="text-purple-500" loading={kpiLoading}
+          icon={Calendar} color="text-accent-foreground" loading={kpiLoading}
         />
         <KpiCard
           label="Lead Conversion"
@@ -204,7 +204,7 @@ export default function ReportsPage() {
                 </ResponsiveContainer>
                 <div className="mt-3 flex gap-4 text-sm">
                   <div className="flex items-center gap-1.5">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <CheckCircle className="h-4 w-4 text-success" />
                     <span><strong>{funnel?.summary.won}</strong> Won</span>
                   </div>
                   <div className="flex items-center gap-1.5">

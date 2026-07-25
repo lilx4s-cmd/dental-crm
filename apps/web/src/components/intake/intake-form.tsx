@@ -278,7 +278,7 @@ export function IntakeForm() {
         <h1 className="mt-4 text-2xl font-semibold">{C.success.title}</h1>
         <p className="mt-2 text-muted-foreground">{C.success.body}</p>
         {done.uploadFailed && (
-          <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">
+          <p className="mt-4 rounded-lg border border-warning/30 bg-warning-muted px-4 py-3 text-sm text-warning-muted-foreground">
             {C.success.uploadFailed}
           </p>
         )}

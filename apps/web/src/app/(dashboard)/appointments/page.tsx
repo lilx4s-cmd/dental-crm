@@ -36,11 +36,11 @@ const APPOINTMENT_TYPES = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  SCHEDULED: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  CONFIRMED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  COMPLETED: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  SCHEDULED: 'bg-info-muted text-info-muted-foreground',
+  CONFIRMED: 'bg-success-muted text-success-muted-foreground',
+  IN_PROGRESS: 'bg-warning-muted text-warning-muted-foreground',
+  COMPLETED: 'bg-muted text-muted-foreground',
+  CANCELLED: 'bg-destructive-muted text-destructive-muted-foreground',
   NO_SHOW: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
 };
 
@@ -249,7 +249,7 @@ function NewAppointmentDialog({
               </div>
             )}
             {form.patientId && (
-              <p className="text-xs text-green-600 dark:text-green-400">✓ Patient selected</p>
+              <p className="text-xs text-success">✓ Patient selected</p>
             )}
           </div>
 

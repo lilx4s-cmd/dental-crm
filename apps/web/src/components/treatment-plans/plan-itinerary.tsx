@@ -179,8 +179,8 @@ export function PlanAftercare({ items }: { items: ItineraryLike['items'] }) {
             ))}
           </ul>
           {s.warningSigns && (
-            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 dark:border-red-900/50 dark:bg-red-950/20">
-              <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+            <div className="mt-3 rounded-md border border-destructive/25 bg-destructive-muted p-2">
+              <p className="text-xs font-semibold text-destructive-muted-foreground">
                 Contact the clinic if you notice
               </p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm">

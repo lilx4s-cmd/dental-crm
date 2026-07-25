@@ -33,20 +33,20 @@ function fmt(n: number, currency = 'USD') {
 }
 
 const APPT_STATUS_COLORS: Record<string, string> = {
-  SCHEDULED: 'bg-blue-100 text-blue-800',
-  CONFIRMED: 'bg-green-100 text-green-800',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-gray-100 text-gray-700',
-  CANCELLED: 'bg-red-100 text-red-800',
+  SCHEDULED: 'bg-info-muted text-info-muted-foreground',
+  CONFIRMED: 'bg-success-muted text-success-muted-foreground',
+  IN_PROGRESS: 'bg-warning-muted text-warning-muted-foreground',
+  COMPLETED: 'bg-muted text-muted-foreground',
+  CANCELLED: 'bg-destructive-muted text-destructive-muted-foreground',
   NO_SHOW: 'bg-orange-100 text-orange-800',
 };
 
 const INV_STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  SENT: 'bg-blue-100 text-blue-800',
-  PARTIALLY_PAID: 'bg-yellow-100 text-yellow-800',
-  PAID: 'bg-green-100 text-green-800',
-  OVERDUE: 'bg-red-100 text-red-800',
+  DRAFT: 'bg-muted text-muted-foreground',
+  SENT: 'bg-info-muted text-info-muted-foreground',
+  PARTIALLY_PAID: 'bg-warning-muted text-warning-muted-foreground',
+  PAID: 'bg-success-muted text-success-muted-foreground',
+  OVERDUE: 'bg-destructive-muted text-destructive-muted-foreground',
 };
 
 const APPT_TYPES = [
@@ -306,7 +306,7 @@ function InvoicesTab({ patientId }: { patientId: string }) {
     <div className="space-y-4">
       {invoices && invoices.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <Card className="py-3"><CardContent className="px-4 text-center"><p className="text-xs text-muted-foreground">Total Paid</p><p className="text-xl font-bold text-green-600">{fmt(totalPaid)}</p></CardContent></Card>
+          <Card className="py-3"><CardContent className="px-4 text-center"><p className="text-xs text-muted-foreground">Total Paid</p><p className="text-xl font-bold text-success">{fmt(totalPaid)}</p></CardContent></Card>
           <Card className="py-3"><CardContent className="px-4 text-center"><p className="text-xs text-muted-foreground">Outstanding</p><p className="text-xl font-bold text-orange-500">{fmt(totalOutstanding)}</p></CardContent></Card>
         </div>
       )}
@@ -452,7 +452,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Contact</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             {patient.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground shrink-0" />{patient.phone}</div>}
-            {patient.whatsappNumber && patient.whatsappNumber !== patient.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-green-500 shrink-0" />{patient.whatsappNumber} <span className="text-xs text-green-600">WhatsApp</span></div>}
+            {patient.whatsappNumber && patient.whatsappNumber !== patient.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-success shrink-0" />{patient.whatsappNumber} <span className="text-xs text-success">WhatsApp</span></div>}
             {patient.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground shrink-0" />{patient.email}</div>}
             {(patient.address || patient.city || patient.country) && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />{[patient.address, patient.city, patient.country].filter(Boolean).join(', ')}</div>}
             {!patient.phone && !patient.email && <p className="text-muted-foreground italic">No contact info</p>}

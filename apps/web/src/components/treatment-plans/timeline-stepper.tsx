@@ -12,7 +12,7 @@ const STATUS_META: Record<
   string,
   { icon: typeof Circle; iconClass: string; lineClass: string; label: string }
 > = {
-  COMPLETED: { icon: Check, iconClass: 'bg-green-600 text-white border-green-600', lineClass: 'bg-green-600', label: 'Completed' },
+  COMPLETED: { icon: Check, iconClass: 'bg-success text-white border-green-600', lineClass: 'bg-success', label: 'Completed' },
   IN_PROGRESS: { icon: CircleDot, iconClass: 'bg-blue-600 text-white border-blue-600', lineClass: 'bg-border', label: 'In progress' },
   SKIPPED: { icon: MinusCircle, iconClass: 'bg-muted text-muted-foreground border-border', lineClass: 'bg-border', label: 'Skipped' },
   PENDING: { icon: Circle, iconClass: 'bg-background text-muted-foreground border-border', lineClass: 'bg-border', label: 'Pending' },

@@ -75,7 +75,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 title="Message on WhatsApp"
-                className="shrink-0 rounded-full p-0.5 text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-950/50 transition-colors"
+                className="shrink-0 rounded-full p-0.5 text-success hover:bg-success-muted transition-colors"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
               </a>
@@ -108,7 +108,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
             </div>
           )}
           {lead.estimatedValue != null && (
-            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-success font-medium">
               <DollarSign className="h-3 w-3" />
               <span>{lead.estimatedValue.toLocaleString()} {lead.currency}</span>
             </div>
@@ -123,7 +123,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
         )}
 
         {isStuck && (
-          <p className="mt-2 text-[10px] font-medium text-amber-600 dark:text-amber-500">
+          <p className="mt-2 text-[10px] font-medium text-warning-muted-foreground">
             No movement · {idleDays}d
           </p>
         )}

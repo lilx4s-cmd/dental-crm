@@ -26,6 +26,28 @@ const config: Config = {
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+          muted: 'hsl(var(--destructive-muted))',
+          'muted-foreground': 'hsl(var(--destructive-muted-foreground))',
+        },
+        // One colour per meaning. `bg-success` fills solid; `bg-success-muted` with
+        // `text-success-muted-foreground` is the quiet pill used on cards and tables.
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+          muted: 'hsl(var(--success-muted))',
+          'muted-foreground': 'hsl(var(--success-muted-foreground))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+          muted: 'hsl(var(--warning-muted))',
+          'muted-foreground': 'hsl(var(--warning-muted-foreground))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+          muted: 'hsl(var(--info-muted))',
+          'muted-foreground': 'hsl(var(--info-muted-foreground))',
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
@@ -56,6 +78,16 @@ const config: Config = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+      },
+      // Elevation from one tinted hue rather than Tailwind's neutral black, so shadows sit in the
+      // same colour family as the surfaces and read as soft rather than sooty.
+      boxShadow: {
+        xs: '0 1px 2px 0 hsl(var(--shadow-color) / 0.04)',
+        sm: '0 1px 3px 0 hsl(var(--shadow-color) / 0.06), 0 1px 2px -1px hsl(var(--shadow-color) / 0.04)',
+        DEFAULT: '0 2px 6px -1px hsl(var(--shadow-color) / 0.08), 0 1px 3px -1px hsl(var(--shadow-color) / 0.05)',
+        md: '0 4px 12px -2px hsl(var(--shadow-color) / 0.10), 0 2px 6px -2px hsl(var(--shadow-color) / 0.06)',
+        lg: '0 12px 28px -8px hsl(var(--shadow-color) / 0.14), 0 4px 10px -4px hsl(var(--shadow-color) / 0.08)',
+        xl: '0 24px 48px -12px hsl(var(--shadow-color) / 0.18)',
       },
     },
   },

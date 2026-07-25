@@ -90,9 +90,9 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Leads Today" value={stats?.leadsToday} icon={TrendingUp} color="text-blue-500" loading={statsLoading} />
         <StatCard label="Total Leads" value={stats?.leadsTotal} icon={TrendingUp} color="text-indigo-500" loading={statsLoading} />
-        <StatCard label="Active Patients" value={stats?.patientsTotal} icon={Users} color="text-purple-500" loading={statsLoading} />
+        <StatCard label="Active Patients" value={stats?.patientsTotal} icon={Users} color="text-accent-foreground" loading={statsLoading} />
         <StatCard label="Appts Today" value={stats?.appointmentsToday} icon={Calendar} color="text-cyan-500" loading={statsLoading} />
-        <StatCard label="Conversion Rate" value={stats?.conversionRate} icon={UserCheck} color="text-green-500" loading={statsLoading} suffix="%" />
+        <StatCard label="Conversion Rate" value={stats?.conversionRate} icon={UserCheck} color="text-success" loading={statsLoading} suffix="%" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -126,7 +126,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-green-500" />
+              <DollarSign className="h-5 w-5 text-success" />
               Pipeline Value
             </CardTitle>
           </CardHeader>
@@ -134,7 +134,7 @@ export default function DashboardPage() {
             {statsLoading ? (
               <Skeleton className="h-12 w-full" />
             ) : (
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">{pipelineValue}</p>
+              <p className="text-3xl font-bold text-success">{pipelineValue}</p>
             )}
             {!statsLoading && (
               <div className="mt-4 space-y-2">

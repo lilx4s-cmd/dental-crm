@@ -33,13 +33,13 @@ import { usePatients } from '@/hooks/use-patients';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  SENT: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  PARTIALLY_PAID: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  PAID: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  OVERDUE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  CANCELLED: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',
-  REFUNDED: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  DRAFT: 'bg-muted text-muted-foreground',
+  SENT: 'bg-info-muted text-info-muted-foreground',
+  PARTIALLY_PAID: 'bg-warning-muted text-warning-muted-foreground',
+  PAID: 'bg-success-muted text-success-muted-foreground',
+  OVERDUE: 'bg-destructive-muted text-destructive-muted-foreground',
+  CANCELLED: 'bg-muted text-muted-foreground',
+  REFUNDED: 'bg-accent text-accent-foreground',
 };
 
 const PAYMENT_METHODS = [
@@ -255,7 +255,7 @@ function InvoiceDetailDialog({
           <div className="space-y-1 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{fmt(Number(invoice.subtotal), invoice.currency)}</span></div>
             {Number(invoice.discount) > 0 && (
-              <div className="flex justify-between text-green-600"><span>Discount</span><span>-{fmt(Number(invoice.discount), invoice.currency)}</span></div>
+              <div className="flex justify-between text-success"><span>Discount</span><span>-{fmt(Number(invoice.discount), invoice.currency)}</span></div>
             )}
             {Number(invoice.tax) > 0 && (
               <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span>{fmt(Number(invoice.tax), invoice.currency)}</span></div>
@@ -263,7 +263,7 @@ function InvoiceDetailDialog({
             <div className="flex justify-between font-bold border-t pt-1">
               <span>Total</span><span>{fmt(Number(invoice.total), invoice.currency)}</span>
             </div>
-            <div className="flex justify-between text-green-600">
+            <div className="flex justify-between text-success">
               <span>Paid</span><span>{fmt(totalPaid, invoice.currency)}</span>
             </div>
             {totalPaid < Number(invoice.total) && (
@@ -393,7 +393,7 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
                   ))}
                 </div>
               )}
-              {patientId && <p className="text-xs text-green-600">✓ Selected</p>}
+              {patientId && <p className="text-xs text-success">✓ Selected</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -562,7 +562,7 @@ export default function FinancePage() {
           label="Total Revenue"
           value={summaryLoading ? '—' : fmt(summary?.totalRevenue ?? 0)}
           icon={DollarSign}
-          color="text-green-500"
+          color="text-success"
           loading={summaryLoading}
         />
         <SummaryCard
@@ -646,7 +646,7 @@ export default function FinancePage() {
                       <TableCell className="text-right font-medium">
                         {fmt(Number(inv.total), inv.currency)}
                       </TableCell>
-                      <TableCell className={`text-right text-sm ${paid >= Number(inv.total) ? 'text-green-600' : paid > 0 ? 'text-orange-600' : 'text-muted-foreground'}`}>
+                      <TableCell className={`text-right text-sm ${paid >= Number(inv.total) ? 'text-success' : paid > 0 ? 'text-orange-600' : 'text-muted-foreground'}`}>
                         {fmt(paid, inv.currency)}
                       </TableCell>
                       <TableCell>

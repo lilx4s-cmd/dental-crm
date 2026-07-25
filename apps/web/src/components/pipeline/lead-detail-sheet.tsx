@@ -209,7 +209,7 @@ export function LeadDetailSheet({
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Message on WhatsApp"
-                      className="shrink-0 rounded-full p-1 text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-950/50 transition-colors"
+                      className="shrink-0 rounded-full p-1 text-success hover:bg-success-muted transition-colors"
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
                     </a>
@@ -229,7 +229,7 @@ export function LeadDetailSheet({
                 </div>
               )}
               {lead.estimatedValue != null && (
-                <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                <div className="flex items-center gap-2 text-sm font-medium text-success">
                   <DollarSign className="h-4 w-4" />
                   <span>{lead.estimatedValue.toLocaleString()} {lead.currency}</span>
                 </div>

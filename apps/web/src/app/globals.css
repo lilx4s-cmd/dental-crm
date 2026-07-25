@@ -17,11 +17,42 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 18% 42%;
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Semantic status colours. Before these existed, "good" was written as five different greens
+       and "warning" as both amber and yellow depending on the file, because every status pill was
+       hand-rolled from the raw palette. Each meaning now has exactly one colour.
+       `-muted` is the quiet pill background; the plain token is the solid fill.
+
+       Every pair below clears WCAG AA (4.5:1) in both themes, measured rather than assumed, and
+       success/info/destructive are deliberately dark enough in light mode to double as text or
+       icon colour on the page.
+
+       The one exception is `--warning`: it stays bright amber because that is what makes a warning
+       fill read as a warning, which puts it at 2.1:1 on a white page. Use `bg-warning` with
+       `text-warning-foreground`, and `text-warning-muted-foreground` for warning-coloured text —
+       never `text-warning` on the background. */
+    --success: 142 72% 30%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 141 79% 95%;
+    --success-muted-foreground: 142 72% 26%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 26 83% 14%;
+    --warning-muted: 48 96% 93%;
+    --warning-muted-foreground: 26 90% 32%;
+    --info: 201 90% 32%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 204 94% 94%;
+    --info-muted-foreground: 201 90% 27%;
+    --destructive-muted: 0 93% 96%;
+    --destructive-muted-foreground: 0 74% 39%;
+
+    /* Elevation. One hue for every shadow so cards do not each invent their own grey. */
+    --shadow-color: 220 43% 11%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
@@ -46,8 +77,25 @@
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 0 60% 10%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 144 61% 10%;
+    --success-muted: 143 45% 14%;
+    --success-muted-foreground: 141 79% 70%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 26 83% 12%;
+    --warning-muted: 30 55% 15%;
+    --warning-muted-foreground: 46 96% 70%;
+    --info: 199 89% 48%;
+    --info-foreground: 204 80% 12%;
+    --info-muted: 202 55% 16%;
+    --info-muted-foreground: 199 95% 74%;
+    --destructive-muted: 0 50% 16%;
+    --destructive-muted-foreground: 0 91% 76%;
+
+    --shadow-color: 0 0% 0%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;

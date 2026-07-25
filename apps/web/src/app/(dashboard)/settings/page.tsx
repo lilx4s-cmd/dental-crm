@@ -16,10 +16,10 @@ import { useClinicSettings, useUpdateClinicSettings } from '@/hooks/use-reports'
 import { useUsers } from '@/hooks/use-users';
 
 const ROLE_COLORS: Record<string, string> = {
-  SUPER_ADMIN: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  CLINIC_MANAGER: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  RECEPTION: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  SALES_CONSULTANT: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
+  CLINIC_MANAGER: 'bg-accent text-accent-foreground',
+  RECEPTION: 'bg-info-muted text-info-muted-foreground',
+  SALES_CONSULTANT: 'bg-success-muted text-success-muted-foreground',
   DENTIST: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
 };
 

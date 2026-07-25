@@ -95,8 +95,8 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
         </CardHeader>
         <CardContent className="space-y-5">
           {plan.aiSummary && (
-            <div className="rounded-md border-l-2 border-violet-400/60 bg-violet-50 px-3 py-3 dark:bg-violet-950/20">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-400">
+            <div className="rounded-md border-l-2 border-info/50 bg-info-muted px-3 py-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-info-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5" /> A simple explanation of your plan
               </p>
               <p className="mt-1 text-sm whitespace-pre-wrap">{plan.aiSummary}</p>
@@ -169,7 +169,7 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
               </>
             )}
             {decided === 'APPROVED' && (
-              <span className="flex items-center gap-1.5 text-sm text-green-700">
+              <span className="flex items-center gap-1.5 text-sm text-success-muted-foreground">
                 <ShieldCheck className="h-4 w-4" /> You approved this plan.
               </span>
             )}

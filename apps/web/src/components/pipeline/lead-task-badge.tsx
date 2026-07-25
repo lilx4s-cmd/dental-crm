@@ -21,8 +21,8 @@ export function taskUrgency(dueDate: string, now: Date = new Date()): 'overdue' 
 }
 
 const STYLES: Record<ReturnType<typeof taskUrgency>, string> = {
-  overdue: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400',
-  today: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-400',
+  overdue: 'bg-destructive-muted text-destructive-muted-foreground',
+  today: 'bg-warning-muted text-warning-muted-foreground',
   upcoming: 'bg-muted text-muted-foreground',
 };
 

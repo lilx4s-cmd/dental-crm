@@ -42,10 +42,10 @@ function fmt(n: number, currency = 'USD') {
 // The previous version keyed on non-existent 'DRAFT'/'ACTIVE' literals, so badges rendered
 // blank and the advance buttons never matched — fixed here.
 const PLAN_STATUS_COLORS: Record<string, string> = {
-  PLANNED: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  IN_PROGRESS: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  COMPLETED: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  PLANNED: 'bg-muted text-muted-foreground',
+  IN_PROGRESS: 'bg-warning-muted text-warning-muted-foreground',
+  COMPLETED: 'bg-success-muted text-success-muted-foreground',
+  CANCELLED: 'bg-destructive-muted text-destructive-muted-foreground',
 };
 
 const APPROVAL_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive'; label: string }> = {
@@ -252,8 +252,8 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         )}
 
         {plan.aiSummary && (
-          <div className="rounded-md border-l-2 border-violet-400/60 bg-violet-50 px-3 py-2 dark:bg-violet-950/20">
-            <p className="flex items-center gap-1 text-xs font-semibold text-violet-700 dark:text-violet-400">
+          <div className="rounded-md border-l-2 border-info/50 bg-info-muted px-3 py-2">
+            <p className="flex items-center gap-1 text-xs font-semibold text-info-muted-foreground">
               <Sparkles className="h-3.5 w-3.5" /> AI patient-friendly summary
             </p>
             <p className="mt-0.5 text-xs whitespace-pre-wrap">{plan.aiSummary}</p>

@@ -28,8 +28,8 @@ function todayValue(): string {
 }
 
 const DUE_STYLES: Record<ReturnType<typeof taskUrgency>, string> = {
-  overdue: 'text-red-600 dark:text-red-400',
-  today: 'text-amber-600 dark:text-amber-500',
+  overdue: 'text-destructive',
+  today: 'text-warning-muted-foreground',
   upcoming: 'text-muted-foreground',
 };
 
