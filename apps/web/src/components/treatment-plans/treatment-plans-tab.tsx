@@ -26,6 +26,7 @@ import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { useGenerateSummary, useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai';
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
 import { NewTreatmentPlanDialog } from './new-treatment-plan-dialog';
+import { PlanDiagnoses, PlanProcedures } from './plan-summary';
 import { TimelineStepper } from './timeline-stepper';
 import { WarrantySection } from './warranty-section';
 
@@ -288,36 +289,9 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           </div>
         )}
 
-        {/* Procedures */}
-        {plan.items.length > 0 && (
-          <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-xs">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-3 py-1.5 text-left">Procedure</th>
-                  <th className="px-2 py-1.5 text-center">Tooth</th>
-                  <th className="px-2 py-1.5 text-left">Material / Brand</th>
-                  <th className="px-3 py-1.5 text-right">Qty</th>
-                  <th className="px-3 py-1.5 text-right">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plan.items.map((item) => (
-                  <tr key={item.id} className="border-t">
-                    <td className="px-3 py-1.5">
-                      {item.description}
-                      {item.treatmentCategory && <span className="ml-1 text-muted-foreground">· {item.treatmentCategory.name}</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-center text-muted-foreground">{item.toothNumber ?? '—'}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">{[item.material, item.brand].filter(Boolean).join(' / ') || '—'}</td>
-                    <td className="px-3 py-1.5 text-right">{item.quantity}</td>
-                    <td className="px-3 py-1.5 text-right">{fmt(Number(item.cost), plan.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* Charted findings, then the proposed work — the order the patient document reads in. */}
+        <PlanDiagnoses plan={plan} />
+        <PlanProcedures plan={plan} />
 
         {/* Timeline */}
         <div className="space-y-2">

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -10,42 +9,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { conditionFromText, type ToothCondition } from '@dental-crm/shared';
+import { computePlanTotal, conditionFromText, type ToothCondition } from '@dental-crm/shared';
 
 import { useCreateTreatmentPlan, useTreatmentCategories } from '@/hooks/use-treatment-plans';
 import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { DentalChart } from './dental-chart';
-
-interface ItemForm {
-  treatmentCategoryId: string;
-  toothNumber: string;
-  description: string;
-  material: string;
-  brand: string;
-  unitPrice: number;
-  quantity: number;
-  discount: number;
-  clinicalNotes: string;
-}
-
-const EMPTY_ITEM: ItemForm = {
-  treatmentCategoryId: '',
-  toothNumber: '',
-  description: '',
-  material: '',
-  brand: '',
-  unitPrice: 0,
-  quantity: 1,
-  discount: 0,
-  clinicalNotes: '',
-};
-
-// cost is the authoritative line total the backend stores and sums into the plan total.
-// Keep this identical to the backend's expectation: unitPrice * quantity - discount, floored at 0.
-function lineCost(i: ItemForm) {
-  return Math.max(0, i.unitPrice * i.quantity - i.discount);
-}
+import { DiagnosesEditor, type DiagnosisEntry } from './diagnoses-editor';
+import {
+  EMPTY_ITEM,
+  ProceduresEditor,
+  emptyPhase,
+  lineCost,
+  phasePayload,
+  type ItemForm,
+  type PhaseForm,
+} from './procedures-editor';
 
 export function NewTreatmentPlanDialog({
   patientId,
@@ -63,20 +43,27 @@ export function NewTreatmentPlanDialog({
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [currency] = useState('EUR');
   const [assignedDentistId, setAssignedDentistId] = useState('');
   const [assignedCoordinatorId, setAssignedCoordinatorId] = useState('');
   const [doctorRecommendation, setDoctorRecommendation] = useState('');
+  const [diagnoses, setDiagnoses] = useState<DiagnosisEntry[]>([]);
   const [items, setItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }]);
+  const [phases, setPhases] = useState<PhaseForm[]>([emptyPhase(1)]);
 
-  const updateItem = (idx: number, patch: Partial<ItemForm>) =>
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-
-  const total = useMemo(() => items.reduce((s, i) => s + lineCost(i), 0), [items]);
+  const total = useMemo(
+    () =>
+      computePlanTotal(
+        items.map((i) => ({ cost: lineCost(i), phaseNumber: i.phaseNumber })),
+        phases,
+      ),
+    [items, phases],
+  );
 
   // Map tooth -> planned procedure(s) so the chart can highlight + tooltip them, and derive the
   // condition to draw from the category or free-text description. Deriving it means the chart
   // updates as the procedure is typed, without asking staff to pick a condition separately.
-  const { itemsByTooth, conditionsByTooth } = useMemo(() => {
+  const { itemsByTooth, plannedByTooth } = useMemo(() => {
     const byTooth: Record<string, { description: string; category?: string }[]> = {};
     const conditions: Record<string, ToothCondition> = {};
     for (const it of items) {
@@ -86,8 +73,18 @@ export function NewTreatmentPlanDialog({
       const condition = conditionFromText(category, it.description);
       if (condition) conditions[it.toothNumber] = condition;
     }
-    return { itemsByTooth: byTooth, conditionsByTooth: conditions };
+    return { itemsByTooth: byTooth, plannedByTooth: conditions };
   }, [items, categories]);
+
+  // Teeth already charted as missing stay missing on the proposed chart unless the plan puts
+  // something back — otherwise the "after" picture would grow teeth the patient does not have.
+  const planChartConditions = useMemo(() => {
+    const missing: Record<string, ToothCondition> = {};
+    for (const d of diagnoses) {
+      if (d.condition === 'MISSING') for (const t of d.toothNumbers) missing[t] = 'MISSING';
+    }
+    return { ...missing, ...plannedByTooth };
+  }, [diagnoses, plannedByTooth]);
 
   // Clicking a tooth on the chart: fill the first blank-tooth row if one exists, otherwise
   // append a fresh row pre-filled with that tooth — so a click always lands somewhere sensible.
@@ -97,7 +94,7 @@ export function NewTreatmentPlanDialog({
       if (blankIdx >= 0) {
         return prev.map((it, i) => (i === blankIdx ? { ...it, toothNumber: tooth } : it));
       }
-      return [...prev, { ...EMPTY_ITEM, toothNumber: tooth }];
+      return [...prev, { ...EMPTY_ITEM, toothNumber: tooth, phaseNumber: prev[prev.length - 1]?.phaseNumber ?? 1 }];
     });
   };
 
@@ -107,7 +104,9 @@ export function NewTreatmentPlanDialog({
     setAssignedDentistId('');
     setAssignedCoordinatorId('');
     setDoctorRecommendation('');
+    setDiagnoses([]);
     setItems([{ ...EMPTY_ITEM }]);
+    setPhases([emptyPhase(1)]);
   };
 
   const handleSubmit = () => {
@@ -128,17 +127,30 @@ export function NewTreatmentPlanDialog({
         material: i.material || undefined,
         brand: i.brand || undefined,
         clinicalNotes: i.clinicalNotes || undefined,
+        phaseNumber: i.phaseNumber,
+        toothCondition: i.toothNumber ? plannedByTooth[i.toothNumber] : undefined,
       }));
 
     create.mutate(
       {
         patientId,
         title,
+        currency,
         notes: notes || undefined,
         assignedDentistId: assignedDentistId || undefined,
         assignedCoordinatorId: assignedCoordinatorId || undefined,
         doctorRecommendation: doctorRecommendation || undefined,
         items: payloadItems,
+        diagnoses: diagnoses.length
+          ? diagnoses.map((d) => ({ condition: d.condition, toothNumbers: d.toothNumbers, notes: d.notes || undefined }))
+          : undefined,
+        // Only phases that actually carry something are worth persisting; the rest are implied
+        // by the items' phaseNumber.
+        phases: phases.filter((p) => p.name || p.discountAmount || p.discountPercent || p.healingPeriodMonths).length
+          ? phases
+              .filter((p) => p.name || p.discountAmount || p.discountPercent || p.healingPeriodMonths)
+              .map(phasePayload)
+          : undefined,
       },
       {
         onSuccess: () => {
@@ -153,7 +165,7 @@ export function NewTreatmentPlanDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Treatment Plan</DialogTitle>
         </DialogHeader>
@@ -162,7 +174,11 @@ export function NewTreatmentPlanDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Plan Title *</Label>
-              <Input placeholder="e.g. Full-mouth rehabilitation" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <Input
+                placeholder="e.g. Full-mouth rehabilitation"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </div>
             <div className="space-y-1">
               <Label>Notes</Label>
@@ -174,11 +190,15 @@ export function NewTreatmentPlanDialog({
             <div className="space-y-1">
               <Label>Assigned Dentist</Label>
               <Select value={assignedDentistId} onValueChange={setAssignedDentistId}>
-                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Unassigned</SelectItem>
                   {dentists?.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</SelectItem>
+                    <SelectItem key={d.id} value={d.id}>
+                      Dr. {d.firstName} {d.lastName}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -186,11 +206,15 @@ export function NewTreatmentPlanDialog({
             <div className="space-y-1">
               <Label>Treatment Coordinator</Label>
               <Select value={assignedCoordinatorId} onValueChange={setAssignedCoordinatorId}>
-                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Unassigned</SelectItem>
                   {coordinators?.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.firstName} {c.lastName}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -198,70 +222,60 @@ export function NewTreatmentPlanDialog({
           </div>
 
           <div className="space-y-1">
-            <Label>Doctor's Recommendation</Label>
-            <Textarea rows={2} value={doctorRecommendation} onChange={(e) => setDoctorRecommendation(e.target.value)} placeholder="Clinical recommendation shown to the patient" />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Tooth chart — click a tooth to add it to a procedure</Label>
-            <DentalChart
-              mode="plan"
-              itemsByTooth={itemsByTooth}
-              conditionsByTooth={conditionsByTooth}
-              onToothSelect={handleToothSelect}
+            <Label>Doctor&apos;s Recommendation</Label>
+            <Textarea
+              rows={2}
+              value={doctorRecommendation}
+              onChange={(e) => setDoctorRecommendation(e.target.value)}
+              placeholder="Clinical recommendation shown to the patient"
             />
           </div>
 
-          <div>
-            <Label className="mb-2 block">Procedures</Label>
-            <div className="space-y-3">
-              {items.map((item, i) => (
-                <div key={i} className="rounded-md border p-3 space-y-2">
-                  <div className="grid grid-cols-12 gap-2">
-                    <div className="col-span-4">
-                      <Select value={item.treatmentCategoryId} onValueChange={(v) => updateItem(i, { treatmentCategoryId: v })}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
-                        <SelectContent>
-                          {categories?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Input className="col-span-2 h-8 text-xs" placeholder="Tooth #" value={item.toothNumber} onChange={(e) => updateItem(i, { toothNumber: e.target.value })} />
-                    <Input className="col-span-5 h-8 text-xs" placeholder="Description" value={item.description} onChange={(e) => updateItem(i, { description: e.target.value })} />
-                    <button
-                      type="button"
-                      className="col-span-1 flex items-center justify-center text-muted-foreground hover:text-destructive"
-                      onClick={() => items.length > 1 && setItems((p) => p.filter((_, idx) => idx !== i))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-12 gap-2">
-                    <Input className="col-span-3 h-8 text-xs" placeholder="Material" value={item.material} onChange={(e) => updateItem(i, { material: e.target.value })} />
-                    <Input className="col-span-3 h-8 text-xs" placeholder="Brand" value={item.brand} onChange={(e) => updateItem(i, { brand: e.target.value })} />
-                    <Input className="col-span-2 h-8 text-xs" type="number" step="0.01" placeholder="Unit price" value={item.unitPrice} onChange={(e) => updateItem(i, { unitPrice: parseFloat(e.target.value) || 0 })} />
-                    <Input className="col-span-1 h-8 text-xs" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(i, { quantity: parseInt(e.target.value) || 1 })} />
-                    <Input className="col-span-2 h-8 text-xs" type="number" step="0.01" placeholder="Discount" value={item.discount} onChange={(e) => updateItem(i, { discount: parseFloat(e.target.value) || 0 })} />
-                    <div className="col-span-1 flex items-center justify-end text-xs font-medium tabular-nums">
-                      {lineCost(item).toLocaleString()}
-                    </div>
-                  </div>
-                  <Input className="h-8 text-xs" placeholder="Clinical notes (optional)" value={item.clinicalNotes} onChange={(e) => updateItem(i, { clinicalNotes: e.target.value })} />
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <Button variant="outline" size="sm" onClick={() => setItems((p) => [...p, { ...EMPTY_ITEM }])}>
-                <Plus className="h-3 w-3 mr-1" /> Add Procedure
-              </Button>
-              <span className="text-sm">Total: <strong className="tabular-nums">{total.toLocaleString()}</strong></span>
-            </div>
-          </div>
+          {/* Split the way the patient document reads: what is wrong now, then what to do about it. */}
+          <Tabs defaultValue="diagnosis">
+            <TabsList>
+              <TabsTrigger value="diagnosis">
+                Diagnosis{diagnoses.length > 0 && ` (${diagnoses.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="plan">Treatment Plan</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="diagnosis" className="pt-3">
+              <DiagnosesEditor value={diagnoses} onChange={setDiagnoses} />
+            </TabsContent>
+
+            <TabsContent value="plan" className="space-y-3 pt-3">
+              <Label>Proposed result — click a tooth to add it to a procedure</Label>
+              <DentalChart
+                mode="plan"
+                itemsByTooth={itemsByTooth}
+                conditionsByTooth={planChartConditions}
+                onToothSelect={handleToothSelect}
+              />
+              <ProceduresEditor
+                items={items}
+                phases={phases}
+                categories={categories}
+                currency={currency}
+                onItemsChange={setItems}
+                onPhasesChange={setPhases}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={create.isPending}>{create.isPending ? 'Creating…' : 'Create Plan'}</Button>
+        <DialogFooter className="items-center justify-between sm:justify-between">
+          <span className="text-sm">
+            Total: <strong className="tabular-nums">{total.toLocaleString()}</strong> {currency}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={create.isPending}>
+              {create.isPending ? 'Creating…' : 'Create Plan'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
