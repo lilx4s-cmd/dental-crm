@@ -239,6 +239,18 @@ export class LeadsService {
         },
         select: LEAD_SELECT,
       }),
+      // Reaching DONE means the treatment happened, so the patient this deal produced moves from
+      // being sold to being looked after. updateMany rather than update because a deal that was
+      // never converted has no patient — this is then a no-op instead of an error. The date is
+      // only set once, so re-entering DONE does not restart somebody's after-care clock.
+      ...(dto.stage === PipelineStage.DONE
+        ? [
+            this.prisma.patient.updateMany({
+              where: { convertedFromLeadId: id, aftercareStartedAt: null },
+              data: { aftercareStartedAt: new Date() },
+            }),
+          ]
+        : []),
       this.prisma.leadActivity.create({
         data: {
           leadId: id,
@@ -277,6 +289,9 @@ export class LeadsService {
           phone: lead.phone ?? undefined,
           whatsappNumber: lead.whatsappNumber ?? undefined,
           convertedFromLeadId: lead.id,
+          // This path sets the deal to DONE, so the patient starts in after-care for the same
+          // reason the stage-change path does.
+          aftercareStartedAt: new Date(),
         },
       });
 

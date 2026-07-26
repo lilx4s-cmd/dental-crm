@@ -200,6 +200,9 @@ enum FileCategory {
   PHOTO
   BEFORE_PHOTO
   AFTER_PHOTO
+  // Travel paperwork the clinic collects once a deal reaches the ticket stage.
+  PASSPORT
+  FLIGHT_TICKET
   DOCUMENT
   INVOICE_PDF
   WARRANTY_PDF
@@ -381,6 +384,10 @@ model Patient {
   // distinction matters — patient-facing documents only print an allergies section when this is
   // set, so a blank is never rendered as a clean bill of health.
   allergies           String?
+  // Set when the deal that produced this patient reaches Done. Treatment is finished and the
+  // relationship moves from selling to looking after them, which is a different job with different
+  // follow-ups — so it is a date, not a flag: how long someone has been in after-care matters.
+  aftercareStartedAt  DateTime?
   diagnosis           String?
   insuranceInfo       String?
   isActive            Boolean   @default(true)
