@@ -7,26 +7,26 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboardStats, usePipelineGroups } from '@/hooks/use-dashboard';
 
 const STAGE_COLORS: Record<string, string> = {
-  NEW_LEAD: '#6366f1',
+  NEW_DEAL: '#6366f1',
   CONTACTED: '#8b5cf6',
-  QUALIFIED: '#a78bfa',
-  CONSULTATION_SCHEDULED: '#3b82f6',
-  CONSULTATION_DONE: '#06b6d4',
-  TREATMENT_PROPOSED: '#10b981',
+  WAITING_PHOTOS: '#a78bfa',
+  CONSULTATION: '#3b82f6',
+  OFFER_SENT: '#06b6d4',
+  WAITING_FOR_TICKET: '#10b981',
   NEGOTIATION: '#f59e0b',
-  WON: '#22c55e',
+  DONE: '#22c55e',
   LOST: '#ef4444',
 };
 
 const STAGE_LABELS: Record<string, string> = {
-  NEW_LEAD: 'New Lead',
+  NEW_DEAL: 'New Deal',
   CONTACTED: 'Contacted',
-  QUALIFIED: 'Qualified',
-  CONSULTATION_SCHEDULED: 'Consult Sched.',
-  CONSULTATION_DONE: 'Consult Done',
-  TREATMENT_PROPOSED: 'Proposed',
+  WAITING_PHOTOS: 'Waiting Photos',
+  CONSULTATION: 'Consult Sched.',
+  OFFER_SENT: 'Consult Done',
+  WAITING_FOR_TICKET: 'Proposed',
   NEGOTIATION: 'Negotiation',
-  WON: 'Won',
+  DONE: 'Done',
   LOST: 'Lost',
 };
 

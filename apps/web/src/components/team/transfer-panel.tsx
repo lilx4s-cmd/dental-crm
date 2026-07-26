@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeftRight, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { PipelineStage, TASK_DUE_LABELS, TaskDueFilter } from '@dental-crm/shared';
+import { PIPELINE_STAGES, STAGE_LABELS, TASK_DUE_LABELS, TaskDueFilter } from '@dental-crm/shared';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,8 +33,7 @@ const ROLE_LABELS: Record<string, string> = {
 // Radix reserves the empty string for "nothing selected", so "any" needs a value of its own.
 const ANY = '__any__';
 
-const humanStage = (stage: string) =>
-  stage.charAt(0) + stage.slice(1).toLowerCase().replace(/_/g, ' ');
+const humanStage = (stage: string) => STAGE_LABELS[stage] ?? stage;
 
 function userName(u?: User) {
   return u ? `${u.firstName} ${u.lastName}` : 'someone';
@@ -87,8 +86,8 @@ export function TransferPanel({ users }: { users: User[] }) {
       onSuccess: (result) => {
         toast.success(
           result.transferred > 0
-            ? `Moved ${result.transferred} lead${result.transferred === 1 ? '' : 's'} to ${userName(toUser)}`
-            : 'Nothing to move — those leads already belong to that salesperson',
+            ? `Moved ${result.transferred} deal${result.transferred === 1 ? '' : 's'} to ${userName(toUser)}`
+            : 'Nothing to move — those deals already belong to that salesperson',
         );
         setConfirmOpen(false);
         setFromUserId('');
@@ -105,10 +104,10 @@ export function TransferPanel({ users }: { users: User[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Transfer Leads</CardTitle>
+        <CardTitle>Transfer Deals</CardTitle>
         <CardDescription>
-          Move leads between salespeople. Narrow by owner, stage or follow-up state, check the list,
-          then commit. Closed (won/lost) leads keep their original owner so past results stay
+          Move deals between salespeople. Narrow by owner, stage or follow-up state, check the list,
+          then commit. Closed (won/lost) deals keep their original owner so past results stay
           accurate — use this for handovers, not for editing history.
         </CardDescription>
       </CardHeader>
@@ -164,9 +163,9 @@ export function TransferPanel({ users }: { users: User[] }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ANY}>Any stage</SelectItem>
-                {Object.values(PipelineStage).map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {humanStage(s)}
+                {PIPELINE_STAGES.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -205,7 +204,7 @@ export function TransferPanel({ users }: { users: User[] }) {
                 'Checking…'
               ) : (
                 <>
-                  <strong>{matching}</strong> lead{matching === 1 ? '' : 's'} match
+                  <strong>{matching}</strong> deal{matching === 1 ? '' : 's'} match
                   {preview && preview.showing < matching && (
                     <span className="text-muted-foreground">
                       {' '}
@@ -256,14 +255,14 @@ export function TransferPanel({ users }: { users: User[] }) {
           <DialogHeader>
             <DialogTitle>Confirm transfer</DialogTitle>
             <DialogDescription>
-              This moves <strong>{matching}</strong> lead{matching === 1 ? '' : 's'}
+              This moves <strong>{matching}</strong> deal{matching === 1 ? '' : 's'}
               {fromUser ? (
                 <>
                   {' '}
                   from <strong>{userName(fromUser)}</strong>
                 </>
               ) : null}{' '}
-              to <strong>{userName(toUser)}</strong>. Each lead gets a history entry so this can be
+              to <strong>{userName(toUser)}</strong>. Each deal gets a history entry so this can be
               traced later.
             </DialogDescription>
           </DialogHeader>

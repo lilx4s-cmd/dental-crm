@@ -184,7 +184,7 @@ export class LeadsService {
         // unassigned — a non-admin's pipeline view is scoped to assignedToId, so
         // an unassigned lead used to vanish from every salesperson's board.
         assignedToId: dto.assignedToId ?? currentUser?.sub,
-        stage: $Enums.PipelineStage.NEW_LEAD,
+        stage: $Enums.PipelineStage.NEW_DEAL,
         status: $Enums.LeadStatus.ACTIVE,
       },
       select: LEAD_SELECT,
@@ -216,7 +216,7 @@ export class LeadsService {
     const lead = await this.findOne(id, currentUser);
 
     const newStatus =
-      dto.stage === PipelineStage.WON
+      dto.stage === PipelineStage.DONE
         ? $Enums.LeadStatus.WON
         : dto.stage === PipelineStage.LOST
           ? $Enums.LeadStatus.LOST
@@ -282,7 +282,7 @@ export class LeadsService {
 
       const updated = await tx.lead.update({
         where: { id },
-        data: { stage: $Enums.PipelineStage.WON, status: $Enums.LeadStatus.WON },
+        data: { stage: $Enums.PipelineStage.DONE, status: $Enums.LeadStatus.WON },
         select: LEAD_SELECT,
       });
 
@@ -292,7 +292,7 @@ export class LeadsService {
             leadId: id,
             userId: lead.assignedTo.id,
             fromStage: lead.stage as $Enums.PipelineStage,
-            toStage: $Enums.PipelineStage.WON,
+            toStage: $Enums.PipelineStage.DONE,
             note: 'Converted to patient',
           },
         });

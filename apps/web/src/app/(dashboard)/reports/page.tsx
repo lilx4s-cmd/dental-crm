@@ -15,9 +15,9 @@ import {
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const STAGE_COLORS: Record<string, string> = {
-  NEW_LEAD: '#6366f1', CONTACTED: '#8b5cf6', QUALIFIED: '#a78bfa',
-  CONSULTATION_SCHEDULED: '#3b82f6', CONSULTATION_DONE: '#06b6d4',
-  TREATMENT_PROPOSED: '#10b981', NEGOTIATION: '#f59e0b', WON: '#22c55e', LOST: '#ef4444',
+  NEW_DEAL: '#6366f1', CONTACTED: '#8b5cf6', WAITING_PHOTOS: '#a78bfa',
+  CONSULTATION: '#3b82f6', OFFER_SENT: '#06b6d4',
+  WAITING_FOR_TICKET: '#10b981', NEGOTIATION: '#f59e0b', DONE: '#22c55e', LOST: '#ef4444',
 };
 const APPT_COLORS: Record<string, string> = {
   SCHEDULED: '#6366f1', CONFIRMED: '#3b82f6', IN_PROGRESS: '#f59e0b',

@@ -42,15 +42,25 @@ enum LeadSource {
   OTHER
 }
 
+// The clinic's own sales process, replacing the generic stages this started with.
+//
+// LOST is kept even though it is not part of the stated flow: it is where a dead deal goes, the
+// lost-reason prompt hangs off it, and the deals already sitting there would otherwise have
+// nowhere to be. DONE is the win — Lead.status still derives from the stage, so DONE sets WON.
 enum PipelineStage {
-  NEW_LEAD
+  NEW_DEAL
+  NO_RESPONSE_1
+  NO_RESPONSE_2
+  NO_RESPONSE_3
   CONTACTED
-  QUALIFIED
-  CONSULTATION_SCHEDULED
-  CONSULTATION_DONE
-  TREATMENT_PROPOSED
+  WAITING_PHOTOS
+  CONSULTATION
+  OFFER_SENT
   NEGOTIATION
-  WON
+  WAITING_FOR_TICKET
+  TICKET
+  SECOND_VISIT
+  DONE
   LOST
 }
 
@@ -445,7 +455,7 @@ model Lead {
   utmCampaign    String?
   utmTerm        String?
   utmContent     String?
-  stage          PipelineStage @default(NEW_LEAD)
+  stage          PipelineStage @default(NEW_DEAL)
   status         LeadStatus    @default(ACTIVE)
   assignedToId   String?
   assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])

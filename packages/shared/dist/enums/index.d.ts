@@ -7,14 +7,19 @@ export declare const Role: {
 };
 export type Role = (typeof Role)[keyof typeof Role];
 export declare const PipelineStage: {
-    readonly NEW_LEAD: "NEW_LEAD";
+    readonly NEW_DEAL: "NEW_DEAL";
+    readonly NO_RESPONSE_1: "NO_RESPONSE_1";
+    readonly NO_RESPONSE_2: "NO_RESPONSE_2";
+    readonly NO_RESPONSE_3: "NO_RESPONSE_3";
     readonly CONTACTED: "CONTACTED";
-    readonly QUALIFIED: "QUALIFIED";
-    readonly CONSULTATION_SCHEDULED: "CONSULTATION_SCHEDULED";
-    readonly CONSULTATION_DONE: "CONSULTATION_DONE";
-    readonly TREATMENT_PROPOSED: "TREATMENT_PROPOSED";
+    readonly WAITING_PHOTOS: "WAITING_PHOTOS";
+    readonly CONSULTATION: "CONSULTATION";
+    readonly OFFER_SENT: "OFFER_SENT";
     readonly NEGOTIATION: "NEGOTIATION";
-    readonly WON: "WON";
+    readonly WAITING_FOR_TICKET: "WAITING_FOR_TICKET";
+    readonly TICKET: "TICKET";
+    readonly SECOND_VISIT: "SECOND_VISIT";
+    readonly DONE: "DONE";
     readonly LOST: "LOST";
 };
 export type PipelineStage = (typeof PipelineStage)[keyof typeof PipelineStage];

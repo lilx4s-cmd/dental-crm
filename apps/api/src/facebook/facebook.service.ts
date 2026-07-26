@@ -75,7 +75,7 @@ export class FacebookService {
         email,
         phone,
         source: $Enums.LeadSource.FACEBOOK_ADS,
-        stage: $Enums.PipelineStage.NEW_LEAD,
+        stage: $Enums.PipelineStage.NEW_DEAL,
         status: $Enums.LeadStatus.ACTIVE,
         campaignId: campaign?.id,
         notes: `Auto-created from Facebook Lead Ad (leadgen_id: ${entry.leadgen_id})`,

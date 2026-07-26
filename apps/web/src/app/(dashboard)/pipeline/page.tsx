@@ -28,18 +28,10 @@ import {
   type PipelineGroup,
 } from '@/hooks/use-leads';
 import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
+// The board draws whatever the shared stage list says, so renaming a stage renames it here,
+// in the filters, on the dashboard and in the reports at once.
+import { PIPELINE_STAGES as STAGES } from '@dental-crm/shared';
 
-const STAGES = [
-  { id: 'NEW_LEAD', label: 'New Lead', color: 'border-indigo-400' },
-  { id: 'CONTACTED', label: 'Contacted', color: 'border-purple-400' },
-  { id: 'QUALIFIED', label: 'Qualified', color: 'border-violet-400' },
-  { id: 'CONSULTATION_SCHEDULED', label: 'Consult Sched.', color: 'border-blue-400' },
-  { id: 'CONSULTATION_DONE', label: 'Consult Done', color: 'border-cyan-400' },
-  { id: 'TREATMENT_PROPOSED', label: 'Treatment Proposed', color: 'border-teal-400' },
-  { id: 'NEGOTIATION', label: 'Negotiation', color: 'border-amber-400' },
-  { id: 'WON', label: 'Won', color: 'border-green-400' },
-  { id: 'LOST', label: 'Lost', color: 'border-red-400' },
-];
 
 // Bitrix's Kanban shows each column's deal count *and* its total pipeline value —
 // sum estimatedValue per currency (almost always a single currency in practice,
@@ -100,9 +92,9 @@ function DroppableColumn({
 // Turns the API's error into something a receptionist can act on.
 function moveErrorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : '';
-  if (/forbidden/i.test(raw)) return 'Your role cannot move leads between stages.';
-  if (/not found/i.test(raw)) return 'This lead is assigned to someone else, so you cannot move it.';
-  return raw || 'Failed to move lead';
+  if (/forbidden/i.test(raw)) return 'Your role cannot move deals between stages.';
+  if (/not found/i.test(raw)) return 'This deal is assigned to someone else, so you cannot move it.';
+  return raw || 'Failed to move deal';
 }
 
 export default function PipelinePage() {
@@ -141,7 +133,7 @@ export default function PipelinePage() {
     try {
       await updateStage.mutateAsync({ id: lead.id, stage: toStage, ...extra });
     } catch (e) {
-      // The API's reason is the useful part. A blanket "Failed to move lead" hid the two things
+      // The API's reason is the useful part. A blanket "Failed to move deal" hid the two things
       // that actually go wrong here — the user's role cannot move cards, or the lead belongs to a
       // colleague — leaving people to guess why the card kept snapping back.
       toast.error(moveErrorMessage(e));
@@ -185,8 +177,8 @@ export default function PipelinePage() {
     <div className="space-y-4 h-full">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
-          <p className="text-muted-foreground mt-1">Drag leads between stages to update their status</p>
+          <h1 className="text-3xl font-bold tracking-tight">Deals</h1>
+          <p className="text-muted-foreground mt-1">Drag deals between stages to update their status</p>
         </div>
         <div className="flex items-center gap-2">
           {/* The enquiry form is only useful if staff can find its link. Without this the page
@@ -207,7 +199,7 @@ export default function PipelinePage() {
           <NewLeadDialog>
             <Button>
               <UserPlus className="h-4 w-4 mr-2" />
-              New Lead
+              New Deal
             </Button>
           </NewLeadDialog>
         </div>

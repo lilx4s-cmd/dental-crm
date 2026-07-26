@@ -65,7 +65,7 @@ export class IntakeService {
           phone: dto.phone,
           whatsappNumber: dto.whatsappNumber,
           source: $Enums.LeadSource.WEBSITE,
-          stage: $Enums.PipelineStage.NEW_LEAD,
+          stage: $Enums.PipelineStage.NEW_DEAL,
           status: $Enums.LeadStatus.ACTIVE,
           utmSource: dto.utmSource,
           utmMedium: dto.utmMedium,

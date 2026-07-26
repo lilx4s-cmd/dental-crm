@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { STAGE_LABELS } from '@dental-crm/shared';
 import { useLead, useLeadActivities, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
@@ -120,18 +121,6 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
     </div>
   );
 }
-
-const STAGE_LABELS: Record<string, string> = {
-  NEW_LEAD: 'New Lead',
-  CONTACTED: 'Contacted',
-  QUALIFIED: 'Qualified',
-  CONSULTATION_SCHEDULED: 'Consult Sched.',
-  CONSULTATION_DONE: 'Consult Done',
-  TREATMENT_PROPOSED: 'Treatment Proposed',
-  NEGOTIATION: 'Negotiation',
-  WON: 'Won',
-  LOST: 'Lost',
-};
 
 function initials(firstName?: string, lastName?: string | null) {
   return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';

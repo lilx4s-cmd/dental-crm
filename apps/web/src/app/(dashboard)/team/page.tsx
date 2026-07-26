@@ -153,7 +153,7 @@ export default function TeamPage() {
       {isAdmin ? (
         <Tabs defaultValue="transfer">
           <TabsList>
-            <TabsTrigger value="transfer">Transfer Leads</TabsTrigger>
+            <TabsTrigger value="transfer">Transfer Deals</TabsTrigger>
             <TabsTrigger value="activity">Activity History</TabsTrigger>
           </TabsList>
           <TabsContent value="transfer">

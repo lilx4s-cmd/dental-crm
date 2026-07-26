@@ -58,7 +58,7 @@ describe('IntakeService.submit', () => {
     const data = leadCreate.mock.calls[0][0].data;
 
     expect(data.source).toBe('WEBSITE');
-    expect(data.stage).toBe('NEW_LEAD');
+    expect(data.stage).toBe('NEW_DEAL');
     expect(data.status).toBe('ACTIVE');
     // Nobody has claimed the enquiry yet; the pipeline's "no movement" filter surfaces it.
     expect(data.assignedToId).toBeUndefined();

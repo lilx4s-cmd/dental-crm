@@ -5,7 +5,8 @@ import { Search, X, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import {
   DEFAULT_PIPELINE_FILTER_FIELDS,
   PIPELINE_FILTER_FIELDS,
-  PipelineStage,
+  PIPELINE_STAGES,
+  STAGE_LABELS,
   LeadSource,
   TASK_DUE_LABELS,
   TaskDueFilter,
@@ -27,18 +28,6 @@ import {
 import { cn } from '@/lib/utils';
 import type { PipelineFilters } from '@/hooks/use-leads';
 import { useUsers } from '@/hooks/use-users';
-
-const STAGE_LABELS: Record<string, string> = {
-  NEW_LEAD: 'New Lead',
-  CONTACTED: 'Contacted',
-  QUALIFIED: 'Qualified',
-  CONSULTATION_SCHEDULED: 'Consultation Scheduled',
-  CONSULTATION_DONE: 'Consultation Done',
-  TREATMENT_PROPOSED: 'Treatment Proposed',
-  NEGOTIATION: 'Negotiation',
-  WON: 'Won',
-  LOST: 'Lost',
-};
 
 const SOURCE_LABELS: Record<string, string> = {
   WALK_IN: 'Walk-in',
@@ -357,7 +346,7 @@ function FilterField({
       {fieldKey === 'assignedToId' &&
         asSelect((users ?? []).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` })))}
       {fieldKey === 'stage' &&
-        asSelect(Object.values(PipelineStage).map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s })))}
+        asSelect(PIPELINE_STAGES.map((s) => ({ value: s.id, label: s.label })))}
       {fieldKey === 'source' &&
         asSelect(Object.values(LeadSource).map((s) => ({ value: s, label: SOURCE_LABELS[s] ?? s })))}
       {fieldKey === 'taskDue' &&

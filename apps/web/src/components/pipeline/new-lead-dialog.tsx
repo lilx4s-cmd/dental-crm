@@ -95,7 +95,7 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New Lead</DialogTitle>
+          <DialogTitle>New Deal</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="grid grid-cols-2 gap-3">
