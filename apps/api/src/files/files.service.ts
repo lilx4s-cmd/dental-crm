@@ -23,9 +23,27 @@ export class FilesService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    this.url = this.config.get<string>('supabase.url') || undefined;
+    this.url = FilesService.normaliseProjectUrl(this.config.get<string>('supabase.url'));
     this.serviceRoleKey = this.config.get<string>('supabase.serviceRoleKey') || undefined;
     this.bucket = this.config.get<string>('supabase.bucket') ?? '';
+  }
+
+  /**
+   * Reduces whatever was pasted into SUPABASE_URL down to the project origin.
+   *
+   * Supabase's API settings page shows the REST endpoint most prominently, so
+   * `https://<ref>.supabase.co/rest/v1/` is the natural thing to copy — but the client appends its
+   * own paths, so that would send storage calls to `/rest/v1/storage/v1/...` and 404 with nothing
+   * to suggest the URL was the problem. Cheap to accept, expensive to debug.
+   */
+  private static normaliseProjectUrl(raw?: string): string | undefined {
+    if (!raw?.trim()) return undefined;
+    try {
+      return new URL(raw.trim()).origin;
+    } catch {
+      // Not a URL at all — hand it through so env validation reports it rather than hiding it.
+      return raw.trim();
+    }
   }
 
   /** The configured bucket, or undefined when storage has not been set up for this clinic. */
