@@ -29,6 +29,10 @@ const envSchema = z.object({
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_WEB_ENABLED: z.string().optional(),
+  EVOLUTION_API_URL: z.string().optional(),
+  EVOLUTION_API_KEY: z.string().optional(),
+  EVOLUTION_INSTANCE: z.string().optional(),
+  EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via
   // xAI's Grok API degrade gracefully when unset — see ai/ai.service.ts.
   XAI_API_KEY: z.string().optional(),

@@ -41,7 +41,13 @@ export class WhatsAppWebService {
     // Reuses the Cloud API service's storage path so both transports record a message identically.
     private readonly whatsapp: WhatsAppService,
   ) {
-    this.enabled = this.config.get<string>('whatsapp.webEnabled') === 'true';
+    // Refuses to run alongside Evolution. Two WhatsApp clients on one number would each ingest
+    // every inbound message, so every patient reply would appear twice in the CRM.
+    const evolutionConfigured = !!this.config.get<string>('evolution.url');
+    this.enabled = this.config.get<string>('whatsapp.webEnabled') === 'true' && !evolutionConfigured;
+    if (evolutionConfigured) {
+      this.logger.log('Evolution API is configured — the in-process WhatsApp session stays off.');
+    }
     if (!this.enabled) this.state = 'disabled';
   }
 

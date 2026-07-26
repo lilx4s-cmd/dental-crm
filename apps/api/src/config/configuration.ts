@@ -40,6 +40,16 @@ export default () => ({
     // shipped.
     webEnabled: process.env.WHATSAPP_WEB_ENABLED,
   },
+  // Self-hosted Evolution API gateway. Preferred over the in-process Baileys session, because the
+  // WhatsApp connection then lives in a service that stays up independently of CRM deploys.
+  evolution: {
+    url: process.env.EVOLUTION_API_URL,
+    apiKey: process.env.EVOLUTION_API_KEY,
+    instance: process.env.EVOLUTION_INSTANCE,
+    // Evolution does not sign its webhooks, so a shared secret on the URL is the mechanism
+    // available for telling a real delivery from anyone who found the endpoint.
+    webhookToken: process.env.EVOLUTION_WEBHOOK_TOKEN,
+  },
   xai: {
     apiKey: process.env.XAI_API_KEY,
     model: process.env.XAI_MODEL || 'grok-4.5',

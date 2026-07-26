@@ -38,6 +38,16 @@ services:
         sync: false
       - key: WHATSAPP_APP_SECRET
         sync: false
+      - key: WHATSAPP_WEB_ENABLED
+        sync: false
+      - key: EVOLUTION_API_URL
+        sync: false
+      - key: EVOLUTION_API_KEY
+        sync: false
+      - key: EVOLUTION_INSTANCE
+        sync: false
+      - key: EVOLUTION_WEBHOOK_TOKEN
+        sync: false
       - key: XAI_API_KEY
         sync: false
       - key: XAI_MODEL

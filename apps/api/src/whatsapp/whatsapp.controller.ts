@@ -18,6 +18,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@dental-crm/shared';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppWebService } from './whatsapp-web.service';
+import { EvolutionService } from './evolution.service';
 
 @ApiTags('whatsapp')
 @Controller('whatsapp')
@@ -25,7 +26,46 @@ export class WhatsAppController {
   constructor(
     private readonly whatsAppService: WhatsAppService,
     private readonly webService: WhatsAppWebService,
+    private readonly evolution: EvolutionService,
   ) {}
+
+  // ── Self-hosted Evolution API gateway ──
+
+  @Get('evolution/status')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @ApiOperation({ summary: 'Evolution instance state, with a pairing QR when one is waiting' })
+  evolutionStatus() {
+    return this.evolution.status();
+  }
+
+  @Post('evolution/connect')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ask Evolution to start pairing and return a fresh QR' })
+  async evolutionConnect() {
+    await this.evolution.fetchQr().catch(() => null);
+    return this.evolution.status();
+  }
+
+  /**
+   * Inbound messages relayed by Evolution.
+   *
+   * Public, because Evolution posts here unauthenticated. It does not sign payloads the way Meta
+   * does, so the shared token on the query string is the only thing distinguishing a real delivery
+   * from anyone who found the URL — configure the webhook in Evolution as
+   * `/api/whatsapp/evolution/webhook?token=...`.
+   */
+  @Post('evolution/webhook')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Inbound messages from Evolution (shared-token authorised)' })
+  async evolutionWebhook(@Query('token') token: string, @Body() body: Record<string, unknown>) {
+    if (!this.evolution.verifyWebhookToken(token)) {
+      throw new UnauthorizedException('Invalid webhook token');
+    }
+    await this.evolution.handleWebhook(body);
+    return 'EVENT_RECEIVED';
+  }
 
   // ── QR-linked session (interim, until Cloud API verification completes) ──
   //
