@@ -14,6 +14,7 @@ export const PUBLIC_PATHS = ['/login'];
 
 export const PROTECTED_PATH_PREFIXES = [
   '/dashboard',
+  '/my-day',
   '/patients',
   '/pipeline',
   '/team',

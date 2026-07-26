@@ -15,6 +15,8 @@ import {
   TaskDueFilter,
   taskDueRange,
   stuckBefore,
+  nextAction,
+  RECYCLE_ANGLE,
 } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
@@ -477,6 +479,60 @@ export class LeadsService {
     ]);
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /**
+   * What this salesperson should do today, and what has gone cold.
+   *
+   * Both lists come from rules over data the pipeline already holds — nothing here calls a model.
+   * "This deal has sat in Offer Sent for six days" is a fact, and deriving it is free and always
+   * right; a language model would be slower, cost money per deal, and occasionally be wrong. The
+   * model is used later, to write the message, once these rules have decided who needs one.
+   */
+  async workList(currentUser: JwtPayload) {
+    const where: Prisma.LeadWhereInput = { status: $Enums.LeadStatus.ACTIVE };
+    // Everyone except Super Admin sees their own work; a shared list nobody owns gets ignored.
+    if (!this.canSeeAll(currentUser)) where.assignedToId = currentUser.sub;
+
+    // One pass over the open pipeline. Every stage has a different cadence, so the decision cannot
+    // be pushed into SQL without encoding the cadence table twice.
+    const leads = await this.prisma.lead.findMany({
+      where,
+      select: {
+        ...LEAD_SELECT,
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { stageChangedAt: 'asc' },
+    });
+
+    const now = new Date();
+    const due: Array<Record<string, unknown>> = [];
+    const dormant: Array<Record<string, unknown>> = [];
+
+    for (const lead of leads) {
+      const action = nextAction(lead.stage, lead.stageChangedAt, now);
+      if (!action.action) continue;
+
+      // An open task already says what to do and when, so the cadence must not talk over it — that
+      // would show two contradictory instructions for the same deal on the same morning.
+      const hasOpenTask = lead.tasks.length > 0;
+
+      if (action.dormant) {
+        dormant.push({ lead, action, recycleAngle: RECYCLE_ANGLE[lead.stage] ?? null });
+      } else if (!hasOpenTask && (action.urgency === 'overdue' || action.urgency === 'due')) {
+        due.push({ lead, action });
+      }
+    }
+
+    // Worst first: the deal ignored longest is the one most likely to be lost outright.
+    due.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
+    dormant.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
+
+    return {
+      due,
+      dormant,
+      counts: { due: due.length, dormant: dormant.length, openPipeline: leads.length },
+    };
   }
 
   // ─────────────────────────── LEAD TASKS ───────────────────────────

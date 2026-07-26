@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, Calendar, DollarSign,
-  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone, ArrowLeftRight,
+  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone, ArrowLeftRight, Sunrise,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, phase: 1 },
   { href: '/patients', label: 'Patients', icon: Users, phase: 2 },
+  { href: '/my-day', label: 'My Day', icon: Sunrise, phase: 2 },
   { href: '/pipeline', label: 'Deals', icon: GitBranch, phase: 2 },
   { href: '/team', label: 'Sales Team', icon: ArrowLeftRight, phase: 2 },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone, phase: 3 },

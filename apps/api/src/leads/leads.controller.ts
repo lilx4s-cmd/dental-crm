@@ -39,6 +39,14 @@ export class LeadsController {
     return this.leadsService.findAllByStage(query, user);
   }
 
+  // Today's follow-ups plus the cold deals worth re-approaching. Declared before ':id'.
+  @Get('work-list')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Deals due a follow-up today, and dormant deals to recycle' })
+  workList(@CurrentUser() user: JwtPayload) {
+    return this.leadsService.workList(user);
+  }
+
   // Sales oversight feed. Declared before ':id'. Service scopes non-admins to
   // their own actions; Super Admin sees everyone (optionally filtered by userId).
   @Get('activity')
