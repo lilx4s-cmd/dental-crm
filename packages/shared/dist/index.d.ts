@@ -5,6 +5,7 @@ export * from './treatment-plan/presets';
 export * from './treatment-plan/aftercare';
 export * from './pipeline/filters';
 export * from './pipeline/stages';
+export * from './finance/case-economics';
 export * from './schemas/auth.schema';
 export * from './schemas/user.schema';
 export * from './schemas/patient.schema';

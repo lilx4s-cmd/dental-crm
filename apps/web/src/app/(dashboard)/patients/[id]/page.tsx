@@ -4,7 +4,7 @@ import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Edit2, Plus,
-  CreditCard, FileText, Stethoscope, Trash2,
+  CreditCard, FileText, Stethoscope, Trash2, ClipboardList,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CasePlanningTab } from '@/components/patients/case-planning-tab';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -475,13 +476,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="appointments">
+      <Tabs defaultValue="planning">
         <TabsList>
+          <TabsTrigger value="planning" className="gap-2"><ClipboardList className="h-4 w-4" />Planning</TabsTrigger>
           <TabsTrigger value="appointments" className="gap-2"><Calendar className="h-4 w-4" />Appointments</TabsTrigger>
           <TabsTrigger value="invoices" className="gap-2"><FileText className="h-4 w-4" />Invoices</TabsTrigger>
           <TabsTrigger value="plans" className="gap-2"><Stethoscope className="h-4 w-4" />Treatment Plans</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="planning" className="mt-4">
+          <CasePlanningTab patientId={id} />
+        </TabsContent>
         <TabsContent value="appointments" className="mt-4">
           <AppointmentsTab patientId={id} />
         </TabsContent>

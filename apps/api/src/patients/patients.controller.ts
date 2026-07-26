@@ -8,6 +8,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { PatientsService } from './patients.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
+import { UpdateCaseEconomicsDto } from './dto/case-economics.dto';
 import { PatientsQueryDto } from './dto/patients-query.dto';
 
 @ApiTags('patients')
@@ -33,6 +34,20 @@ export class PatientsController {
   @ApiOperation({ summary: 'Get a patient by ID' })
   findOne(@Param('id') id: string) {
     return this.patientsService.findOne(id);
+  }
+
+  @Get(':id/case')
+  @ApiOperation({ summary: 'Case file: economics, invoices and appointments for one patient' })
+  caseFile(@Param('id') id: string) {
+    return this.patientsService.caseFile(id);
+  }
+
+  // Money that only management should be setting.
+  @Patch(':id/case')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @ApiOperation({ summary: 'Set the service cost and sales commission for a case' })
+  updateCaseEconomics(@Param('id') id: string, @Body() dto: UpdateCaseEconomicsDto) {
+    return this.patientsService.updateCaseEconomics(id, dto);
   }
 
   @Patch(':id')

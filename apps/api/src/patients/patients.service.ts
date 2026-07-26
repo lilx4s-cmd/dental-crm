@@ -3,6 +3,8 @@ import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
+import { UpdateCaseEconomicsDto } from './dto/case-economics.dto';
+import { computeCaseEconomics } from '@dental-crm/shared';
 import { PatientsQueryDto } from './dto/patients-query.dto';
 
 const PATIENT_SELECT = {
@@ -112,6 +114,90 @@ export class PatientsService {
       },
       select: PATIENT_SELECT,
     });
+  }
+
+  /**
+   * The case file: what was quoted, what was paid, what it cost and what is left.
+   *
+   * Price and paid are read from the invoices and payments that already exist rather than stored
+   * again — one answer to "how much has this patient paid", not two that can disagree. Appointments
+   * come along because "when are they in" is the other half of planning a case.
+   */
+  async caseFile(id: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        caseNumber: true,
+        firstName: true,
+        lastName: true,
+        aftercareStartedAt: true,
+        serviceCost: true,
+        salesCommission: true,
+        commissionUser: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const [invoices, appointments] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { patientId: id, status: { not: 'CANCELLED' } },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          total: true,
+          currency: true,
+          status: true,
+          issuedAt: true,
+          // Only settled money counts as paid — a pending authorisation is not in the bank.
+          payments: { where: { status: 'COMPLETED' }, select: { amount: true, paidAt: true } },
+        },
+      }),
+      this.prisma.appointment.findMany({
+        where: { patientId: id },
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          type: true,
+          status: true,
+          dentist: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { startTime: 'asc' },
+      }),
+    ]);
+
+    const economics = computeCaseEconomics({
+      invoiceTotals: invoices.map((i) => Number(i.total)),
+      completedPayments: invoices.flatMap((i) => i.payments.map((p) => Number(p.amount))),
+      serviceCost: patient.serviceCost == null ? null : Number(patient.serviceCost),
+      salesCommission: patient.salesCommission == null ? null : Number(patient.salesCommission),
+    });
+
+    return {
+      patient,
+      economics,
+      currency: invoices[0]?.currency ?? 'USD',
+      invoices: invoices.map(({ payments, ...i }) => ({
+        ...i,
+        paid: payments.reduce((s, p) => s + Number(p.amount), 0),
+      })),
+      appointments,
+    };
+  }
+
+  async updateCaseEconomics(id: string, dto: UpdateCaseEconomicsDto) {
+    await this.findOne(id);
+    await this.prisma.patient.update({
+      where: { id },
+      data: {
+        serviceCost: dto.serviceCost,
+        salesCommission: dto.salesCommission,
+        // Empty string means "nobody", which a foreign key cannot hold.
+        commissionUserId: dto.commissionUserId === '' ? null : dto.commissionUserId,
+      },
+    });
+    return this.caseFile(id);
   }
 
   async deactivate(id: string) {
