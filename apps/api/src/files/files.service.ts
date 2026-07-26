@@ -17,13 +17,18 @@ export class FilesService {
   private supabase: SupabaseClient | null = null;
   private readonly bucket: string;
   private readonly url?: string;
+  private readonly urlMalformed: boolean = false;
   private readonly serviceRoleKey?: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    this.url = FilesService.normaliseProjectUrl(this.config.get<string>('supabase.url'));
+    const rawUrl = this.config.get<string>('supabase.url');
+    this.url = FilesService.normaliseProjectUrl(rawUrl);
+    // Distinguishes "nobody set it" from "someone set something unusable", which need different
+    // fixes and would otherwise present identically.
+    this.urlMalformed = !!rawUrl?.trim() && !this.url;
     this.serviceRoleKey = this.config.get<string>('supabase.serviceRoleKey') || undefined;
     this.bucket = this.config.get<string>('supabase.bucket') ?? '';
   }
@@ -41,8 +46,9 @@ export class FilesService {
     try {
       return new URL(raw.trim()).origin;
     } catch {
-      // Not a URL at all — hand it through so env validation reports it rather than hiding it.
-      return raw.trim();
+      // Unusable. Reported through storageStatus rather than thrown: boot-time validation would
+      // take the whole clinic offline over a typo in an optional integration.
+      return undefined;
     }
   }
 
@@ -60,7 +66,7 @@ export class FilesService {
    */
   storageStatus() {
     const missing: string[] = [];
-    if (!this.url) missing.push('SUPABASE_URL');
+    if (!this.url) missing.push(this.urlMalformed ? 'SUPABASE_URL (set, but not a valid URL)' : 'SUPABASE_URL');
     if (!this.serviceRoleKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
     if (!this.bucket) missing.push('SUPABASE_STORAGE_BUCKET');
     return { configured: missing.length === 0, missing, bucket: this.bucket || null };

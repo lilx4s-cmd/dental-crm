@@ -9,11 +9,15 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),
-  // File storage (uploads, PDFs) via Supabase. Optional at boot so a missing/unset bucket
-  // doesn't take down the entire API — only the specific files/pdf endpoints that need it
-  // will fail (gracefully, per-request) when actually called without it configured. Same
-  // degrade-gracefully posture as the AI vars below.
-  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL').optional(),
+  // File storage (uploads, PDFs) via Supabase. Optional at boot so a missing bucket doesn't take
+  // down the entire API — only the files/pdf endpoints that need it fail, per request.
+  //
+  // Deliberately NOT validated as a URL. validateEnv throws, and a throw here stops the whole
+  // application booting: a mistyped storage URL would take the clinic offline entirely, so nobody
+  // could see a patient because a photo upload was misconfigured. That is the wrong trade for an
+  // optional integration. FilesService parses it instead and reports the problem through the
+  // storage-status endpoint, where it is visible without being fatal.
+  SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via

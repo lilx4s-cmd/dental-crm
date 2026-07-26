@@ -59,3 +59,21 @@ describe('FilesService storage configuration', () => {
     expect(JSON.stringify(s.storageStatus())).not.toContain('service-role-key');
   });
 });
+
+describe('FilesService with an unusable URL', () => {
+  it('stays up and names the problem instead of refusing to boot', async () => {
+    // A mistyped storage URL must not stop the clinic working. Boot-time URL validation used to
+    // throw here, which took the entire API down over an optional integration.
+    const s = await serviceWithUrl('not a url at all');
+    const status = s.storageStatus();
+
+    expect(status.configured).toBe(false);
+    expect(status.missing).toContain('SUPABASE_URL (set, but not a valid URL)');
+  });
+
+  it('tells an unset variable apart from an unusable one', async () => {
+    const unset = (await serviceWithUrl(undefined)).storageStatus();
+    expect(unset.missing).toContain('SUPABASE_URL');
+    expect(unset.missing).not.toContain('SUPABASE_URL (set, but not a valid URL)');
+  });
+});
