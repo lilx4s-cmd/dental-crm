@@ -113,6 +113,34 @@ export class WhatsAppService {
     }
   }
 
+  /**
+   * Turns one inbound message into a Conversation entry, matched to whoever it came from.
+   *
+   * Shared by both transports — the Cloud API webhook and the QR-linked session — so a message
+   * lands in the same place with the same links regardless of how it arrived. That is what makes
+   * switching from one to the other invisible to everything downstream.
+   */
+  // externalMessageId is required, not optional: it is what stops a redelivered webhook or a
+  // reconnect replay being stored as a second copy of the same message.
+  async storeInbound(phone: string, content: string, externalMessageId: string): Promise<void> {
+    const [lead, patient] = await Promise.all([
+      this.prisma.lead.findFirst({
+        where: { OR: [{ phone }, { whatsappNumber: phone }] },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.patient.findFirst({ where: { OR: [{ phone }, { whatsappNumber: phone }] } }),
+    ]);
+
+    await this.conversations.createInboundMessage(
+      $Enums.ConversationChannel.WHATSAPP,
+      phone,
+      content,
+      externalMessageId,
+      lead?.id,
+      patient?.id,
+    );
+  }
+
   async sendTextMessage(to: string, text: string): Promise<void> {
     if (!this.token || !this.phoneNumberId) {
       this.logger.warn('WhatsApp credentials not configured — message not sent');

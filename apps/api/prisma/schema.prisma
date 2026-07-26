@@ -598,6 +598,29 @@ model IntakeAttachment {
   @@map("intake_attachments")
 }
 
+// Credentials for a linked WhatsApp Web session.
+//
+// Kept in the database rather than on disk because Render's filesystem is ephemeral: every deploy
+// and every restart would otherwise wipe the session and force somebody to physically re-scan a
+// QR code, which is exactly the failure nobody notices until a patient complains.
+//
+// Baileys stores its state as many small keyed blobs (the credentials themselves, plus per-device
+// pre-key and session records), so this is a key-value table rather than typed columns.
+model WhatsAppSession {
+  id        String   @id @default(uuid())
+  // Which linked number this belongs to. One row set per session; "default" until the clinic ever
+  // needs a second number.
+  sessionId String   @default("default")
+  // Baileys' own key, e.g. "creds", "pre-key-31", "session-4915...".
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, key])
+  @@index([sessionId])
+  @@map("whatsapp_sessions")
+}
+
 // A single thing somebody has to do about a lead — "call back", "send photos to the doctor". The
 // due date is what drives the pipeline's Today / This week / This month filters, so it is required:
 // a task with no date cannot answer "who do I contact now", which is the whole point of having it.

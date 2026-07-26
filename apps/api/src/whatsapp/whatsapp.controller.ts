@@ -17,11 +17,45 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@dental-crm/shared';
 import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppWebService } from './whatsapp-web.service';
 
 @ApiTags('whatsapp')
 @Controller('whatsapp')
 export class WhatsAppController {
-  constructor(private readonly whatsAppService: WhatsAppService) {}
+  constructor(
+    private readonly whatsAppService: WhatsAppService,
+    private readonly webService: WhatsAppWebService,
+  ) {}
+
+  // ── QR-linked session (interim, until Cloud API verification completes) ──
+  //
+  // Management only. Linking a device to the clinic's WhatsApp gives whoever holds it the whole
+  // conversation history, so it is not something reception should be able to do.
+
+  @Get('web/status')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @ApiOperation({ summary: 'QR session state, including the pairing code when one is waiting' })
+  webStatus() {
+    return this.webService.status();
+  }
+
+  @Post('web/connect')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start the QR session — poll web/status for the code' })
+  async webConnect() {
+    await this.webService.connect();
+    return this.webService.status();
+  }
+
+  @Post('web/logout')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unlink the device and forget the session' })
+  async webLogout() {
+    await this.webService.logout();
+    return this.webService.status();
+  }
 
   @Get('webhook')
   @Public()

@@ -21,9 +21,6 @@
   },
   "dependencies": {
     "@dental-crm/shared": "*",
-    "@react-pdf/renderer": "^4.0.0",
-    "@supabase/supabase-js": "^2.45.4",
-    "qrcode": "^1.5.4",
     "@nestjs/common": "^10.4.1",
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^10.4.1",
@@ -32,6 +29,9 @@
     "@nestjs/platform-express": "^10.4.1",
     "@nestjs/swagger": "^7.4.0",
     "@prisma/client": "^5.19.1",
+    "@react-pdf/renderer": "^4.0.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "@whiskeysockets/baileys": "^6.17.16",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -41,6 +41,7 @@
     "openai": "^4.68.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.23.8"
@@ -65,11 +66,19 @@
     "typescript": "^5.5.4"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {

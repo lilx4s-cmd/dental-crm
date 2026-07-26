@@ -35,6 +35,10 @@ export default () => ({
     // Meta signs every inbound webhook with the app secret. Without it the endpoint cannot tell a
     // real message from a forged one.
     appSecret: process.env.WHATSAPP_APP_SECRET,
+    // QR-linked WhatsApp Web session. Off by default: it drives an unofficial client, which Meta
+    // prohibits and which risks the number, so it must never start itself just because the code
+    // shipped.
+    webEnabled: process.env.WHATSAPP_WEB_ENABLED,
   },
   xai: {
     apiKey: process.env.XAI_API_KEY,
