@@ -12,6 +12,14 @@ import { ConfirmFileDto } from './dto/confirm-file.dto';
 export class FilesController {
   constructor(private readonly service: FilesService) {}
 
+  // Declared before ':id' routes so it is not captured as a file id.
+  // Actually talks to storage rather than just checking that the variables are set — credentials
+  // can be present and still wrong, and "configured" is not the same as "works".
+  @Get('storage-status')
+  storageStatus() {
+    return this.service.storageCheck();
+  }
+
   @Post('upload-url')
   createUploadUrl(@Body() dto: CreateUploadUrlDto) {
     return this.service.createUploadUrl(dto);

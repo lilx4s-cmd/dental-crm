@@ -33,6 +33,40 @@ export class FilesService {
     return this.bucket || undefined;
   }
 
+  /**
+   * Whether file storage is usable, and which piece is missing if not.
+   *
+   * Reports presence only — never the values. The service-role key bypasses every row-level
+   * security rule in the project, so it must not be readable back out of the API that holds it,
+   * not even to an administrator.
+   */
+  storageStatus() {
+    const missing: string[] = [];
+    if (!this.url) missing.push('SUPABASE_URL');
+    if (!this.serviceRoleKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!this.bucket) missing.push('SUPABASE_STORAGE_BUCKET');
+    return { configured: missing.length === 0, missing, bucket: this.bucket || null };
+  }
+
+  /**
+   * Proves storage actually works, rather than that three strings are present.
+   *
+   * Credentials can be set and still be wrong — a typo'd key, or a bucket that was never created.
+   * Listing the bucket is the cheapest call that exercises the same path an upload takes.
+   */
+  async storageCheck() {
+    const status = this.storageStatus();
+    if (!status.configured) return { ...status, reachable: false, error: 'Not configured' };
+
+    try {
+      const { error } = await this.getClient().storage.from(this.bucket).list('', { limit: 1 });
+      if (error) return { ...status, reachable: false, error: error.message };
+      return { ...status, reachable: true, error: null };
+    } catch (e) {
+      return { ...status, reachable: false, error: e instanceof Error ? e.message : 'Unknown error' };
+    }
+  }
+
   private getClient(): SupabaseClient {
     if (!this.url || !this.serviceRoleKey || !this.bucket) {
       throw new ServiceUnavailableException(
