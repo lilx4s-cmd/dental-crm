@@ -17,6 +17,7 @@ import {
   stuckBefore,
   nextAction,
   RECYCLE_ANGLE,
+  STAGE_LABELS,
 } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
@@ -533,6 +534,72 @@ export class LeadsService {
       dormant,
       counts: { due: due.length, dormant: dormant.length, openPipeline: leads.length },
     };
+  }
+
+  /**
+   * A plain-text picture of this user's workload, for the assistant to answer from.
+   *
+   * Built from workList and a scoped stage count — the same access rules as every screen, so the
+   * assistant cannot describe a deal its reader could not open. Deliberately compact: it is sent
+   * on every question, so length is cost.
+   *
+   * Names are included because "call Amina back" is the whole point, but nothing clinical is —
+   * no medical history, no treatment detail. Sending health records to a third-party model on a
+   * casual question is a different decision from generating one summary somebody asked for.
+   */
+  async assistantSnapshot(currentUser: JwtPayload): Promise<string> {
+    const where: Prisma.LeadWhereInput = { status: $Enums.LeadStatus.ACTIVE };
+    if (!this.canSeeAll(currentUser)) where.assignedToId = currentUser.sub;
+
+    const [work, byStage] = await Promise.all([
+      this.workList(currentUser),
+      this.prisma.lead.groupBy({ by: ['stage'], where, _count: { _all: true } }),
+    ]);
+
+    const name = (l: { firstName: string; lastName: string | null }) =>
+      `${l.firstName} ${l.lastName ?? ''}`.trim();
+
+    const lines: string[] = [];
+    lines.push(`Today is ${new Date().toISOString().slice(0, 10)}.`);
+    lines.push(
+      this.canSeeAll(currentUser)
+        ? 'This user can see the whole clinic pipeline.'
+        : 'This user can only see deals assigned to them.',
+    );
+    lines.push('');
+    lines.push(`Open deals by stage (${work.counts.openPipeline} total):`);
+    for (const row of byStage.sort((a, b) => b._count._all - a._count._all)) {
+      lines.push(`  ${STAGE_LABELS[row.stage] ?? row.stage}: ${row._count._all}`);
+    }
+
+    lines.push('');
+    lines.push(`Deals needing contact now (${work.counts.due}):`);
+    // Capped: the whole snapshot is re-sent with every question, so an unbounded list would make
+    // each question cost more than the last as the pipeline grows.
+    for (const item of work.due.slice(0, 25)) {
+      const lead = item.lead as { firstName: string; lastName: string | null; stage: string };
+      const action = item.action as { action: string; overdueDays: number; urgency: string };
+      lines.push(
+        `  ${name(lead)} — ${STAGE_LABELS[lead.stage] ?? lead.stage} — ${action.action}` +
+          (action.overdueDays > 0 ? ` (${action.overdueDays} days late)` : ' (due today)'),
+      );
+    }
+    if (work.due.length > 25) lines.push(`  ...and ${work.due.length - 25} more.`);
+    if (work.due.length === 0) lines.push('  None.');
+
+    lines.push('');
+    lines.push(`Deals gone cold, worth re-approaching (${work.counts.dormant}):`);
+    for (const item of work.dormant.slice(0, 15)) {
+      const lead = item.lead as { firstName: string; lastName: string | null; stage: string };
+      const action = item.action as { overdueDays: number };
+      lines.push(
+        `  ${name(lead)} — ${STAGE_LABELS[lead.stage] ?? lead.stage} — silent ${action.overdueDays} days`,
+      );
+    }
+    if (work.dormant.length > 15) lines.push(`  ...and ${work.dormant.length - 15} more.`);
+    if (work.dormant.length === 0) lines.push('  None.');
+
+    return lines.join('\n');
   }
 
   // ─────────────────────────── LEAD TASKS ───────────────────────────

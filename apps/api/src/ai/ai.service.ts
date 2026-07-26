@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +13,31 @@ const PATIENT_FACING_SYSTEM_PROMPT =
 const STAFF_FACING_SYSTEM_PROMPT =
   'You are an assistant for dental clinic staff drafting clinical treatment plan line items. ' +
   'Be concise and clinically precise. Staff will review and edit every suggestion before it is used.';
+
+/**
+ * The assistant answers questions about the user's own workload.
+ *
+ * It is given a pre-built summary of what that user can already see, rather than tools to query the
+ * database. Two reasons, both deliberate:
+ *
+ *  - Access control. The summary is assembled by the same service methods the screens use, which
+ *    are already scoped to the caller. A model with query tools could be talked into reading a
+ *    colleague's pipeline; a model handed a finished summary simply has nothing else to read.
+ *  - Cost. One request with a bounded payload, rather than a tool-calling loop whose length —
+ *    and bill — depends on what the model decides to do next.
+ *
+ * The trade is that it can only answer what the summary covers, so it is told to say when it
+ * cannot rather than improvise. Patient medical detail is deliberately excluded: sending health
+ * records to a third-party model on a casual question is a materially different decision from
+ * generating one summary a staff member explicitly asked for, and it is not this feature's to make.
+ */
+const ASSISTANT_SYSTEM_PROMPT =
+  'You are an assistant inside a dental clinic CRM, helping staff manage their sales pipeline. ' +
+  'You will be given a snapshot of the data this specific user is allowed to see. ' +
+  'Answer only from that snapshot. If the answer is not in it, say plainly that you cannot see ' +
+  'that information and suggest where in the CRM to look. Never invent names, numbers or dates. ' +
+  'Be brief and practical — staff are reading this between calls. Prefer a short list over prose. ' +
+  'Amounts and dates must be quoted exactly as given.';
 
 export interface SuggestedItem {
   description: string;
@@ -108,6 +133,28 @@ export class AiService {
         aiSummary: true,
       },
     });
+  }
+
+  /**
+   * Answers a staff question about their own pipeline.
+   *
+   * `snapshot` is built by the caller from data already scoped to that user — see the comment on
+   * ASSISTANT_SYSTEM_PROMPT for why the model is handed data rather than the means to fetch it.
+   */
+  async askAssistant(question: string, snapshot: string): Promise<string> {
+    const trimmed = question.trim();
+    if (!trimmed) throw new BadRequestException('Ask a question');
+
+    return this.complete(
+      ASSISTANT_SYSTEM_PROMPT,
+      [
+        "Here is everything you can see about this user's work right now:",
+        '',
+        snapshot,
+        '',
+        `Their question: ${trimmed}`,
+      ].join('\n'),
+    );
   }
 
   async suggestItems(diagnosisText: string, categoryNames?: string[]): Promise<SuggestedItem[]> {

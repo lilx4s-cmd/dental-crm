@@ -14,6 +14,7 @@ import { useWorkList, type WorkItem } from '@/hooks/use-work-list';
 import { useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai';
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
+import { AssistantPanel } from '@/components/ai/assistant-panel';
 import type { Lead } from '@/hooks/use-leads';
 
 const AI_NOT_CONFIGURED = 'AI drafting is not configured for this clinic';
@@ -163,6 +164,8 @@ export default function MyDayPage() {
           Deals that need chasing, and cold ones worth another try.
         </p>
       </div>
+
+      <AssistantPanel />
 
       {isLoading ? (
         <div className="space-y-2">
