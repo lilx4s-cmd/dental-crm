@@ -26,6 +26,16 @@ export default () => ({
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_STORAGE_BUCKET,
   },
+  whatsapp: {
+    token: process.env.WHATSAPP_CLOUD_API_TOKEN,
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+    // Echoed back during Meta's one-time webhook handshake.
+    webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    // Meta signs every inbound webhook with the app secret. Without it the endpoint cannot tell a
+    // real message from a forged one.
+    appSecret: process.env.WHATSAPP_APP_SECRET,
+  },
   xai: {
     apiKey: process.env.XAI_API_KEY,
     model: process.env.XAI_MODEL || 'grok-4.5',

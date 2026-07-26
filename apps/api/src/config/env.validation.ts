@@ -20,6 +20,14 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().optional(),
+  // Optional: WhatsApp Cloud API. All optional and unvalidated beyond being strings — an
+  // unconfigured or mistyped messaging integration must not stop the clinic booting. The
+  // /whatsapp/status endpoint reports what is missing instead.
+  WHATSAPP_CLOUD_API_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via
   // xAI's Grok API degrade gracefully when unset — see ai/ai.service.ts.
   XAI_API_KEY: z.string().optional(),
