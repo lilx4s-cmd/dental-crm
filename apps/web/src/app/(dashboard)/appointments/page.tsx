@@ -1,12 +1,27 @@
 'use client';
 
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+// Loaded after the library's own stylesheet so it can override it.
+import './google-calendar.css';
 
 import { useState, useMemo, useCallback } from 'react';
 import { Calendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
+import {
+  format,
+  parse,
+  startOfWeek,
+  endOfWeek,
+  getDay,
+  startOfDay,
+  endOfDay,
+  startOfMonth,
+  endOfMonth,
+  addDays,
+  isSameDay,
+  isSameMonth,
+} from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
-import { Plus, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -44,22 +59,89 @@ const STATUS_COLORS: Record<string, string> = {
   NO_SHOW: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
 };
 
-const DEFAULT_EVENT_COLOR = '#6366f1';
+// Google Calendar's own default event blue, for appointments with no dentist to colour them.
+const DEFAULT_EVENT_COLOR = '#039be5';
+
+/** Where the time grid opens. The clinic's day starts long after midnight. */
+const SCROLL_TO = new Date(1970, 0, 1, 8, 0, 0);
+
+const CALENDAR_FORMATS = {
+  // "9 AM", not "09:00 AM" — Google drops the minutes when an hour label lands on the hour.
+  timeGutterFormat: 'h a',
+  // The end carries the meridiem for the pair, so a block reads "9:00 – 9:30 AM".
+  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${format(start, 'h:mm')} – ${format(end, 'h:mm a')}`,
+  agendaTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${format(start, 'h:mm a')} – ${format(end, 'h:mm a')}`,
+};
+
+// A cancelled slot still has to be visible — it is the reason the chair is free — but it must not
+// read as a booking. Google's convention is a faded, struck-through entry.
+const CANCELLED_OPACITY = 0.45;
 
 // ─── Calendar event style ────────────────────────────────────────────────────
+// Shape and spacing live in google-calendar.css; only the per-appointment colour is decided here.
 function eventStyleGetter(event: { resource?: Appointment }) {
   const appt = event.resource;
   const color = appt?.dentist?.calendarColor ?? DEFAULT_EVENT_COLOR;
+  const cancelled = appt?.status === 'CANCELLED';
   return {
     style: {
       backgroundColor: color,
-      borderColor: color,
-      borderRadius: '6px',
       color: '#fff',
-      fontSize: '0.75rem',
-      padding: '1px 4px',
+      opacity: cancelled ? CANCELLED_OPACITY : 1,
+      textDecoration: cancelled ? 'line-through' : undefined,
     },
   };
+}
+
+/** Google's two-line column head: the weekday above the date, today's date in a filled blue disc. */
+function GoogleDayHeader({ date }: { date: Date }) {
+  const today = isSameDay(date, new Date());
+  return (
+    <div className="flex flex-col items-center gap-0.5 py-1">
+      <span
+        className="text-[10px] font-medium uppercase tracking-[0.08em]"
+        style={{ color: today ? 'var(--gc-blue)' : 'var(--gc-text-muted)' }}
+      >
+        {format(date, 'EEE')}
+      </span>
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-full text-[22px] font-normal leading-none"
+        style={
+          today
+            ? { background: 'var(--gc-blue)', color: 'var(--gc-blue-fg)' }
+            : { color: 'var(--gc-text)' }
+        }
+      >
+        {format(date, 'd')}
+      </span>
+    </div>
+  );
+}
+
+/** The corner above the hour gutter, where Google prints the viewer's UTC offset. */
+function TimezoneCorner() {
+  // getTimezoneOffset counts minutes *behind* UTC, so the sign is inverted for display.
+  const minutes = -new Date().getTimezoneOffset();
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(minutes);
+  const label = abs % 60 === 0 ? `${sign}${Math.floor(abs / 60)}` : `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
+  return (
+    <div className="flex h-full items-end justify-end pb-1 pr-2 text-[10px]" style={{ color: 'var(--gc-text-muted)' }}>
+      GMT{label}
+    </div>
+  );
+}
+
+/** How Google titles each view: "July 2026", "21 – 27 Jul 2026", "Monday, 27 July 2026". */
+function rangeTitle(date: Date, view: View): string {
+  if (view === Views.MONTH) return format(date, 'MMMM yyyy');
+  if (view === Views.DAY) return format(date, 'EEEE, d MMMM yyyy');
+  const from = startOfWeek(date, { locale: enUS });
+  const to = endOfWeek(date, { locale: enUS });
+  if (isSameMonth(from, to)) return `${format(from, 'd')} – ${format(to, 'd MMM yyyy')}`;
+  return `${format(from, 'd MMM')} – ${format(to, 'd MMM yyyy')}`;
 }
 
 // ─── Appointment detail dialog ───────────────────────────────────────────────
@@ -167,6 +249,9 @@ function AppointmentDetailDialog({
 }
 
 // ─── New Appointment Dialog ──────────────────────────────────────────────────
+/** Radix Select reserves '' for "no selection", so "unassigned" needs a value of its own. */
+const UNASSIGNED = '__unassigned__';
+
 function NewAppointmentDialog({
   open,
   onClose,
@@ -256,10 +341,16 @@ function NewAppointmentDialog({
           {/* Dentist */}
           <div className="space-y-1">
             <Label>Dentist (optional)</Label>
-            <Select value={form.dentistId} onValueChange={(v) => set('dentistId', v)}>
+            {/* Radix reserves the empty string for "nothing selected" and throws on an item that
+                uses it, which took the whole dialog down as it opened. Same sentinel the pipeline
+                filters use. */}
+            <Select
+              value={form.dentistId || UNASSIGNED}
+              onValueChange={(v) => set('dentistId', v === UNASSIGNED ? '' : v)}
+            >
               <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
+                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
                 {dentists?.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
                     Dr. {d.firstName} {d.lastName}
@@ -325,17 +416,29 @@ export default function AppointmentsPage() {
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [newDialogDate, setNewDialogDate] = useState(new Date());
 
-  // Fetch appointments for visible range (current month ± buffer)
-  const rangeFrom = useMemo(() => {
-    const d = subMonths(startOfMonth(currentDate), 0);
-    d.setDate(1);
-    return d.toISOString();
-  }, [currentDate]);
-
-  const rangeTo = useMemo(() => {
-    const d = endOfMonth(addMonths(currentDate, 0));
-    return d.toISOString();
-  }, [currentDate]);
+  // The visible range, derived from the view rather than the calendar month. Fetching the month
+  // meant a week straddling two months — the last week of July, say — silently showed nothing for
+  // its August days: the appointments existed, the query had simply not asked for them.
+  const [rangeFrom, rangeTo] = useMemo((): [string, string] => {
+    switch (currentView) {
+      case Views.MONTH: {
+        // A month grid shows leading and trailing days from the neighbouring months.
+        const from = startOfWeek(startOfMonth(currentDate), { locale: enUS });
+        const to = endOfWeek(endOfMonth(currentDate), { locale: enUS });
+        return [from.toISOString(), to.toISOString()];
+      }
+      case Views.DAY:
+        return [startOfDay(currentDate).toISOString(), endOfDay(currentDate).toISOString()];
+      case Views.AGENDA:
+        // react-big-calendar's agenda runs a month forward from the current date.
+        return [startOfDay(currentDate).toISOString(), endOfDay(addDays(currentDate, 30)).toISOString()];
+      default:
+        return [
+          startOfWeek(currentDate, { locale: enUS }).toISOString(),
+          endOfWeek(currentDate, { locale: enUS }).toISOString(),
+        ];
+    }
+  }, [currentDate, currentView]);
 
   const { data: appointments, isLoading } = useAppointments(rangeFrom, rangeTo);
 
@@ -363,70 +466,73 @@ export default function AppointmentsPage() {
     setNewDialogOpen(true);
   }, []);
 
-  const goBack = () => {
+  // One step is whatever the current view shows, so the arrows always move by exactly the span on
+  // screen — a day in day view, a week in week view.
+  const step = (direction: 1 | -1) => {
     setCurrentDate((d) => {
       const nd = new Date(d);
-      if (currentView === Views.MONTH) nd.setMonth(nd.getMonth() - 1);
-      else nd.setDate(nd.getDate() - 7);
-      return nd;
-    });
-  };
-
-  const goForward = () => {
-    setCurrentDate((d) => {
-      const nd = new Date(d);
-      if (currentView === Views.MONTH) nd.setMonth(nd.getMonth() + 1);
-      else nd.setDate(nd.getDate() + 7);
+      if (currentView === Views.MONTH) nd.setMonth(nd.getMonth() + direction);
+      else if (currentView === Views.DAY) nd.setDate(nd.getDate() + direction);
+      else nd.setDate(nd.getDate() + 7 * direction);
       return nd;
     });
   };
 
   const goToday = () => setCurrentDate(new Date());
 
-  return (
-    <div className="flex flex-col h-full space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Appointments</h1>
-          <p className="text-muted-foreground mt-1">
-            {isLoading ? 'Loading...' : `${appointments?.length ?? 0} appointments in view`}
-          </p>
-        </div>
-        <Button onClick={() => { setNewDialogDate(new Date()); setNewDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Appointment
-        </Button>
-      </div>
+  // Week and day columns get Google's date-over-weekday head; the month grid keeps a plain weekday
+  // strip, where a date number would be wrong — those cells carry their own.
+  const calendarComponents = useMemo(
+    () =>
+      currentView === Views.MONTH || currentView === Views.AGENDA
+        ? {}
+        : { header: GoogleDayHeader, timeGutterHeader: TimezoneCorner },
+    [currentView],
+  );
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={goToday}>
-          <CalendarDays className="h-4 w-4 mr-1" />
+  return (
+    <div className="gcal flex h-full flex-col gap-4">
+      {/* Google's calendar bar: create on the left, then Today and the arrows, the range title,
+          and the view switcher pushed to the right. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => { setNewDialogDate(new Date()); setNewDialogOpen(true); }}>
+          <Plus className="mr-2 h-4 w-4" />
+          Create
+        </Button>
+
+        <Button variant="outline" size="sm" className="ml-2 rounded-full" onClick={goToday}>
           Today
         </Button>
-        <Button variant="ghost" size="icon" onClick={goBack}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={goForward}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <span className="text-sm font-medium min-w-32">
-          {format(currentDate, currentView === Views.MONTH ? 'MMMM yyyy' : "'Week of' MMM d, yyyy")}
+
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" aria-label="Previous" onClick={() => step(-1)}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Next" onClick={() => step(1)}>
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <h1 className="text-[22px] font-normal tracking-tight" style={{ color: 'var(--gc-text)' }}>
+          {rangeTitle(currentDate, currentView)}
+        </h1>
+
+        <span className="text-xs text-muted-foreground">
+          {isLoading ? 'Loading…' : `${appointments?.length ?? 0} in view`}
         </span>
 
-        <div className="ml-auto flex gap-1 border rounded-md p-0.5">
-          {([Views.MONTH, Views.WEEK, Views.DAY, Views.AGENDA] as View[]).map((v) => (
+        <div className="ml-auto flex gap-0.5 rounded-lg border p-0.5">
+          {([Views.DAY, Views.WEEK, Views.MONTH, Views.AGENDA] as View[]).map((v) => (
             <button
               key={v}
               onClick={() => setCurrentView(v)}
-              className={`px-3 py-1 text-xs rounded font-medium capitalize transition-colors ${
+              className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
                 currentView === v
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {v}
+              {v === Views.AGENDA ? 'Schedule' : v}
             </button>
           ))}
         </div>
@@ -434,9 +540,9 @@ export default function AppointmentsPage() {
 
       {/* Calendar */}
       {isLoading ? (
-        <Skeleton className="flex-1 w-full rounded-lg" style={{ minHeight: 500 }} />
+        <Skeleton className="w-full flex-1 rounded-lg" style={{ minHeight: 500 }} />
       ) : (
-        <div className="flex-1 rounded-lg border bg-background overflow-hidden" style={{ minHeight: 560 }}>
+        <div className="min-h-0 flex-1" style={{ minHeight: 560 }}>
           <Calendar
             localizer={localizer}
             events={events}
@@ -448,6 +554,14 @@ export default function AppointmentsPage() {
             onSelectSlot={handleSelectSlot}
             selectable
             eventPropGetter={eventStyleGetter}
+            components={calendarComponents}
+            // Half-hour slots under a solid hour rule, the way Google divides the day.
+            step={30}
+            timeslots={2}
+            // The whole day stays reachable by scrolling, but the view opens on clinic hours
+            // instead of at midnight.
+            scrollToTime={SCROLL_TO}
+            formats={CALENDAR_FORMATS}
             style={{ height: '100%' }}
             toolbar={false}
             popup

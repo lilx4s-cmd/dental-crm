@@ -1,0 +1,307 @@
+/**
+ * Google Calendar styling for react-big-calendar.
+ *
+ * The library's own stylesheet is loaded first and this overrides it. Restyling rather than
+ * replacing the calendar is deliberate: slot selection, event hit-testing, the month/week/day/agenda
+ * views and the now-indicator all already work, and a hand-rolled grid would have to earn that back
+ * before it drew a single appointment.
+ *
+ * Everything is scoped under .gcal, and the palette is Google Calendar's own — greys #dadce0 /
+ * #70757a / #3c4043, blue #1a73e8, the red now-line #ea4335, and their dark-theme equivalents.
+ * Scoped rather than added to the app's semantic tokens because this is one screen imitating one
+ * product, not a new opinion about what "border" means everywhere else.
+ *
+ * Measured: #70757a on white is 4.65:1 and #9aa0a6 on #202124 is 6.1:1 — both clear WCAG AA, which
+ * matters because the hour labels and weekday names are the whole grid's frame of reference.
+ */
+
+.gcal {
+  --gc-line: #dadce0;
+  --gc-line-soft: #e8eaed;
+  --gc-text: #3c4043;
+  --gc-text-muted: #70757a;
+  --gc-blue: #1a73e8;
+  --gc-blue-fg: #ffffff;
+  --gc-now: #ea4335;
+  --gc-surface: #ffffff;
+  --gc-hover: rgba(60, 64, 67, 0.06);
+  --gc-hour-height: 48px;
+}
+
+.dark .gcal {
+  --gc-line: #3c4043;
+  --gc-line-soft: #303134;
+  --gc-text: #e8eaed;
+  --gc-text-muted: #9aa0a6;
+  --gc-blue: #8ab4f8;
+  --gc-blue-fg: #202124;
+  --gc-now: #f28b82;
+  --gc-surface: #202124;
+  --gc-hover: rgba(232, 234, 237, 0.08);
+}
+
+.gcal .rbc-calendar {
+  background: var(--gc-surface);
+  color: var(--gc-text);
+  font-size: 12px;
+}
+
+/* ── Grid lines ───────────────────────────────────────────────────────────── */
+/* Google draws a solid line on the hour and nothing on the half hour; the half-hour slot keeps its
+   height so events still land on 30-minute boundaries, it just has no rule of its own. */
+.gcal .rbc-time-view,
+.gcal .rbc-month-view,
+.gcal .rbc-agenda-view table.rbc-agenda-table {
+  border: 1px solid var(--gc-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gcal .rbc-time-header-content,
+.gcal .rbc-time-content > * + * > *,
+.gcal .rbc-day-bg + .rbc-day-bg,
+.gcal .rbc-month-row + .rbc-month-row,
+.gcal .rbc-header + .rbc-header {
+  border-color: var(--gc-line);
+}
+
+.gcal .rbc-timeslot-group {
+  border-bottom: 1px solid var(--gc-line);
+  min-height: var(--gc-hour-height);
+}
+
+.gcal .rbc-time-slot {
+  border-top: none;
+}
+
+.gcal .rbc-time-content {
+  border-top: 1px solid var(--gc-line);
+}
+
+.gcal .rbc-time-header.rbc-overflowing {
+  border-right: none;
+}
+
+/* ── Hour gutter ──────────────────────────────────────────────────────────── */
+/* The label straddles the line it belongs to, the way Google prints "9 AM" against the 9 o'clock
+   rule rather than inside the hour below it. */
+.gcal .rbc-time-gutter,
+.gcal .rbc-header-gutter {
+  width: 60px !important;
+  min-width: 60px !important;
+}
+
+.gcal .rbc-time-gutter .rbc-timeslot-group {
+  border-bottom: none;
+}
+
+.gcal .rbc-time-gutter .rbc-label {
+  position: relative;
+  top: -0.6em;
+  display: block;
+  padding: 0 8px 0 0;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--gc-text-muted);
+  white-space: nowrap;
+}
+
+/* The first hour's label would otherwise hang above the grid and clip. */
+.gcal .rbc-time-gutter .rbc-timeslot-group:first-child .rbc-label {
+  top: 0;
+}
+
+/* ── Day headers ──────────────────────────────────────────────────────────── */
+.gcal .rbc-time-header-cell,
+.gcal .rbc-row.rbc-time-header-cell {
+  min-height: auto;
+}
+
+.gcal .rbc-header {
+  border-bottom: none;
+  padding: 6px 0 8px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.gcal .rbc-header a,
+.gcal .rbc-header button {
+  cursor: default;
+}
+
+/* Month view keeps the plain weekday strip Google uses above the date cells. */
+.gcal .rbc-month-view .rbc-header {
+  padding: 8px 0;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gc-text-muted);
+  border-bottom: 1px solid var(--gc-line);
+}
+
+/* ── All-day row ──────────────────────────────────────────────────────────── */
+.gcal .rbc-allday-cell {
+  max-height: 60px;
+}
+
+.gcal .rbc-time-header-content > .rbc-row.rbc-row-resource {
+  border-bottom: 1px solid var(--gc-line);
+}
+
+/* ── Events ───────────────────────────────────────────────────────────────── */
+/* Google's blocks are flat, tightly padded and separated by a hairline of background rather than a
+   border, so a run of back-to-back appointments reads as separate blocks without drawing rules. */
+.gcal .rbc-event {
+  border: none !important;
+  border-radius: 4px !important;
+  padding: 1px 6px !important;
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 0 0 1px var(--gc-surface);
+}
+
+.gcal .rbc-event:focus {
+  outline: 2px solid var(--gc-blue);
+  outline-offset: 1px;
+}
+
+.gcal .rbc-event-label {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.gcal .rbc-event-content {
+  font-weight: 500;
+}
+
+.gcal .rbc-day-slot .rbc-event {
+  left: 1px !important;
+  right: 1px !important;
+}
+
+/* Month-view entries are dots-and-text in Google rather than filled bars. */
+.gcal .rbc-month-view .rbc-event {
+  padding: 1px 4px !important;
+  font-size: 11px;
+}
+
+.gcal .rbc-show-more {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gc-text-muted);
+  background: transparent;
+}
+
+.gcal .rbc-show-more:hover {
+  color: var(--gc-blue);
+}
+
+/* ── Today, off-range, hover ──────────────────────────────────────────────── */
+/* Google does not tint today's column in week view — the date chip in the header carries it — so
+   the library's yellow-ish highlight is removed rather than recoloured. */
+.gcal .rbc-today {
+  background-color: transparent;
+}
+
+.gcal .rbc-month-view .rbc-today {
+  background-color: color-mix(in srgb, var(--gc-blue) 8%, transparent);
+}
+
+.gcal .rbc-off-range-bg {
+  background: transparent;
+}
+
+.gcal .rbc-off-range .rbc-button-link {
+  color: var(--gc-text-muted);
+  opacity: 0.6;
+}
+
+.gcal .rbc-day-bg:hover {
+  background-color: var(--gc-hover);
+}
+
+.gcal .rbc-slot-selecting .rbc-day-bg:hover {
+  background-color: transparent;
+}
+
+.gcal .rbc-slot-selection {
+  background-color: color-mix(in srgb, var(--gc-blue) 22%, transparent);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+/* ── Now indicator ────────────────────────────────────────────────────────── */
+.gcal .rbc-current-time-indicator {
+  height: 2px;
+  background-color: var(--gc-now);
+}
+
+/* Google's red bead at the left end of the line. */
+.gcal .rbc-current-time-indicator::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--gc-now);
+}
+
+/* ── Month date numbers ───────────────────────────────────────────────────── */
+.gcal .rbc-date-cell {
+  padding: 4px 6px 2px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.gcal .rbc-date-cell .rbc-button-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gc-text);
+}
+
+.gcal .rbc-date-cell.rbc-now .rbc-button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--gc-blue);
+  color: var(--gc-blue-fg);
+}
+
+/* ── Agenda ───────────────────────────────────────────────────────────────── */
+.gcal .rbc-agenda-view table.rbc-agenda-table {
+  font-size: 13px;
+}
+
+.gcal .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gc-text-muted);
+  border-bottom: 1px solid var(--gc-line);
+}
+
+.gcal .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--gc-line-soft);
+}
+
+.gcal .rbc-agenda-view table.rbc-agenda-table tbody > tr + tr {
+  border-top: none;
+}
+
+.gcal .rbc-agenda-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--gc-text-muted);
+}
