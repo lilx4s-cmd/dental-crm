@@ -30,6 +30,7 @@ import {
   type Invoice,
 } from '@/hooks/use-invoices';
 import { usePatients } from '@/hooks/use-patients';
+import { num } from '@/lib/numeric-input';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -306,7 +307,10 @@ function InvoiceDetailDialog({
 }
 
 // ─── Create Invoice Dialog ─────────────────────────────────────────────────────
-interface LineItem { description: string; quantity: number; unitPrice: number }
+// Quantity and price are held as text and converted on submit — see `@/lib/numeric-input`.
+interface LineItem { description: string; quantity: string; unitPrice: string }
+
+const EMPTY_LINE: LineItem = { description: '', quantity: '1', unitPrice: '' };
 
 function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateInvoice();
@@ -314,27 +318,27 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
   const { data: patientsData } = usePatients({ search: patientSearch, limit: 8 });
 
   const [patientId, setPatientId] = useState('');
-  const [discount, setDiscount] = useState('0');
-  const [tax, setTax] = useState('0');
+  const [discount, setDiscount] = useState('');
+  const [tax, setTax] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [currency, setCurrency] = useState('USD');
-  const [items, setItems] = useState<LineItem[]>([
-    { description: '', quantity: 1, unitPrice: 0 },
-  ]);
+  const [items, setItems] = useState<LineItem[]>([EMPTY_LINE]);
 
-  const updateItem = (i: number, k: keyof LineItem, v: string | number) => {
+  const updateItem = (i: number, k: keyof LineItem, v: string) => {
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
   };
 
-  const addItem = () => setItems((prev) => [...prev, { description: '', quantity: 1, unitPrice: 0 }]);
+  const addItem = () => setItems((prev) => [...prev, EMPTY_LINE]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const subtotal = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
-  const totalCalc = subtotal - parseFloat(discount || '0') + parseFloat(tax || '0');
+  // A blank quantity box prices one unit rather than wiping the line to zero.
+  const lineTotal = (it: LineItem) => num(it.quantity, 1) * num(it.unitPrice);
+  const subtotal = items.reduce((s, it) => s + lineTotal(it), 0);
+  const totalCalc = subtotal - num(discount) + num(tax);
 
   const handleSubmit = () => {
     if (!patientId) { toast.error('Select a patient'); return; }
-    if (items.some((it) => !it.description || it.unitPrice <= 0)) {
+    if (items.some((it) => !it.description || num(it.unitPrice) <= 0)) {
       toast.error('Fill in all line items'); return;
     }
     create.mutate(
@@ -342,11 +346,11 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
         patientId,
         items: items.map((it) => ({
           description: it.description,
-          quantity: Number(it.quantity),
-          unitPrice: Number(it.unitPrice),
+          quantity: num(it.quantity, 1),
+          unitPrice: num(it.unitPrice),
         })),
-        discount: parseFloat(discount || '0') || undefined,
-        tax: parseFloat(tax || '0') || undefined,
+        discount: num(discount) || undefined,
+        tax: num(tax) || undefined,
         dueDate: dueDate || undefined,
         currency,
       },
@@ -354,8 +358,8 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
         onSuccess: () => {
           toast.success('Invoice created');
           // reset
-          setPatientId(''); setPatientSearch(''); setItems([{ description: '', quantity: 1, unitPrice: 0 }]);
-          setDiscount('0'); setTax('0'); setDueDate(''); setCurrency('USD');
+          setPatientId(''); setPatientSearch(''); setItems([EMPTY_LINE]);
+          setDiscount(''); setTax(''); setDueDate(''); setCurrency('USD');
           onClose();
         },
         onError: () => toast.error('Failed to create invoice'),
@@ -450,8 +454,9 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
                           className="h-8 text-sm border-0 shadow-none focus-visible:ring-0 text-right px-1"
                           type="number"
                           min="1"
+                          placeholder="1"
                           value={item.quantity}
-                          onChange={(e) => updateItem(i, 'quantity', parseInt(e.target.value) || 1)}
+                          onChange={(e) => updateItem(i, 'quantity', e.target.value)}
                         />
                       </td>
                       <td className="px-2 py-1">
@@ -460,12 +465,13 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
                           type="number"
                           step="0.01"
                           min="0"
+                          placeholder="0.00"
                           value={item.unitPrice}
-                          onChange={(e) => updateItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateItem(i, 'unitPrice', e.target.value)}
                         />
                       </td>
                       <td className="px-3 py-1 text-right font-medium">
-                        {fmt(item.quantity * item.unitPrice, currency)}
+                        {fmt(lineTotal(item), currency)}
                       </td>
                       <td className="px-1 py-1 text-center">
                         {items.length > 1 && (
@@ -495,6 +501,7 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
                   type="number"
                   step="0.01"
                   min="0"
+                  placeholder="0.00"
                   value={discount}
                   onChange={(e) => setDiscount(e.target.value)}
                 />
@@ -506,6 +513,7 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
                   type="number"
                   step="0.01"
                   min="0"
+                  placeholder="0.00"
                   value={tax}
                   onChange={(e) => setTax(e.target.value)}
                 />

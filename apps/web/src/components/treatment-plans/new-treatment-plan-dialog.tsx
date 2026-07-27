@@ -20,6 +20,7 @@ import {
 
 import { useCreateTreatmentPlan, useTreatmentCategories } from '@/hooks/use-treatment-plans';
 import { useDentists, useCoordinators } from '@/hooks/use-users';
+import { num } from '@/lib/numeric-input';
 import { DentalChart } from './dental-chart';
 import { DiagnosesEditor, type DiagnosisEntry } from './diagnoses-editor';
 import { QuickPlanPicker } from './quick-plan-picker';
@@ -36,7 +37,6 @@ import {
   ProceduresEditor,
   emptyPhase,
   lineCost,
-  num,
   phasePayload,
   type ItemForm,
   type PhaseForm,

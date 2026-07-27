@@ -26,6 +26,7 @@ import { usePatient, useUpdatePatient } from '@/hooks/use-patients';
 import { useAppointments, useCreateAppointment } from '@/hooks/use-appointments';
 import { useInvoices, useCreateInvoice, useRecordPayment } from '@/hooks/use-invoices';
 import { useDentists } from '@/hooks/use-users';
+import { num } from '@/lib/numeric-input';
 import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,19 +183,27 @@ function NewAppointmentDialog({ patientId, open, onClose }: { patientId: string;
 }
 
 // ─── New Invoice (inline for this patient) ────────────────────────────────────
+// Quantity and price are held as text and converted on submit — see `@/lib/numeric-input`.
+interface QuickLineItem { description: string; quantity: string; unitPrice: string }
+
+const EMPTY_LINE: QuickLineItem = { description: '', quantity: '1', unitPrice: '' };
+
 function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; open: boolean; onClose: () => void }) {
   const create = useCreateInvoice();
-  const [items, setItems] = useState([{ description: '', quantity: 1, unitPrice: 0 }]);
-  const [discount, setDiscount] = useState('0');
-  const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const [items, setItems] = useState<QuickLineItem[]>([EMPTY_LINE]);
+  const [discount, setDiscount] = useState('');
 
-  const updateItem = (idx: number, k: string, v: string | number) =>
+  // A blank quantity box prices one unit rather than wiping the line to zero.
+  const lineTotal = (i: QuickLineItem) => num(i.quantity, 1) * num(i.unitPrice);
+  const subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
+
+  const updateItem = (idx: number, k: keyof QuickLineItem, v: string) =>
     setItems((prev) => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it));
 
   const handleSubmit = () => {
-    if (items.some((i) => !i.description || i.unitPrice <= 0)) { toast.error('Fill all line items'); return; }
+    if (items.some((i) => !i.description || num(i.unitPrice) <= 0)) { toast.error('Fill all line items'); return; }
     create.mutate(
-      { patientId, items: items.map((i) => ({ description: i.description, quantity: Number(i.quantity), unitPrice: Number(i.unitPrice) })), discount: parseFloat(discount) || undefined },
+      { patientId, items: items.map((i) => ({ description: i.description, quantity: num(i.quantity, 1), unitPrice: num(i.unitPrice) })), discount: num(discount) || undefined },
       { onSuccess: () => { toast.success('Invoice created'); onClose(); }, onError: () => toast.error('Failed') },
     );
   };
@@ -207,21 +216,21 @@ function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; o
           {items.map((item, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-center">
               <Input className="col-span-6" placeholder="Description" value={item.description} onChange={(e) => updateItem(i, 'description', e.target.value)} />
-              <Input className="col-span-2" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', parseInt(e.target.value) || 1)} />
-              <Input className="col-span-3" type="number" step="0.01" placeholder="Price" value={item.unitPrice} onChange={(e) => updateItem(i, 'unitPrice', parseFloat(e.target.value) || 0)} />
+              <Input className="col-span-2" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', e.target.value)} />
+              <Input className="col-span-3" type="number" step="0.01" placeholder="Price" value={item.unitPrice} onChange={(e) => updateItem(i, 'unitPrice', e.target.value)} />
               <button className="col-span-1 text-muted-foreground hover:text-destructive" onClick={() => items.length > 1 && setItems((p) => p.filter((_, idx) => idx !== i))}>
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
           ))}
-          <Button variant="outline" size="sm" onClick={() => setItems((p) => [...p, { description: '', quantity: 1, unitPrice: 0 }])}>
+          <Button variant="outline" size="sm" onClick={() => setItems((p) => [...p, EMPTY_LINE])}>
             <Plus className="h-3 w-3 mr-1" /> Add Item
           </Button>
           <div className="flex items-center justify-between text-sm pt-2 border-t">
             <span className="text-muted-foreground">Subtotal: <strong>{fmt(subtotal)}</strong></span>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">Discount:</span>
-              <Input className="w-20 h-7 text-sm" type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+              <Input className="w-20 h-7 text-sm" type="number" step="0.01" min="0" placeholder="0.00" value={discount} onChange={(e) => setDiscount(e.target.value)} />
             </div>
           </div>
         </div>

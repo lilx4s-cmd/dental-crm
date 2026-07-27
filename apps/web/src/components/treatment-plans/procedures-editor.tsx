@@ -8,10 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TreatmentCategory } from '@/hooks/use-treatment-plans';
+import { num } from '@/lib/numeric-input';
 
-// Numeric fields are held as text, not numbers. A controlled number input backed by `number` can
-// never be emptied — clearing it parses to NaN, falls back to 0, and the field immediately refills
-// with "0", so typing a price appends after that zero instead of replacing it.
+// Numeric fields are held as text, not numbers — see `@/lib/numeric-input` for why.
 export interface ItemForm {
   treatmentCategoryId: string;
   toothNumber: string;
@@ -31,12 +30,6 @@ export interface PhaseForm {
   discountAmount: string;
   discountPercent: string;
   healingPeriodMonths: string;
-}
-
-/** Reads a numeric form field, treating blank or half-typed input as zero. */
-export function num(value: string, fallback = 0): number {
-  const parsed = parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export const EMPTY_ITEM: ItemForm = {
