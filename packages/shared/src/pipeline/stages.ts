@@ -93,3 +93,16 @@ export function documentsExpectedAt(stage: string): DealDocument[] {
 
 /** A deal reaching DONE has been treated, so the patient moves into after-care. */
 export const AFTERCARE_FROM_STAGE: PipelineStage = 'DONE';
+
+/**
+ * How far along a deal is, used to choose which of several duplicates to keep.
+ *
+ * The stage list is already in pipeline order, so its index is the answer everywhere except Lost:
+ * that sits at the end of the board because it is where cards go, not because it is the furthest a
+ * deal can get. Ranking it below New Deal keeps a dead enquiry from swallowing a live one.
+ */
+export function stageProgress(stage: string): number {
+  const index = PIPELINE_STAGES.findIndex((s) => s.id === stage);
+  if (index === -1) return -1;
+  return PIPELINE_STAGES[index].terminal === 'lost' ? -1 : index;
+}

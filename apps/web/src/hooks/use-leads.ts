@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TaskDueFilter } from '@dental-crm/shared';
+import type { DuplicateGroup, MergeDuplicatesResult, TaskDueFilter } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
@@ -201,6 +201,41 @@ export function useImportLeads() {
     mutationFn: (payload) =>
       apiRequest('/api/leads/import', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+// ─── Duplicate numbers ────────────────────────────────────────────────────────
+
+export interface MergeDuplicatesPayload {
+  dryRun?: boolean;
+  numbers?: string[];
+  survivors?: Record<string, string>;
+  includeRepeatTreatment?: boolean;
+}
+
+export function useDuplicateGroups(enabled: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery<DuplicateGroup[]>({
+    queryKey: ['leads', 'duplicates'],
+    queryFn: () => apiRequest('/api/leads/duplicates', {}, accessToken ?? undefined),
+    // Scans every lead, so it runs when the panel is actually open rather than on every board load.
+    enabled: enabled && !!accessToken,
+    staleTime: 60_000,
+  });
+}
+
+export function useMergeDuplicates() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<MergeDuplicatesResult, Error, MergeDuplicatesPayload>({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/duplicates/merge', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: (result) => {
+      // A dry run changed nothing, so refetching the board would only churn.
+      if (result.dryRun) return;
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },

@@ -13,12 +13,14 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
-import { Link2, Plus, Upload, UserPlus } from 'lucide-react';
+import { Link2, Merge, Plus, Upload, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
 import { ImportLeadsDialog } from '@/components/pipeline/import-leads-dialog';
+import { DuplicatesDialog } from '@/components/pipeline/duplicates-dialog';
+import { useAuth } from '@/context/auth-context';
 import { LostReasonDialog } from '@/components/pipeline/lost-reason-dialog';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
 import {
@@ -132,6 +134,7 @@ function moveErrorMessage(e: unknown): string {
 }
 
 export default function PipelinePage() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<PipelineFilters>({});
   const { data: groups, isLoading } = useLeadsByStage(filters);
   const updateStage = useUpdateLeadStage();
@@ -241,6 +244,16 @@ export default function PipelinePage() {
             <Link2 className="mr-2 h-4 w-4" />
             Enquiry form link
           </Button>
+          {/* Merging rewrites deals across the whole pipeline, including ones this user would not
+              otherwise see, so the control is only offered to the role the API allows. */}
+          {user?.role === 'SUPER_ADMIN' && (
+            <DuplicatesDialog>
+              <Button variant="outline" size="sm">
+                <Merge className="mr-2 h-4 w-4" />
+                Duplicates
+              </Button>
+            </DuplicatesDialog>
+          )}
           <ImportLeadsDialog>
             <Button variant="outline" size="sm">
               <Upload className="mr-2 h-4 w-4" />

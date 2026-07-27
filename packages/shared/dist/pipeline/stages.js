@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AFTERCARE_FROM_STAGE = exports.STAGE_LABELS = exports.PIPELINE_STAGES = exports.DEAL_DOCUMENT_LABELS = exports.DealDocument = void 0;
 exports.stageDef = stageDef;
 exports.documentsExpectedAt = documentsExpectedAt;
+exports.stageProgress = stageProgress;
 // The clinic's sales process, in order, with the paperwork each step expects.
 //
 // Defined once because five surfaces read it — the board, the filter bar, the deal detail sheet,
@@ -68,4 +69,17 @@ function documentsExpectedAt(stage) {
 }
 /** A deal reaching DONE has been treated, so the patient moves into after-care. */
 exports.AFTERCARE_FROM_STAGE = 'DONE';
+/**
+ * How far along a deal is, used to choose which of several duplicates to keep.
+ *
+ * The stage list is already in pipeline order, so its index is the answer everywhere except Lost:
+ * that sits at the end of the board because it is where cards go, not because it is the furthest a
+ * deal can get. Ranking it below New Deal keeps a dead enquiry from swallowing a live one.
+ */
+function stageProgress(stage) {
+    const index = exports.PIPELINE_STAGES.findIndex((s) => s.id === stage);
+    if (index === -1)
+        return -1;
+    return exports.PIPELINE_STAGES[index].terminal === 'lost' ? -1 : index;
+}
 //# sourceMappingURL=stages.js.map

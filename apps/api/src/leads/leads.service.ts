@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -19,10 +19,15 @@ import {
   nextAction,
   coerceLeadSource,
   normalisePhone,
+  stageDef,
+  stageProgress,
   RECYCLE_ANGLE,
   STAGE_LABELS,
   type ImportLeadsResult,
+  type DuplicateGroup,
+  type MergeDuplicatesResult,
 } from '@dental-crm/shared';
+import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
 
 const LEAD_SELECT = {
   id: true,
@@ -140,6 +145,10 @@ export class LeadsService {
 
     if (stuck) where.stageChangedAt = { lt: stuckBefore() };
 
+    // A deal folded into another is off the board. The row survives for its history, but showing
+    // it would put the duplicate straight back in front of whoever just merged it away.
+    where.mergedIntoId = null;
+
     // Access scope: a non-admin can only ever see their own leads, so we pin
     // assignedToId to their own id and ignore any assignedToId they tried to pass.
     if (this.canSeeAll(currentUser)) {
@@ -174,14 +183,70 @@ export class LeadsService {
     return lead;
   }
 
+  /**
+   * The deal a number is already on, or null.
+   *
+   * Deliberately unscoped by assignee. A receptionist who cannot see a colleague's deals still has
+   * to be told the number is taken, or the duplicate they are about to create is exactly the one
+   * this check exists to stop. Only the name and stage come back — enough to say "this is already
+   * in the pipeline, go there" without opening the record.
+   *
+   * Closed deals do not block: a patient who was treated last year and enquires again is a new
+   * deal, and refusing that would be a worse bug than the one being fixed.
+   */
+  private async openDealOnNumber(numbers: (string | undefined)[], excludeLeadId?: string) {
+    const candidates = numbers.filter((n): n is string => !!n && n.length >= 7);
+    if (candidates.length === 0) return null;
+
+    return this.prisma.lead.findFirst({
+      where: {
+        id: excludeLeadId ? { not: excludeLeadId } : undefined,
+        status: $Enums.LeadStatus.ACTIVE,
+        mergedIntoId: null,
+        OR: [{ phone: { in: candidates } }, { whatsappNumber: { in: candidates } }],
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        stage: true,
+        assignedTo: { select: { firstName: true, lastName: true } },
+      },
+    });
+  }
+
+  /** The 409 body, shaped so the dialog can offer to open the deal rather than just refusing. */
+  private duplicateNumberError(existing: NonNullable<Awaited<ReturnType<LeadsService['openDealOnNumber']>>>) {
+    const name = `${existing.firstName} ${existing.lastName ?? ''}`.trim();
+    const owner = existing.assignedTo
+      ? `${existing.assignedTo.firstName} ${existing.assignedTo.lastName}`
+      : 'nobody';
+    return new ConflictException({
+      message: `That number is already on an open deal — ${name}, at ${STAGE_LABELS[existing.stage] ?? existing.stage}, assigned to ${owner}.`,
+      code: 'DUPLICATE_NUMBER',
+      existingLeadId: existing.id,
+      existingLeadName: name,
+      existingStage: existing.stage,
+    });
+  }
+
   async create(dto: CreateLeadDto, currentUser?: JwtPayload) {
+    // Normalised on the way in, so the stored value matches how inbound WhatsApp arrives and so
+    // the duplicate check above compares like with like. Without this "+90 555 111 22 33" and
+    // "905551112233" are two different strings and no check can see they are one patient.
+    const phone = dto.phone ? normalisePhone(dto.phone) : undefined;
+    const whatsappNumber = dto.whatsappNumber ? normalisePhone(dto.whatsappNumber) : undefined;
+
+    const existing = await this.openDealOnNumber([phone, whatsappNumber]);
+    if (existing) throw this.duplicateNumberError(existing);
+
     return this.prisma.lead.create({
       data: {
         firstName: dto.firstName,
         lastName: dto.lastName,
         email: dto.email,
-        phone: dto.phone,
-        whatsappNumber: dto.whatsappNumber,
+        phone,
+        whatsappNumber,
         source: dto.source as $Enums.LeadSource,
         campaignId: dto.campaignId,
         estimatedValue: dto.estimatedValue,
@@ -277,6 +342,222 @@ export class LeadsService {
     return result;
   }
 
+  // ─── Duplicate numbers ──────────────────────────────────────────────────────
+  //
+  // A quarter of the live pipeline was the same person entered more than once. The cleanup keeps
+  // one deal per number and folds the rest into it, rather than deleting anything: the losing rows
+  // hold notes and stage history somebody wrote, and after a delete there would be no way to tell
+  // a duplicate had ever existed.
+
+  /**
+   * Deals that share a phone or WhatsApp number, grouped by number.
+   *
+   * Grouped in memory rather than by SQL because the numbers on file are not normalised — the
+   * Bitrix import brought in "+90 555…", "0090555…" and "905 551…" for one patient — so grouping
+   * has to happen after normalisation, not on the raw column.
+   */
+  async findDuplicateGroups(): Promise<DuplicateGroup[]> {
+    const leads = await this.prisma.lead.findMany({
+      where: { mergedIntoId: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        whatsappNumber: true,
+        email: true,
+        stage: true,
+        status: true,
+        estimatedValue: true,
+        currency: true,
+        notes: true,
+        createdAt: true,
+        stageChangedAt: true,
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
+        patient: { select: { id: true } },
+        _count: { select: { tasks: true, activities: true, conversations: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const byNumber = new Map<string, typeof leads>();
+    for (const lead of leads) {
+      // One deal contributes at most once per distinct number it carries, so a lead whose phone
+      // and WhatsApp are the same number does not look like a duplicate of itself.
+      const numbers = new Set(
+        [lead.phone, lead.whatsappNumber]
+          .map((n) => (n ? normalisePhone(n) : ''))
+          // Under seven digits is an extension or a typo, not a number that identifies anyone.
+          .filter((n) => n.length >= 7),
+      );
+      for (const n of numbers) {
+        if (!byNumber.has(n)) byNumber.set(n, []);
+        byNumber.get(n)!.push(lead);
+      }
+    }
+
+    const groups: DuplicateGroup[] = [];
+    for (const [number, members] of byNumber) {
+      if (members.length < 2) continue;
+
+      const ranked = [...members].sort(
+        (a, b) =>
+          stageProgress(b.stage) - stageProgress(a.stage) ||
+          b.stageChangedAt.getTime() - a.stageChangedAt.getTime() ||
+          b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+
+      // More than one completed treatment on a number is a returning patient, not a mistake —
+      // implants last year, crowns this year. Those are two real deals and merging them would
+      // destroy the clinic's record of the first. Flagged so bulk merge leaves them alone.
+      const completed = members.filter((m) => stageDef(m.stage)?.terminal === 'won').length;
+      // A deal that became a patient is not junk either, whatever stage it sits at.
+      const linkedToPatient = members.filter((m) => m.patient).length;
+
+      groups.push({
+        number,
+        repeatTreatment: completed > 1 || linkedToPatient > 1,
+        suggestedSurvivorId: ranked[0].id,
+        leads: ranked.map((l) => ({
+          id: l.id,
+          firstName: l.firstName,
+          lastName: l.lastName,
+          phone: l.phone,
+          email: l.email,
+          stage: l.stage,
+          status: l.status,
+          estimatedValue: l.estimatedValue ? Number(l.estimatedValue) : null,
+          currency: l.currency,
+          createdAt: l.createdAt.toISOString(),
+          assignedTo: l.assignedTo,
+          hasPatient: !!l.patient,
+          counts: l._count,
+        })),
+      });
+    }
+
+    // Worst first: the number on seven deals is the one somebody wants to see.
+    return groups.sort((a, b) => b.leads.length - a.leads.length);
+  }
+
+  /**
+   * Folds every other deal on a number into one survivor.
+   *
+   * `dryRun` reports exactly what would move without touching anything. The destructive version of
+   * this runs over live patient records and cannot be undone by pressing back, so the preview is
+   * not a nicety — it is how somebody checks the survivor is the right deal before committing.
+   *
+   * Deals linked to a patient are never absorbed. That deal produced a treatment; whatever it looks
+   * like on the board, it is not a stray enquiry to be tidied away.
+   */
+  async mergeDuplicates(dto: MergeDuplicatesDto, currentUser: JwtPayload): Promise<MergeDuplicatesResult> {
+    const groups = await this.findDuplicateGroups();
+    const wanted = dto.numbers?.length ? new Set(dto.numbers) : null;
+
+    const result: MergeDuplicatesResult = { merged: 0, groups: 0, skipped: [], dryRun: !!dto.dryRun };
+
+    for (const group of groups) {
+      if (wanted && !wanted.has(group.number)) continue;
+
+      if (group.repeatTreatment && !dto.includeRepeatTreatment) {
+        result.skipped.push({ number: group.number, reason: 'Looks like repeat treatment, not a duplicate' });
+        continue;
+      }
+
+      const survivorId = dto.survivors?.[group.number] ?? group.suggestedSurvivorId;
+      const survivor = group.leads.find((l) => l.id === survivorId);
+      if (!survivor) {
+        result.skipped.push({ number: group.number, reason: 'The chosen deal is not on this number' });
+        continue;
+      }
+
+      const losers = group.leads.filter((l) => l.id !== survivorId && !l.hasPatient);
+      const protectedCount = group.leads.length - losers.length - 1;
+      if (protectedCount > 0) {
+        result.skipped.push({
+          number: group.number,
+          reason: `${protectedCount} deal(s) left alone — already linked to a patient`,
+        });
+      }
+      if (losers.length === 0) continue;
+
+      if (!dto.dryRun) {
+        await this.absorbLeads(survivorId, losers.map((l) => l.id), currentUser);
+      }
+
+      result.groups += 1;
+      result.merged += losers.length;
+    }
+
+    return result;
+  }
+
+  /**
+   * Moves everything hanging off the losing deals onto the survivor, then marks them merged.
+   *
+   * One transaction per group rather than one for the whole run: a failure on the twentieth number
+   * should not roll back the nineteen that worked, and holding locks over a thousand-row table
+   * while several hundred rows move is how a board goes unresponsive mid-morning.
+   */
+  private async absorbLeads(survivorId: string, loserIds: string[], currentUser: JwtPayload) {
+    await this.prisma.$transaction(async (tx) => {
+      const losers = await tx.lead.findMany({
+        where: { id: { in: loserIds } },
+        select: { id: true, firstName: true, lastName: true, stage: true, notes: true, estimatedValue: true },
+      });
+      const survivor = await tx.lead.findUniqueOrThrow({
+        where: { id: survivorId },
+        select: { notes: true, estimatedValue: true },
+      });
+
+      // Everything a person wrote or a patient sent moves across. Conversations especially: a
+      // thread left on a merged deal is a patient's messages disappearing from the inbox.
+      await tx.leadTask.updateMany({ where: { leadId: { in: loserIds } }, data: { leadId: survivorId } });
+      await tx.leadActivity.updateMany({ where: { leadId: { in: loserIds } }, data: { leadId: survivorId } });
+      await tx.conversation.updateMany({ where: { leadId: { in: loserIds } }, data: { leadId: survivorId } });
+      await tx.callLog.updateMany({ where: { leadId: { in: loserIds } }, data: { leadId: survivorId } });
+      await tx.intakeSubmission.updateMany({ where: { leadId: { in: loserIds } }, data: { leadId: survivorId } });
+
+      const carriedNotes = losers
+        .map((l) => l.notes?.trim())
+        .filter((n): n is string => !!n);
+
+      // An estimate on the survivor wins; one is only inherited when the survivor has none, so a
+      // merge never quietly reprices a deal somebody has already quoted.
+      const inheritedValue =
+        survivor.estimatedValue ?? losers.find((l) => l.estimatedValue != null)?.estimatedValue ?? null;
+
+      await tx.lead.update({
+        where: { id: survivorId },
+        data: {
+          estimatedValue: inheritedValue,
+          notes: [survivor.notes?.trim(), ...carriedNotes].filter(Boolean).join('\n\n---\n') || null,
+        },
+      });
+
+      await tx.lead.updateMany({
+        where: { id: { in: loserIds } },
+        data: {
+          mergedIntoId: survivorId,
+          mergedAt: new Date(),
+          status: $Enums.LeadStatus.ARCHIVED,
+        },
+      });
+
+      // The survivor's history says where the extra deals went, so this is answerable months later
+      // without anybody having to know the merge ever ran.
+      await tx.leadActivity.create({
+        data: {
+          leadId: survivorId,
+          userId: currentUser.sub,
+          note: `Merged ${losers.length} duplicate deal(s) on the same number into this one: ${losers
+            .map((l) => `${l.firstName} ${l.lastName ?? ''}`.trim() || l.id)
+            .join(', ')}`,
+        },
+      });
+    });
+  }
+
   /** Phone and email keys for every lead already on file that this import might duplicate. */
   private async existingContactKeys(rows: ImportLeadsDto['leads']): Promise<Set<string>> {
     const phones = rows.map((r) => (r.phone ? normalisePhone(r.phone) : '')).filter(Boolean);
@@ -306,14 +587,27 @@ export class LeadsService {
 
   async update(id: string, dto: UpdateLeadDto, currentUser?: JwtPayload) {
     await this.findOne(id, currentUser);
+
+    // Editing a number is the other way a duplicate appears — someone corrects a typo and lands on
+    // a number already in the pipeline. Same normalisation and same check as create, minus this
+    // deal itself, which would otherwise always be its own clash.
+    const phone = dto.phone !== undefined ? (dto.phone ? normalisePhone(dto.phone) : null) : undefined;
+    const whatsappNumber =
+      dto.whatsappNumber !== undefined ? (dto.whatsappNumber ? normalisePhone(dto.whatsappNumber) : null) : undefined;
+
+    if (phone || whatsappNumber) {
+      const existing = await this.openDealOnNumber([phone ?? undefined, whatsappNumber ?? undefined], id);
+      if (existing) throw this.duplicateNumberError(existing);
+    }
+
     return this.prisma.lead.update({
       where: { id },
       data: {
         firstName: dto.firstName,
         lastName: dto.lastName,
         email: dto.email,
-        phone: dto.phone,
-        whatsappNumber: dto.whatsappNumber,
+        phone: phone ?? undefined,
+        whatsappNumber: whatsappNumber ?? undefined,
         source: dto.source as $Enums.LeadSource | undefined,
         campaignId: dto.campaignId,
         estimatedValue: dto.estimatedValue,

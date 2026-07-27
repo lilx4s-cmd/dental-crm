@@ -15,6 +15,7 @@ import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
+import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
 const WRITE_ROLES = [...PIPELINE_ROLES, Role.RECEPTION];
@@ -71,6 +72,22 @@ export class LeadsController {
   @ApiOperation({ summary: 'Transfer (reassign) leads between salespeople' })
   transferLeads(@Body() dto: TransferLeadsDto, @CurrentUser() user: JwtPayload) {
     return this.leadsService.transferLeads(dto, user);
+  }
+
+  // Cleanup of deals sharing a number. Super Admin only: merging rewrites who owns what across the
+  // whole pipeline, including deals the caller would not otherwise be allowed to see.
+  @Get('duplicates')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Deals sharing a phone or WhatsApp number, grouped, worst first' })
+  findDuplicates() {
+    return this.leadsService.findDuplicateGroups();
+  }
+
+  @Post('duplicates/merge')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Fold duplicate deals into one survivor per number. Supports dryRun.' })
+  mergeDuplicates(@Body() dto: MergeDuplicatesDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.mergeDuplicates(dto, user);
   }
 
   /**

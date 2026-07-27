@@ -492,6 +492,13 @@ model Lead {
   // created directly in this CRM never had a Bitrix counterpart. Powers the
   // "Open in Bitrix24" link in the lead detail view.
   bitrixDealId   Int?          @unique
+  // Set when this deal was folded into another during duplicate cleanup. The row is kept rather
+  // than deleted — it carries whatever somebody wrote against it, and "this enquiry became that
+  // deal" is itself worth knowing. Merged deals are filtered out of every board and list query.
+  mergedIntoId   String?
+  mergedInto     Lead?         @relation("LeadMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom     Lead[]        @relation("LeadMerge")
+  mergedAt       DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -505,6 +512,9 @@ model Lead {
   @@index([stage])
   @@index([assignedToId])
   @@index([stageChangedAt])
+  @@index([mergedIntoId])
+  @@index([phone])
+  @@index([whatsappNumber])
   @@map("leads")
 }
 
