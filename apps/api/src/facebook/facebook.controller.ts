@@ -27,10 +27,15 @@ export class FacebookController {
   @Public()
   @HttpCode(HttpStatus.OK)
   async receiveWebhook(@Req() req: Request, @Body() body: Record<string, unknown>) {
-    const signature = req.headers['x-hub-signature-256'] as string;
-    const rawBody = (req as any).rawBody as Buffer | undefined;
+    const signature = req.headers['x-hub-signature-256'] as string | undefined;
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
 
-    if (rawBody && signature && !this.facebookService.verifySignature(rawBody, signature)) {
+    // Verify or refuse — the same rule the WhatsApp webhook follows. This previously waved a
+    // request through whenever the signature header or the app secret was absent, which meant
+    // anyone who found the URL could post lead payloads straight into the pipeline, and an
+    // unconfigured integration was the easiest way to be wide open. An endpoint nobody has
+    // configured has no business writing into the clinic's records.
+    if (!this.facebookService.verifySignature(rawBody, signature)) {
       throw new UnauthorizedException('Invalid Facebook webhook signature');
     }
 

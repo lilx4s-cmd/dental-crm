@@ -140,11 +140,26 @@ export class AuthService {
     res.cookie(REFRESH_TOKEN_COOKIE, token, this.cookieOptions());
   }
 
+  /**
+   * Options for the refresh cookie.
+   *
+   * SameSite has to differ by environment because the deployment is cross-site: the app is served
+   * from Vercel and the API from Render, which are separate registrable domains. A Strict cookie is
+   * never attached to a cross-site request, so the browser held a refresh token it would not send —
+   * /auth/refresh saw no cookie, answered 401, and every user was signed out the moment their
+   * fifteen-minute access token expired. In development both run on localhost, where Strict is
+   * correct and None would be refused for lacking Secure.
+   *
+   * None is only safe here because the cookie is HttpOnly, path-scoped to /api/auth, and the
+   * refresh endpoint accepts requests only from the CORS allowlist — a third-party site can cause
+   * the cookie to be sent but cannot read the response.
+   */
   private cookieOptions() {
+    const isProduction = this.config.get<string>('nodeEnv') === 'production';
     return {
       httpOnly: true,
-      secure: this.config.get<string>('nodeEnv') === 'production',
-      sameSite: 'strict' as const,
+      secure: isProduction,
+      sameSite: isProduction ? ('none' as const) : ('strict' as const),
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/api/auth',
     };

@@ -14,6 +14,14 @@ async function bootstrap() {
   });
   const config = app.get(ConfigService);
 
+  // Render terminates TLS at its own proxy, so without this every request arrives carrying the
+  // proxy's address and req.ip is identical for the entire internet. The rate limiters below would
+  // then share one bucket across all traffic: eleven enquiries from anywhere on earth and the
+  // public form starts refusing genuine patients, while a single abuser cannot be told apart from
+  // everyone else. `1` trusts exactly Render's own hop, so a client cannot forge its address by
+  // sending its own X-Forwarded-For header.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.use(helmet());
   app.use(cookieParser());
 

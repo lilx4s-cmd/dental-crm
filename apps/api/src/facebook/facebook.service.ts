@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { $Enums } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -28,16 +28,33 @@ export class FacebookService {
     this.appSecret = config.get<string>('FACEBOOK_APP_SECRET');
   }
 
+  /** Meta's one-time handshake when the webhook URL is registered. */
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
     const verifyToken = this.config.get<string>('FACEBOOK_WEBHOOK_VERIFY_TOKEN');
+    // Nothing configured means nothing to verify against — refuse rather than accept any token.
+    // Without this guard an absent token compared equal to an absent setting, so the handshake
+    // succeeded for anybody who called it.
+    if (!verifyToken) return null;
     if (mode === 'subscribe' && token === verifyToken) return challenge;
     return null;
   }
 
-  verifySignature(rawBody: Buffer, signature: string): boolean {
-    if (!this.appSecret) return true; // skip verification if not configured
+  /**
+   * Whether this payload really came from Meta.
+   *
+   * Deliberately identical in shape to WhatsAppService.verifySignature. This used to return true
+   * when no app secret was configured, so an integration nobody had finished setting up accepted
+   * lead payloads from anyone who guessed the URL — and it compared with `===`, which leaks the
+   * expected digest a byte at a time to anyone willing to measure the difference.
+   */
+  verifySignature(rawBody: Buffer | undefined, signature: string | undefined): boolean {
+    if (!this.appSecret || !rawBody || !signature) return false;
+
     const expected = `sha256=${createHmac('sha256', this.appSecret).update(rawBody).digest('hex')}`;
-    return expected === signature;
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    // Length check first: timingSafeEqual throws on a length mismatch.
+    return a.length === b.length && timingSafeEqual(a, b);
   }
 
   async handleLeadGenEvent(body: Record<string, unknown>): Promise<void> {
