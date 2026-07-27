@@ -10,7 +10,14 @@ export declare const DEAL_DOCUMENT_LABELS: Record<DealDocument, string>;
 export interface PipelineStageDef {
     id: PipelineStage;
     label: string;
-    /** Tailwind border colour for the board column. Identity, not status — each stage is distinct. */
+    /**
+     * The stage's identity colour, as a hex value drawn from Bitrix24's kanban palette — the board
+     * is a deliberate copy of the CRM the clinic used for years, and these are the colours staff
+     * already read as "early / in progress / travelling / won / lost".
+     *
+     * Hex rather than a Tailwind class because the board paints it as a strip on the column header
+     * and Tailwind cannot generate a class from a runtime value.
+     */
     color: string;
     /** Asked for from this stage onward. */
     documents?: DealDocument[];

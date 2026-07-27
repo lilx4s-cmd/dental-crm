@@ -51,6 +51,22 @@
     --destructive-muted: 0 93% 96%;
     --destructive-muted-foreground: 0 74% 39%;
 
+    /* Bitrix24 board surfaces. The Deals kanban is a deliberate visual copy of Bitrix24's CRM
+       board — the clinic ran on Bitrix for years and asked for the same interface back — so it
+       draws from this scoped set instead of the semantic tokens above. They are named once here
+       for the same reason those exist: otherwise the copy spreads as loose hex through half a
+       dozen components and drifts apart the first time anyone edits one of them.
+
+       `--bx-muted` is a shade darker than Bitrix's own secondary grey (#828b95, 3.5:1 on white).
+       At 4.7:1 it still reads as Bitrix's quiet grey but clears WCAG AA, which the original does
+       not — the card's phone number and source line are text people actually have to read. */
+    --bx-board: 200 22% 95%;
+    --bx-surface: 0 0% 100%;
+    --bx-line: 210 9% 91%;
+    --bx-link: 210 69% 41%;
+    --bx-text: 212 15% 24%;
+    --bx-muted: 212 10% 45%;
+
     /* Elevation. One hue for every shadow so cards do not each invent their own grey. */
     --shadow-color: 220 43% 11%;
     --border: 214.3 31.8% 91.4%;
@@ -94,6 +110,16 @@
     --info-muted-foreground: 199 95% 74%;
     --destructive-muted: 0 50% 16%;
     --destructive-muted-foreground: 0 91% 76%;
+
+    /* Bitrix is a light-only product, so dark mode keeps its *structure* — flat board, thin
+       borders, blue deal titles — on this app's dark surfaces rather than dropping a white slab
+       into a dark shell. Link 6.5:1 and muted text 6.6:1 against the card. */
+    --bx-board: 222 30% 10%;
+    --bx-surface: 222 25% 14%;
+    --bx-line: 217 25% 22%;
+    --bx-link: 210 90% 66%;
+    --bx-text: 210 40% 92%;
+    --bx-muted: 215 12% 65%;
 
     --shadow-color: 0 0% 0%;
     --border: 217.2 32.6% 17.5%;

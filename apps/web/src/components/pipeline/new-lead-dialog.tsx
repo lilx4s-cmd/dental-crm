@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateLead, type CreateLeadPayload } from '@/hooks/use-leads';
+import { useCreateLead, useUpdateLeadStage, type CreateLeadPayload } from '@/hooks/use-leads';
 import { useUsers } from '@/hooks/use-users';
 import { useAuth } from '@/context/auth-context';
 
@@ -42,9 +42,25 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function NewLeadDialog({ children }: { children: React.ReactNode }) {
+export function NewLeadDialog({
+  children,
+  defaultStage,
+  defaultStageLabel,
+}: {
+  children: React.ReactNode;
+  /**
+   * Which column the deal should land in, for the per-column "+" on the board. The create endpoint
+   * always opens a deal at New Deal, so this moves it afterwards through the ordinary stage
+   * endpoint rather than through a second way of setting a stage — that path is the one that
+   * checks the caller's role and writes the activity entry, and a quick-add is not a reason to
+   * skip either.
+   */
+  defaultStage?: string;
+  defaultStageLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const createLead = useCreateLead();
+  const updateStage = useUpdateLeadStage();
   const [source, setSource] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
   const { user } = useAuth();
@@ -79,8 +95,22 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
         notes: data.notes || undefined,
         assignedToId: data.assignedToId || undefined,
       };
-      await createLead.mutateAsync(payload);
-      toast.success('Lead created');
+      const lead = await createLead.mutateAsync(payload);
+
+      if (defaultStage && defaultStage !== 'NEW_DEAL') {
+        // Reported separately from the create. A refused move must not read as a failed create —
+        // the deal exists either way, and telling someone it failed sends them off to make a
+        // duplicate.
+        try {
+          await updateStage.mutateAsync({ id: lead.id, stage: defaultStage });
+          toast.success(`Deal created in ${defaultStageLabel ?? defaultStage}`);
+        } catch {
+          toast.warning('Deal created, but it stayed in New Deal — you cannot move deals to that stage.');
+        }
+      } else {
+        toast.success('Lead created');
+      }
+
       reset();
       setSource('');
       setAssignedToId('');
@@ -95,7 +125,9 @@ export function NewLeadDialog({ children }: { children: React.ReactNode }) {
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New Deal</DialogTitle>
+          <DialogTitle>
+            New Deal{defaultStageLabel ? ` — ${defaultStageLabel}` : ''}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="grid grid-cols-2 gap-3">

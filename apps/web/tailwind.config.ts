@@ -73,6 +73,16 @@ const config: Config = {
           foreground: 'hsl(var(--sidebar-foreground))',
           border: 'hsl(var(--sidebar-border))',
         },
+        // Bitrix24 kanban surfaces, used only by the Deals board. Scoped on purpose: this is a
+        // copy of another product's chrome, not a second opinion about what "muted" means here.
+        bx: {
+          board: 'hsl(var(--bx-board))',
+          surface: 'hsl(var(--bx-surface))',
+          line: 'hsl(var(--bx-line))',
+          link: 'hsl(var(--bx-link))',
+          text: 'hsl(var(--bx-text))',
+          muted: 'hsl(var(--bx-muted))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

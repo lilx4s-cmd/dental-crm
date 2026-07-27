@@ -13,11 +13,12 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
-import { Link2, UserPlus } from 'lucide-react';
+import { Link2, Plus, Upload, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
+import { ImportLeadsDialog } from '@/components/pipeline/import-leads-dialog';
 import { LostReasonDialog } from '@/components/pipeline/lost-reason-dialog';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
 import {
@@ -28,10 +29,15 @@ import {
   type PipelineGroup,
 } from '@/hooks/use-leads';
 import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
+import { formatDealValue } from '@/lib/money';
+import { cn } from '@/lib/utils';
 // The board draws whatever the shared stage list says, so renaming a stage renames it here,
 // in the filters, on the dashboard and in the reports at once.
 import { PIPELINE_STAGES as STAGES } from '@dental-crm/shared';
 
+// Bitrix's columns are fixed and narrow — the board is meant to be read across, not down one
+// column at a time, and fourteen stages only fit on a laptop at roughly this width.
+const COLUMN_WIDTH = 252;
 
 // Bitrix's Kanban shows each column's deal count *and* its total pipeline value —
 // sum estimatedValue per currency (almost always a single currency in practice,
@@ -44,6 +50,10 @@ function columnTotals(leads: Lead[]): Array<[string, number]> {
     totals.set(currency, (totals.get(currency) ?? 0) + l.estimatedValue);
   }
   return Array.from(totals.entries());
+}
+
+function totalsLabel(totals: Array<[string, number]>): string {
+  return totals.map(([currency, amount]) => formatDealValue(amount, currency)).join(' · ');
 }
 
 function DroppableColumn({
@@ -59,30 +69,54 @@ function DroppableColumn({
   const totals = columnTotals(leads);
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`flex flex-col rounded-xl border-t-4 ${stage.color} bg-muted/40 min-h-[300px] transition-colors ${isOver ? 'bg-muted/70' : ''}`}
-      style={{ minWidth: 220, width: 220 }}
-    >
-      <div className="px-3 py-2.5 border-b border-border/50">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.label}</span>
-          <span className="text-xs font-bold tabular-nums bg-background rounded-full px-1.5 py-0.5">{leads.length}</span>
-        </div>
-        {totals.length > 0 && (
-          <div className="mt-1 text-[11px] font-medium text-muted-foreground/70 truncate">
-            {totals.map(([currency, amount]) => `${amount.toLocaleString()} ${currency}`).join(' · ')}
+    <div className="flex h-full shrink-0 flex-col" style={{ width: COLUMN_WIDTH }}>
+      {/* The column header is the piece that makes a Bitrix board recognisable: a strip of the
+          stage's own colour over a white block carrying the name, the count and the money. */}
+      <div className="shrink-0 overflow-hidden rounded-[3px] border border-bx-line bg-bx-surface">
+        <div className="h-[3px]" style={{ backgroundColor: stage.color }} />
+        <div className="flex items-start gap-1 px-2.5 py-1.5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-bold uppercase tracking-wide text-bx-text" title={stage.label}>
+              {stage.label}
+            </p>
+            <p className="mt-px truncate text-[11px] text-bx-muted" title={totalsLabel(totals)}>
+              {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
+              {totals.length > 0 && ` · ${totalsLabel(totals)}`}
+            </p>
           </div>
-        )}
+          {/* Lost needs a reason, which this dialog does not collect — so that one column keeps
+              the drag-and-drop path that does ask for one. */}
+          {stage.terminal !== 'lost' && (
+            <NewLeadDialog defaultStage={stage.id} defaultStageLabel={stage.label}>
+              <button
+                type="button"
+                aria-label={`Add a deal to ${stage.label}`}
+                title={`Add a deal to ${stage.label}`}
+                className="-mr-1 shrink-0 rounded p-1 text-bx-muted transition-colors hover:bg-bx-board hover:text-bx-link"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </NewLeadDialog>
+          )}
+        </div>
       </div>
-      <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-220px)]">
+
+      <div
+        ref={setNodeRef}
+        className={cn(
+          'mt-1.5 min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-[3px] p-1 transition-colors',
+          isOver && 'bg-bx-link/5 ring-1 ring-inset ring-bx-link/30',
+        )}
+      >
         <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
           {leads.map((lead) => (
             <LeadCard key={lead.id} lead={lead} onClick={() => onLeadClick(lead)} />
           ))}
         </SortableContext>
         {leads.length === 0 && (
-          <div className="text-center py-8 text-xs text-muted-foreground/60">Drop here</div>
+          <div className="rounded-[3px] border border-dashed border-bx-line px-2 py-6 text-center text-[11px] text-bx-muted">
+            Drag deals here
+          </div>
         )}
       </div>
     </div>
@@ -113,8 +147,11 @@ export default function PipelinePage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const allLeads = localGroups.flatMap((g) => g.leads as Lead[]);
+  const boardTotals = columnTotals(allLeads);
+
   function onDragStart(event: DragStartEvent) {
-    const lead = localGroups.flatMap((g) => g.leads as Lead[]).find((l) => l.id === event.active.id);
+    const lead = allLeads.find((l) => l.id === event.active.id);
     setActiveLead(lead ?? null);
   }
 
@@ -174,17 +211,25 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="space-y-4 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Deals</h1>
-          <p className="text-muted-foreground mt-1">Drag deals between stages to update their status</p>
+    // Bitrix's board runs edge to edge on its own grey; the negative margin undoes the dashboard
+    // shell's padding for this page only, rather than making every other page fight for it.
+    // The min-height keeps the columns usable on a short window: past that point the board grows
+    // and the dashboard shell scrolls, rather than the columns collapsing to nothing.
+    <div className="-m-6 flex h-[calc(100vh-4rem)] min-h-[560px] flex-col bg-bx-board">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bx-line bg-bx-surface px-4 py-2">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-lg font-semibold text-bx-text">Deals</h1>
+          <span className="text-xs text-bx-muted">
+            {allLeads.length} {allLeads.length === 1 ? 'deal' : 'deals'}
+            {boardTotals.length > 0 && ` · ${totalsLabel(boardTotals)}`}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {/* The enquiry form is only useful if staff can find its link. Without this the page
               existed but nobody knew the URL to send. */}
           <Button
             variant="outline"
+            size="sm"
             onClick={() => {
               const url = `${window.location.origin}/intake`;
               navigator.clipboard
@@ -196,26 +241,34 @@ export default function PipelinePage() {
             <Link2 className="mr-2 h-4 w-4" />
             Enquiry form link
           </Button>
+          <ImportLeadsDialog>
+            <Button variant="outline" size="sm">
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
+          </ImportLeadsDialog>
           <NewLeadDialog>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
+            <Button size="sm">
+              <UserPlus className="mr-2 h-4 w-4" />
               New Deal
             </Button>
           </NewLeadDialog>
         </div>
       </div>
 
-      <PipelineFilterBar filters={filters} onChange={setFilters} />
+      <div className="shrink-0 px-4 pt-3">
+        <PipelineFilterBar filters={filters} onChange={setFilters} />
+      </div>
 
       {isLoading ? (
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3">
           {STAGES.map((s) => (
-            <Skeleton key={s.id} className="h-64 rounded-xl" style={{ minWidth: 220, width: 220 }} />
+            <Skeleton key={s.id} className="h-full shrink-0 rounded-[3px]" style={{ width: COLUMN_WIDTH }} />
           ))}
         </div>
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <div className="flex gap-3 overflow-x-auto pb-4">
+          <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3">
             {STAGES.map((stage) => {
               const group = localGroups.find((g) => g.stage === stage.id);
               return (
@@ -229,7 +282,11 @@ export default function PipelinePage() {
             })}
           </div>
           <DragOverlay>
-            {activeLead && <LeadCard lead={activeLead} onClick={() => {}} />}
+            {activeLead && (
+              <div className="w-[252px] rotate-1 opacity-95 shadow-md">
+                <LeadCard lead={activeLead} onClick={() => {}} />
+              </div>
+            )}
           </DragOverlay>
         </DndContext>
       )}

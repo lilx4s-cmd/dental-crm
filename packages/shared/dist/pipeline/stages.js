@@ -20,39 +20,43 @@ exports.DEAL_DOCUMENT_LABELS = {
     PASSPORT: 'Passport',
     FLIGHT_TICKET: 'Flight ticket',
 };
+// The ramp runs cool → warm → green the way a Bitrix funnel does: blues while the deal is still
+// conversation, turquoise once an offer exists, amber once travel is being booked, then Bitrix's
+// own won-green and lost-red at the end. The three "no response" stages deliberately drain of
+// colour as they escalate, so a column full of grey reads as neglected at a glance.
 exports.PIPELINE_STAGES = [
-    { id: 'NEW_DEAL', label: 'New Deal', color: 'border-indigo-400' },
-    { id: 'NO_RESPONSE_1', label: 'No Response 1', color: 'border-slate-400' },
-    { id: 'NO_RESPONSE_2', label: 'No Response 2', color: 'border-slate-500' },
-    { id: 'NO_RESPONSE_3', label: 'No Response 3', color: 'border-slate-600' },
-    { id: 'CONTACTED', label: 'Contacted', color: 'border-purple-400' },
-    { id: 'WAITING_PHOTOS', label: 'Waiting Photos', color: 'border-fuchsia-400' },
+    { id: 'NEW_DEAL', label: 'New Deal', color: '#00C4FB' },
+    { id: 'NO_RESPONSE_1', label: 'No Response 1', color: '#ADE2FF' },
+    { id: 'NO_RESPONSE_2', label: 'No Response 2', color: '#C5CFD6' },
+    { id: 'NO_RESPONSE_3', label: 'No Response 3', color: '#A5B2BD' },
+    { id: 'CONTACTED', label: 'Contacted', color: '#39A8EF' },
+    { id: 'WAITING_PHOTOS', label: 'Waiting Photos', color: '#DF9CD5' },
     // From the consultation onward the dentist needs to see the mouth.
-    { id: 'CONSULTATION', label: 'Consultation', color: 'border-blue-400', documents: ['TEETH_PHOTOS'] },
-    { id: 'OFFER_SENT', label: 'Offer Sent', color: 'border-cyan-400', documents: ['TEETH_PHOTOS'] },
-    { id: 'NEGOTIATION', label: 'Negotiation', color: 'border-teal-400', documents: ['TEETH_PHOTOS'] },
-    { id: 'WAITING_FOR_TICKET', label: 'Waiting for Ticket', color: 'border-amber-400', documents: ['TEETH_PHOTOS'] },
+    { id: 'CONSULTATION', label: 'Consultation', color: '#2FC6F6', documents: ['TEETH_PHOTOS'] },
+    { id: 'OFFER_SENT', label: 'Offer Sent', color: '#55D0E0', documents: ['TEETH_PHOTOS'] },
+    { id: 'NEGOTIATION', label: 'Negotiation', color: '#47E4C2', documents: ['TEETH_PHOTOS'] },
+    { id: 'WAITING_FOR_TICKET', label: 'Waiting for Ticket', color: '#FFB800', documents: ['TEETH_PHOTOS'] },
     // Once travel is booked the clinic needs the documents to plan the stay and meet them.
     {
         id: 'TICKET',
         label: 'Ticket',
-        color: 'border-orange-400',
+        color: '#FFA900',
         documents: ['TEETH_PHOTOS', 'PASSPORT', 'FLIGHT_TICKET'],
     },
     {
         id: 'SECOND_VISIT',
         label: 'Second Visit',
-        color: 'border-lime-500',
+        color: '#F7A700',
         documents: ['TEETH_PHOTOS', 'PASSPORT', 'FLIGHT_TICKET'],
     },
     {
         id: 'DONE',
         label: 'Done',
-        color: 'border-green-500',
+        color: '#7BD500',
         documents: ['TEETH_PHOTOS', 'PASSPORT', 'FLIGHT_TICKET'],
         terminal: 'won',
     },
-    { id: 'LOST', label: 'Lost', color: 'border-red-400', terminal: 'lost' },
+    { id: 'LOST', label: 'Lost', color: '#FF5752', terminal: 'lost' },
 ];
 exports.STAGE_LABELS = Object.fromEntries(exports.PIPELINE_STAGES.map((s) => [s.id, s.label]));
 function stageDef(stage) {
