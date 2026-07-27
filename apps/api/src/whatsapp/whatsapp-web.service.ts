@@ -11,6 +11,43 @@ import { WhatsAppService } from './whatsapp.service';
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
 /**
+ * Drops that mean the session itself is finished, not that the network hiccuped. Reconnecting on
+ * any of these just repeats the same rejection, and an unofficial client retrying in a tight loop
+ * is one of the things that gets a number banned — the state is exactly what we are trying not to
+ * provoke. Each needs a human: scan again, or stop the other client that took the session.
+ */
+const TERMINAL_DISCONNECTS = new Set<number>([
+  DisconnectReason.loggedOut,
+  DisconnectReason.connectionReplaced,
+  DisconnectReason.badSession,
+  DisconnectReason.forbidden,
+  DisconnectReason.multideviceMismatch,
+]);
+
+/** Codes whose stored credentials are past saving, so the next connect must start from a QR. */
+const CREDENTIALS_DEAD = new Set<number>([
+  DisconnectReason.loggedOut,
+  DisconnectReason.badSession,
+  DisconnectReason.forbidden,
+  DisconnectReason.multideviceMismatch,
+]);
+
+const TERMINAL_MESSAGES: Record<number, string> = {
+  [DisconnectReason.loggedOut]: 'The phone unlinked this device. Scan the QR again to reconnect.',
+  [DisconnectReason.connectionReplaced]:
+    'Another WhatsApp Web session took over this number. Close it, then link again.',
+  [DisconnectReason.badSession]: 'The stored session was rejected. Scan the QR again to start a fresh one.',
+  [DisconnectReason.forbidden]: 'WhatsApp refused this device. Scan the QR again, or check the number is not banned.',
+  [DisconnectReason.multideviceMismatch]:
+    'The phone is not on multi-device WhatsApp. Update WhatsApp on the phone, then link again.',
+};
+
+/** Transient drops back off instead of retrying every five seconds forever. */
+const RECONNECT_BASE_MS = 5_000;
+const RECONNECT_MAX_MS = 120_000;
+const RECONNECT_MAX_ATTEMPTS = 6;
+
+/**
  * Links the clinic's existing WhatsApp number by QR, the way WhatsApp Web does.
  *
  * This drives WhatsApp through an unofficial client, which Meta's terms prohibit and which can get
@@ -34,6 +71,15 @@ export class WhatsAppWebService {
   private lastError: string | null = null;
   /** Guards against two connect attempts racing into two sockets on one session. */
   private connecting = false;
+  /**
+   * The pending automatic reconnect, held so it can be cancelled. Without this, unlinking a device
+   * was undone a few seconds later by a retry that had already been scheduled — staff pressed
+   * "Unlink", watched it go, and found the phone linked again.
+   */
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  /** Set when a person, or WhatsApp itself, has ended the session. Cleared by an explicit connect. */
+  private stopped = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -73,7 +119,19 @@ export class WhatsAppWebService {
         'WhatsApp Web is switched off. Set WHATSAPP_WEB_ENABLED=true to enable it.',
       );
     }
-    if (this.connecting || this.state === 'connected') return;
+
+    // A person asking is the one thing that clears a stop and starts the backoff over — pressing
+    // the button after a bad run should try immediately rather than wait out the old delay. The
+    // automatic retries below go through connectInternal so they cannot reset their own budget.
+    this.cancelReconnect();
+    this.stopped = false;
+    this.reconnectAttempts = 0;
+
+    await this.connectInternal();
+  }
+
+  private async connectInternal(): Promise<void> {
+    if (!this.enabled || this.connecting || this.state === 'connected') return;
 
     this.connecting = true;
     this.lastError = null;
@@ -108,31 +166,58 @@ export class WhatsAppWebService {
         if (connection === 'open') {
           this.state = 'connected';
           this.qrDataUrl = null;
+          this.reconnectAttempts = 0;
           this.linkedNumber = sock.user?.id?.split(':')[0] ?? null;
           this.logger.log(`WhatsApp Web linked as ${this.linkedNumber ?? 'unknown'}`);
         }
 
         if (connection === 'close') {
           const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
-          const loggedOut = code === DisconnectReason.loggedOut;
 
           this.socket = null;
           this.qrDataUrl = null;
           this.state = 'disconnected';
 
-          if (loggedOut) {
-            // The phone unlinked this device. Stale credentials would make the next connect fail
-            // in a way that looks like a bug rather than "scan again".
-            await clear();
-            this.linkedNumber = null;
-            this.lastError = 'The phone unlinked this device. Scan the QR again to reconnect.';
-            this.logger.warn('WhatsApp Web session logged out from the phone');
-          } else {
-            this.lastError = lastDisconnect?.error?.message ?? 'Connection closed';
-            this.logger.warn(`WhatsApp Web disconnected (${code ?? 'no code'}) — reconnecting`);
-            // Any other drop is transient. Reconnect after a pause rather than hammering.
-            setTimeout(() => void this.connect().catch(() => undefined), 5_000);
+          // A person pressed unlink while this drop was in flight. Honour that over any retry.
+          if (this.stopped) return;
+
+          if (code !== undefined && TERMINAL_DISCONNECTS.has(code)) {
+            if (CREDENTIALS_DEAD.has(code)) {
+              // Stale credentials would make the next connect fail in a way that looks like a bug
+              // rather than "scan again".
+              await clear();
+              this.linkedNumber = null;
+            }
+            this.stopped = true;
+            this.lastError = TERMINAL_MESSAGES[code] ?? 'The session ended. Scan the QR again to reconnect.';
+            this.logger.warn(`WhatsApp Web session ended (${code}): ${this.lastError}`);
+            return;
           }
+
+          // 515 is the handshake's own restart, sent immediately after a successful scan. It is not
+          // a failure, so it neither backs off nor counts against the attempt budget — treating it
+          // as one used to put a two-minute delay between scanning and the session coming up.
+          if (code === DisconnectReason.restartRequired) {
+            this.logger.log('WhatsApp Web restart required after pairing — reconnecting');
+            this.scheduleReconnect(0);
+            return;
+          }
+
+          this.lastError = lastDisconnect?.error?.message ?? 'Connection closed';
+
+          if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+            this.stopped = true;
+            this.lastError = `Gave up reconnecting after ${RECONNECT_MAX_ATTEMPTS} attempts. Last error: ${this.lastError}`;
+            this.logger.error(this.lastError);
+            return;
+          }
+
+          const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempts);
+          this.reconnectAttempts += 1;
+          this.logger.warn(
+            `WhatsApp Web disconnected (${code ?? 'no code'}) — retry ${this.reconnectAttempts}/${RECONNECT_MAX_ATTEMPTS} in ${delay / 1000}s`,
+          );
+          this.scheduleReconnect(delay);
         }
       });
 
@@ -155,8 +240,32 @@ export class WhatsAppWebService {
     }
   }
 
+  private scheduleReconnect(delayMs: number) {
+    this.cancelReconnect();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.stopped) return;
+      void this.connectInternal().catch(() => undefined);
+    }, delayMs);
+    // Nothing should be held open purely by a pending WhatsApp retry.
+    this.reconnectTimer.unref?.();
+  }
+
+  private cancelReconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
   /** Unlinks and forgets the session, so the next connect starts from a fresh QR. */
   async logout(): Promise<void> {
+    // Order matters: stop first. A drop arriving mid-logout would otherwise schedule a retry that
+    // relinks the device seconds after somebody deliberately unlinked it.
+    this.stopped = true;
+    this.cancelReconnect();
+    this.reconnectAttempts = 0;
+
     const { clear } = await usePrismaAuthState(this.prisma);
     try {
       await this.socket?.logout();
@@ -168,6 +277,7 @@ export class WhatsAppWebService {
     this.state = this.enabled ? 'disconnected' : 'disabled';
     this.qrDataUrl = null;
     this.linkedNumber = null;
+    this.lastError = null;
   }
 
   async sendText(toPhone: string, text: string): Promise<void> {

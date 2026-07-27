@@ -19,6 +19,7 @@ import { UserAccessDialog } from '@/components/settings/user-access-dialog';
 import { StorageStatusCard } from '@/components/settings/storage-status-card';
 import { WhatsAppStatusCard } from '@/components/settings/whatsapp-status-card';
 import { EvolutionCard } from '@/components/settings/evolution-card';
+import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -213,6 +214,8 @@ export default function SettingsPage() {
       <WhatsAppStatusCard />
 
       <EvolutionCard />
+
+      <WhatsAppWebCard />
 
       <Separator />
 
