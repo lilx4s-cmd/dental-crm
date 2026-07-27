@@ -14,6 +14,7 @@ import { LeadsQueryDto } from './dto/leads-query.dto';
 import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
+import { ImportLeadsDto } from './dto/import-leads.dto';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
 const WRITE_ROLES = [...PIPELINE_ROLES, Role.RECEPTION];
@@ -70,6 +71,19 @@ export class LeadsController {
   @ApiOperation({ summary: 'Transfer (reassign) leads between salespeople' })
   transferLeads(@Body() dto: TransferLeadsDto, @CurrentUser() user: JwtPayload) {
     return this.leadsService.transferLeads(dto, user);
+  }
+
+  /**
+   * Bulk creation from a spreadsheet. Declared before ':id' like the transfer routes above.
+   *
+   * Above reception's level on purpose: an import writes hundreds of records at once and chooses
+   * who owns them, which is a different act from entering the enquiry that just rang.
+   */
+  @Post('import')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'Create many leads from a parsed CSV, skipping ones already on file' })
+  importLeads(@Body() dto: ImportLeadsDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.importLeads(dto, user);
   }
 
   @Post()

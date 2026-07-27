@@ -8,6 +8,7 @@ import { LeadsQueryDto } from './dto/leads-query.dto';
 import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
+import { ImportLeadsDto } from './dto/import-leads.dto';
 import {
   PipelineStage,
   Role,
@@ -16,8 +17,11 @@ import {
   taskDueRange,
   stuckBefore,
   nextAction,
+  coerceLeadSource,
+  normalisePhone,
   RECYCLE_ANGLE,
   STAGE_LABELS,
+  type ImportLeadsResult,
 } from '@dental-crm/shared';
 
 const LEAD_SELECT = {
@@ -192,6 +196,112 @@ export class LeadsService {
       },
       select: LEAD_SELECT,
     });
+  }
+
+  /**
+   * Creates many leads from a spreadsheet in one call.
+   *
+   * Three things matter here, and none of them is speed.
+   *
+   * A bad row must not cost the good ones. Clinic lists are hand-kept and reliably contain a blank
+   * line, a name in the phone column, or a header repeated halfway down; failing the whole import
+   * on the first of those means nobody can import anything. Each row is attempted on its own and
+   * its reason reported against its line number.
+   *
+   * Re-importing must not duplicate. The same list gets uploaded again a month later with thirty
+   * new names on the end, and 300 duplicate deals is worse than no import at all — each one is a
+   * patient somebody may now ring twice. Matching is on phone and email because those identify a
+   * person; two patients genuinely share a name.
+   *
+   * It must not run as one transaction. A single failed row would roll back an import somebody
+   * spent an afternoon preparing, and Postgres would hold locks across the whole file meanwhile.
+   */
+  async importLeads(dto: ImportLeadsDto, currentUser: JwtPayload): Promise<ImportLeadsResult> {
+    const assignedToId = dto.assignedToId ?? currentUser.sub;
+    const skipDuplicates = dto.skipDuplicates ?? true;
+    const result: ImportLeadsResult = { created: 0, skipped: 0, errors: [] };
+
+    // One lookup for the whole file rather than a query per row: an 800-row import would otherwise
+    // be 800 extra round trips to Supabase before it created anything.
+    const existing = skipDuplicates ? await this.existingContactKeys(dto.leads) : new Set<string>();
+
+    for (const [index, row] of dto.leads.entries()) {
+      // One for the header, one to count from one: this is the line number in their file.
+      const rowNumber = index + 2;
+      try {
+        const phone = row.phone ? normalisePhone(row.phone) : undefined;
+        const whatsappNumber = row.whatsappNumber ? normalisePhone(row.whatsappNumber) : undefined;
+        const email = row.email?.trim().toLowerCase() || undefined;
+
+        if (!phone && !email) {
+          result.errors.push({ row: rowNumber, reason: 'No phone or email — nobody could contact this lead' });
+          continue;
+        }
+
+        const keys = [phone && `p:${phone}`, email && `e:${email}`].filter(Boolean) as string[];
+        if (skipDuplicates && keys.some((k) => existing.has(k))) {
+          result.skipped += 1;
+          continue;
+        }
+
+        await this.prisma.lead.create({
+          data: {
+            firstName: row.firstName.trim(),
+            lastName: row.lastName?.trim() || null,
+            email,
+            phone,
+            whatsappNumber,
+            source: coerceLeadSource(row.source) as $Enums.LeadSource,
+            estimatedValue: row.estimatedValue,
+            currency: row.currency?.toUpperCase() || 'USD',
+            notes: row.notes?.trim() || null,
+            assignedToId,
+            stage: $Enums.PipelineStage.NEW_DEAL,
+            status: $Enums.LeadStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+
+        // Rows collide with each other too — the same person listed twice is routine in a merged
+        // spreadsheet — so an accepted contact joins the set as we go.
+        keys.forEach((k) => existing.add(k));
+        result.created += 1;
+      } catch (e) {
+        result.errors.push({
+          row: rowNumber,
+          reason: e instanceof Error ? e.message : 'Could not be created',
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /** Phone and email keys for every lead already on file that this import might duplicate. */
+  private async existingContactKeys(rows: ImportLeadsDto['leads']): Promise<Set<string>> {
+    const phones = rows.map((r) => (r.phone ? normalisePhone(r.phone) : '')).filter(Boolean);
+    const emails = rows
+      .map((r) => r.email?.trim().toLowerCase() ?? '')
+      .filter(Boolean);
+
+    if (phones.length === 0 && emails.length === 0) return new Set();
+
+    const matches = await this.prisma.lead.findMany({
+      where: {
+        OR: [
+          ...(phones.length ? [{ phone: { in: phones } }] : []),
+          ...(emails.length ? [{ email: { in: emails } }] : []),
+        ],
+      },
+      select: { phone: true, email: true },
+    });
+
+    const keys = new Set<string>();
+    for (const m of matches) {
+      if (m.phone) keys.add(`p:${normalisePhone(m.phone)}`);
+      if (m.email) keys.add(`e:${m.email.toLowerCase()}`);
+    }
+    return keys;
   }
 
   async update(id: string, dto: UpdateLeadDto, currentUser?: JwtPayload) {

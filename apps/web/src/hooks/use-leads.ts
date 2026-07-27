@@ -167,6 +167,46 @@ export function useCreateLead() {
   });
 }
 
+// ─── CSV import ───────────────────────────────────────────────────────────────
+
+/** One mapped spreadsheet row, matching the API's ImportedLeadDto. */
+export interface ImportedLeadRow {
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  whatsappNumber?: string;
+  email?: string;
+  source?: string;
+  estimatedValue?: number;
+  currency?: string;
+  notes?: string;
+}
+
+export interface ImportLeadsPayload {
+  leads: ImportedLeadRow[];
+  assignedToId?: string;
+  skipDuplicates?: boolean;
+}
+
+export interface ImportLeadsResult {
+  created: number;
+  skipped: number;
+  errors: { row: number; reason: string }[];
+}
+
+export function useImportLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<ImportLeadsResult, Error, ImportLeadsPayload>({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/import', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useUpdateLeadStage() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();

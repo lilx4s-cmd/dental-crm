@@ -48,6 +48,7 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     whatsappNumber?: string | undefined;
     dateOfBirth?: string | undefined;
     gender?: "" | "OTHER" | "MALE" | "FEMALE" | "UNKNOWN" | undefined;
+    website?: string | undefined;
     nationality?: string | undefined;
     countryOfResidence?: string | undefined;
     preferredLanguage?: string | undefined;
@@ -70,7 +71,6 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     utmSource?: string | undefined;
     utmMedium?: string | undefined;
     utmCampaign?: string | undefined;
-    website?: string | undefined;
 }, {
     firstName: string;
     lastName: string;
@@ -80,6 +80,7 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     whatsappNumber?: string | undefined;
     dateOfBirth?: string | undefined;
     gender?: "" | "OTHER" | "MALE" | "FEMALE" | "UNKNOWN" | undefined;
+    website?: string | undefined;
     nationality?: string | undefined;
     countryOfResidence?: string | undefined;
     preferredLanguage?: string | undefined;
@@ -102,7 +103,6 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     utmSource?: string | undefined;
     utmMedium?: string | undefined;
     utmCampaign?: string | undefined;
-    website?: string | undefined;
 }>;
 export type IntakeSubmissionInput = z.input<typeof IntakeSubmissionSchema>;
 export type IntakeSubmissionData = z.output<typeof IntakeSubmissionSchema>;
