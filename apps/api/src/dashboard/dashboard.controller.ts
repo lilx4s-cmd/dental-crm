@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
 import { Roles } from '../common/decorators/roles.decorator';
+import { MANAGEMENT } from '../common/access-policy';
 import { DashboardService } from './dashboard.service';
 
 @ApiTags('dashboard')
@@ -11,6 +12,7 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('stats')
+  @Roles(...MANAGEMENT)
   @ApiOperation({ summary: 'Get dashboard KPI stats' })
   getStats() {
     return this.dashboardService.getStats();

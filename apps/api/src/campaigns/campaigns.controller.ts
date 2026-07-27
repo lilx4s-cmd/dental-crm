@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { Roles } from '../common/decorators/roles.decorator';
+import { PIPELINE } from '../common/access-policy';
 import { Role } from '@dental-crm/shared';
 import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
@@ -10,11 +11,13 @@ export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
   @Get()
+  @Roles(...PIPELINE)
   findAll() {
     return this.campaignsService.findAll();
   }
 
   @Get(':id')
+  @Roles(...PIPELINE)
   findOne(@Param('id') id: string) {
     return this.campaignsService.findOne(id);
   }

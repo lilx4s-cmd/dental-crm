@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { FINANCE } from '../common/access-policy';
 import { Role, JwtPayload } from '@dental-crm/shared';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
@@ -11,16 +12,19 @@ export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}
 
   @Get()
+  @Roles(...FINANCE)
   findAll(@Query('patientId') patientId?: string, @Query('status') status?: string) {
     return this.invoicesService.findAll(patientId, status);
   }
 
   @Get('summary')
+  @Roles(...FINANCE)
   getSummary() {
     return this.invoicesService.getFinanceSummary();
   }
 
   @Get(':id')
+  @Roles(...FINANCE)
   findOne(@Param('id') id: string) {
     return this.invoicesService.findOne(id);
   }

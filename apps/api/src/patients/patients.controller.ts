@@ -5,6 +5,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CLINICAL, FINANCE } from '../common/access-policy';
 import { PatientsService } from './patients.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
@@ -17,7 +18,10 @@ import { PatientsQueryDto } from './dto/patients-query.dto';
 export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
+  // The list is not a directory of names — it selects allergies, diagnosis and insurance, so it
+  // carries the same medical detail as the record it links to and is gated the same way.
   @Get()
+  @Roles(...CLINICAL)
   @ApiOperation({ summary: 'List patients with search and pagination' })
   findAll(@Query() query: PatientsQueryDto) {
     return this.patientsService.findAll(query);
@@ -31,12 +35,16 @@ export class PatientsController {
   }
 
   @Get(':id')
+  @Roles(...CLINICAL)
   @ApiOperation({ summary: 'Get a patient by ID' })
   findOne(@Param('id') id: string) {
     return this.patientsService.findOne(id);
   }
 
+  // The case file is the patient's money — service cost, commission, invoices — so it answers to
+  // FINANCE rather than to whoever may read the clinical record.
   @Get(':id/case')
+  @Roles(...FINANCE)
   @ApiOperation({ summary: 'Case file: economics, invoices and appointments for one patient' })
   caseFile(@Param('id') id: string) {
     return this.patientsService.caseFile(id);

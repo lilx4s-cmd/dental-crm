@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
 import { Roles } from '../common/decorators/roles.decorator';
+import { ALL_STAFF } from '../common/access-policy';
 import { TagsService } from './tags.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 
@@ -12,6 +13,7 @@ export class TagsController {
   constructor(private readonly tagsService: TagsService) {}
 
   @Get()
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'List all tags' })
   findAll() {
     return this.tagsService.findAll();

@@ -35,17 +35,23 @@ export class TreatmentPlansController {
     return origins[0];
   }
 
+  // Reading a plan follows the same group allowed to create one — a coordinator quoting the trip
+  // has to see what was quoted. Reception is out: they book chairs, not treatment.
   @Get()
+  @Roles(...PLAN_COORDINATION_ROLES)
   findByPatient(@Query('patientId') patientId: string) {
     return this.service.findByPatient(patientId);
   }
 
+  // The clinic's price list, not any one patient's plan.
   @Get('categories')
+  @Roles(...PLAN_COORDINATION_ROLES)
   findCategories() {
     return this.service.findCategories();
   }
 
   @Get(':id')
+  @Roles(...PLAN_COORDINATION_ROLES)
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }

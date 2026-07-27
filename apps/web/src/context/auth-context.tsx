@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 import { useRouter, usePathname } from 'next/navigation';
 import { apiRequest } from '@/lib/api-client';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
-import { JwtPayload, AuthTokens } from '@dental-crm/shared';
+import { JwtPayload, AuthTokens, landingRoute } from '@dental-crm/shared';
 
 interface AuthContextValue {
   user: JwtPayload | null;
@@ -96,7 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me);
     setAccessToken(token);
     document.cookie = `access_token=${token}; path=/; SameSite=Strict`;
-    router.push('/dashboard');
+    // The dashboard is management's, so sending everyone there greeted half the clinic with a page
+    // they are not allowed to load. Each role lands on the first page it can actually use.
+    router.push(landingRoute(me.role));
   }, [router]);
 
   const logout = useCallback(async () => {

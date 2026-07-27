@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { SCHEDULING } from '../common/access-policy';
 import { Role } from '@dental-crm/shared';
 import { JwtPayload } from '@dental-crm/shared';
 import { AppointmentsService } from './appointments.service';
@@ -12,6 +13,7 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
+  @Roles(...SCHEDULING)
   findAll(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -22,6 +24,7 @@ export class AppointmentsController {
   }
 
   @Get(':id')
+  @Roles(...SCHEDULING)
   findOne(@Param('id') id: string) {
     return this.appointmentsService.findOne(id);
   }
