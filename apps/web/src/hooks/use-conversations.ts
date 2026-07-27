@@ -21,8 +21,17 @@ export interface Message {
   content: string | null;
   mediaUrl: string | null;
   status: string;
+  /** Why a send failed. Present only on FAILED messages. */
+  failureReason: string | null;
   createdAt: string;
+  sentAt: string | null;
   senderUser: { id: string; firstName: string; lastName: string } | null;
+}
+
+export interface SendingStatus {
+  transport: 'evolution' | 'cloud_api' | 'web' | 'none';
+  label: string;
+  canSend: boolean;
 }
 
 export interface ConversationDetail extends Omit<ConversationSummary, 'messages'> {
@@ -62,6 +71,50 @@ export function useSendMessage(conversationId: string) {
         accessToken ?? undefined,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations', conversationId] }),
+  });
+}
+
+/**
+ * Whether a reply typed right now would actually reach the patient.
+ *
+ * Worth asking before they type rather than after: discovering the gateway is down from a failed
+ * message means the coordinator has already composed it.
+ */
+export function useSendingStatus() {
+  const { accessToken } = useAuth();
+  return useQuery<SendingStatus>({
+    queryKey: ['conversations', 'sending-status'],
+    queryFn: () => apiRequest('/api/conversations/sending-status', {}, accessToken ?? undefined),
+    staleTime: 60_000,
+  });
+}
+
+export function useRetryMessage(conversationId: string) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) =>
+      apiRequest(
+        `/api/conversations/${conversationId}/messages/${messageId}/retry`,
+        { method: 'POST' },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations', conversationId] }),
+  });
+}
+
+/** Opens (or reuses) a WhatsApp thread with a lead or patient who has not written in yet. */
+export function useStartConversation() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<ConversationSummary, Error, { leadId?: string; patientId?: string }>({
+    mutationFn: (body) =>
+      apiRequest(
+        '/api/conversations/start',
+        { method: 'POST', body: JSON.stringify(body) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
   });
 }
 

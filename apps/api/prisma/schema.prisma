@@ -999,6 +999,9 @@ model Message {
   mediaUrl          String?
   templateName      String?
   status            MessageStatus    @default(QUEUED)
+  // Why a send failed, kept so staff can tell "the patient is ignoring us" from "our gateway is
+  // down" without reading server logs.
+  failureReason     String?
   externalMessageId String?
   sentAt            DateTime?
   deliveredAt       DateTime?

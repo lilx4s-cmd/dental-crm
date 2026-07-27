@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageSquare, Archive, Send, Phone, User } from 'lucide-react';
+import { MessageSquare, Archive, Send, Phone, User, AlertTriangle, RotateCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,8 +12,15 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { useConversations, useConversation, useSendMessage, useArchiveConversation } from '@/hooks/use-conversations';
-import type { ConversationSummary } from '@/hooks/use-conversations';
+import {
+  useConversations,
+  useConversation,
+  useSendMessage,
+  useArchiveConversation,
+  useRetryMessage,
+  useSendingStatus,
+} from '@/hooks/use-conversations';
+import type { ConversationSummary, Message } from '@/hooks/use-conversations';
 
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp',
@@ -77,19 +85,94 @@ function ConversationRow({
   );
 }
 
+/**
+ * One message.
+ *
+ * A failed outbound message is drawn as a warning rather than as a normal sent bubble, because the
+ * default reading of a message sitting in a thread is "the patient has it". Silence after a
+ * treatment quote means something very different depending on whether the quote actually arrived.
+ */
+function MessageBubble({ msg, onRetry, retrying }: { msg: Message; onRetry: () => void; retrying: boolean }) {
+  const outbound = msg.direction === 'OUTBOUND';
+  const failed = msg.status === 'FAILED';
+
+  return (
+    <div className={cn('flex', outbound ? 'justify-end' : 'justify-start')}>
+      <div className="max-w-[70%] space-y-1">
+        <div
+          className={cn(
+            'rounded-2xl px-3 py-2 text-sm',
+            failed
+              ? 'border border-destructive/30 bg-destructive-muted text-destructive-muted-foreground rounded-br-sm'
+              : outbound
+                ? 'bg-primary text-primary-foreground rounded-br-sm'
+                : 'bg-muted rounded-bl-sm',
+          )}
+        >
+          <p className="whitespace-pre-wrap break-words">{msg.content ?? '(media)'}</p>
+          <p
+            className={cn(
+              'mt-0.5 flex items-center gap-1 text-xs',
+              outbound && 'justify-end',
+              failed
+                ? 'text-destructive-muted-foreground/80'
+                : outbound
+                  ? 'text-primary-foreground/70'
+                  : 'text-muted-foreground',
+            )}
+          >
+            {outbound && !failed && msg.status !== 'QUEUED' && <Check className="h-3 w-3" />}
+            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+          </p>
+        </div>
+
+        {failed && (
+          <div className="flex items-start justify-end gap-2">
+            <p className="flex items-start gap-1 text-right text-xs text-destructive-muted-foreground">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>Not delivered — {msg.failureReason ?? 'the send was rejected'}</span>
+            </p>
+            <Button variant="outline" size="sm" className="h-6 shrink-0 px-2 text-xs" onClick={onRetry} disabled={retrying}>
+              <RotateCw className={cn('mr-1 h-3 w-3', retrying && 'animate-spin')} />
+              Retry
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MessageThread({ conversationId }: { conversationId: string }) {
   const { data: conv, isLoading } = useConversation(conversationId);
   const sendMessage = useSendMessage(conversationId);
+  const retryMessage = useRetryMessage(conversationId);
   const archiveConversation = useArchiveConversation();
+  const { data: sending } = useSendingStatus();
   const [text, setText] = useState('');
 
   async function handleSend() {
     if (!text.trim()) return;
     try {
-      await sendMessage.mutateAsync(text.trim());
+      // The API answers with the stored message either way, so a rejection by WhatsApp arrives as
+      // a successful response carrying a FAILED status rather than as a thrown error.
+      const sent = (await sendMessage.mutateAsync(text.trim())) as Message;
       setText('');
+      if (sent?.status === 'FAILED') {
+        toast.error(sent.failureReason ?? 'WhatsApp did not accept the message');
+      }
     } catch {
       toast.error('Failed to send message');
+    }
+  }
+
+  async function handleRetry(messageId: string) {
+    try {
+      const sent = (await retryMessage.mutateAsync(messageId)) as Message;
+      if (sent?.status === 'FAILED') toast.error(sent.failureReason ?? 'Still not going through');
+      else toast.success('Message sent');
+    } catch {
+      toast.error('Could not retry');
     }
   }
 
@@ -124,46 +207,49 @@ function MessageThread({ conversationId }: { conversationId: string }) {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {conv.messages.map((msg) => (
-          <div key={msg.id} className={cn('flex', msg.direction === 'OUTBOUND' ? 'justify-end' : 'justify-start')}>
-            <div
-              className={cn(
-                'max-w-[70%] rounded-2xl px-3 py-2 text-sm',
-                msg.direction === 'OUTBOUND'
-                  ? 'bg-primary text-primary-foreground rounded-br-sm'
-                  : 'bg-muted rounded-bl-sm',
-              )}
-            >
-              <p>{msg.content ?? '(media)'}</p>
-              <p className={cn('text-xs mt-0.5', msg.direction === 'OUTBOUND' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground')}>
-                {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-              </p>
-            </div>
-          </div>
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            onRetry={() => handleRetry(msg.id)}
+            retrying={retryMessage.isPending && retryMessage.variables === msg.id}
+          />
         ))}
         {conv.messages.length === 0 && (
           <p className="text-center text-sm text-muted-foreground py-8">No messages yet</p>
         )}
       </div>
 
-      <div className="p-3 border-t flex gap-2">
-        <Input
-          placeholder="Type a message…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-        />
-        <Button size="icon" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}>
-          <Send className="h-4 w-4" />
-        </Button>
+      <div className="border-t p-3">
+        {sending && !sending.canSend && (
+          <p className="mb-2 flex items-start gap-1.5 rounded-md border border-destructive/25 bg-destructive-muted px-2.5 py-1.5 text-xs text-destructive-muted-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            WhatsApp is not connected, so anything sent from here will not reach the patient. Link
+            the gateway in Settings first.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Input
+            placeholder={conv.channel === 'WHATSAPP' ? 'Type a message…' : `Sending on ${conv.channel} is not connected yet`}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+          />
+          <Button size="icon" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}>
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-export default function InboxPage() {
+function InboxView() {
+  // ?c=<id> lets the pipeline hand a coordinator straight into the right thread after opening one
+  // from a lead, instead of dropping them at an inbox they then have to search.
+  const params = useSearchParams();
   const [channel, setChannel] = useState<string | undefined>(undefined);
   const { data: conversations, isLoading } = useConversations(channel);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
 
   return (
     <div className="space-y-4 h-full">
@@ -218,5 +304,15 @@ export default function InboxPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// useSearchParams opts the tree out of static rendering, and Next requires the boundary to be
+// explicit rather than inferring one.
+export default function InboxPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-lg" />}>
+      <InboxView />
+    </Suspense>
   );
 }

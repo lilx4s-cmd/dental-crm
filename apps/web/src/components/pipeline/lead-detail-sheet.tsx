@@ -2,6 +2,7 @@
 
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
 import {
   Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
 import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
 import { useClinicSettings } from '@/hooks/use-reports';
+import { useStartConversation } from '@/hooks/use-conversations';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 
 const BITRIX_DOMAIN = process.env.NEXT_PUBLIC_BITRIX_DOMAIN;
@@ -142,6 +144,8 @@ export function LeadDetailSheet({
   const { data: fullLead } = useLead(open && lead ? lead.id : '');
   const submission = fullLead?.intakeSubmissions?.[0];
   const convert = useConvertLeadToPatient();
+  const startConversation = useStartConversation();
+  const router = useRouter();
   // Cached clinic-wide (see LeadCard), so this doesn't add an extra request beyond what the board already fires.
   const { data: clinicSettings } = useClinicSettings();
   const whatsappLink = buildWhatsAppLink(
@@ -149,6 +153,24 @@ export function LeadDetailSheet({
     `${lead?.firstName ?? ''} ${lead?.lastName ?? ''}`.trim(),
     clinicSettings?.clinicName ?? 'the clinic',
   );
+
+  /**
+   * Opens the CRM thread with this lead, creating it if they have never written in.
+   *
+   * Separate from the wa.me link beside the phone number: that one opens WhatsApp on the
+   * coordinator's own device, where the reply is invisible to everyone else. This keeps the
+   * exchange in the shared inbox, which is the point of having one.
+   */
+  async function handleOpenThread() {
+    if (!lead) return;
+    try {
+      const conv = await startConversation.mutateAsync({ leadId: lead.id });
+      onOpenChange(false);
+      router.push(`/inbox?c=${conv.id}`);
+    } catch {
+      toast.error('Could not open a conversation with this lead');
+    }
+  }
 
   async function handleConvert() {
     if (!lead) return;
@@ -237,6 +259,19 @@ export function LeadDetailSheet({
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap border-l-2 border-border pl-3">
                   {lead.notes}
                 </p>
+              )}
+
+              {(lead.whatsappNumber || lead.phone) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleOpenThread}
+                  disabled={startConversation.isPending}
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  {startConversation.isPending ? 'Opening…' : 'Message in CRM inbox'}
+                </Button>
               )}
 
               {lead.patient ? (

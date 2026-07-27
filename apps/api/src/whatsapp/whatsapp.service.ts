@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, ServiceUnavailableException, forwardRef } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { $Enums } from '@prisma/client';
@@ -23,6 +23,8 @@ export class WhatsAppService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    // Inbound goes this way, outbound comes back the other — see the note on ConversationsModule.
+    @Inject(forwardRef(() => ConversationsService))
     private readonly conversations: ConversationsService,
   ) {
     // Read through the namespaced config block rather than raw env names, matching how every
@@ -141,10 +143,16 @@ export class WhatsAppService {
     );
   }
 
+  /**
+   * Sends via the Cloud API.
+   *
+   * Throws on anything that is not a delivery. This used to log and return, which meant a message
+   * Meta had rejected still looked sent to whoever typed it — the coordinator would move on
+   * believing the patient had been answered.
+   */
   async sendTextMessage(to: string, text: string): Promise<void> {
     if (!this.token || !this.phoneNumberId) {
-      this.logger.warn('WhatsApp credentials not configured — message not sent');
-      return;
+      throw new ServiceUnavailableException('WhatsApp Cloud API credentials are not configured');
     }
 
     const url = `https://graph.facebook.com/v20.0/${this.phoneNumberId}/messages`;
@@ -163,8 +171,11 @@ export class WhatsAppService {
     });
 
     if (!res.ok) {
-      const err = await res.text();
+      const err = await res.text().catch(() => '');
       this.logger.error(`WhatsApp send failed: ${err}`);
+      throw new ServiceUnavailableException(
+        `WhatsApp rejected the message (${res.status})${err ? `: ${err.slice(0, 200)}` : ''}`,
+      );
     }
   }
 }

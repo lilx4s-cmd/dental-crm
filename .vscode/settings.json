@@ -1,0 +1,22 @@
+{
+  // Use the workspace TypeScript, not the one bundled with VS Code — otherwise the editor and
+  // `tsc --noEmit` disagree about the same file.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // Tailwind class completion inside cn() and clsx(), which is how classes are composed here.
+  "tailwindCSS.experimental.classRegex": [
+    ["cn\\(([^)]*)\\)", "'([^']*)'"],
+    ["cva\\(([^)]*)\\)", "'([^']*)'"]
+  ],
+
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // Noise that makes searching the monorepo slower without ever being the thing you wanted.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true
+  }
+}

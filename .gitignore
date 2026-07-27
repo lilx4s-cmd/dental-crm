@@ -11,3 +11,8 @@ nginx/certs/*.key
 nginx/certs/*.crt
 .DS_Store
 coverage
+
+# One-off Bitrix24 import scripts. Never commit: they carry a hardcoded super-admin password and
+# their own .env, and they are throwaway tooling rather than part of the product. Ignored rather
+# than merely untracked, so a "stage all" in an editor cannot sweep them in.
+migration/
