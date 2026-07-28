@@ -16,3 +16,8 @@ coverage
 # their own .env, and they are throwaway tooling rather than part of the product. Ignored rather
 # than merely untracked, so a "stage all" in an editor cannot sweep them in.
 migration/
+
+# Local PDF preview artefacts, never committed
+treatment-plan-sample.pdf
+*.tmp.js
+*.tmp.pdf

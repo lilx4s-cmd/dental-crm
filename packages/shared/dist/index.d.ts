@@ -3,6 +3,7 @@ export * from './dental';
 export * from './treatment-plan/pricing';
 export * from './treatment-plan/presets';
 export * from './treatment-plan/aftercare';
+export * from './treatment-plan/value-props';
 export * from './pipeline/filters';
 export * from './pipeline/stages';
 export * from './pipeline/duplicates';

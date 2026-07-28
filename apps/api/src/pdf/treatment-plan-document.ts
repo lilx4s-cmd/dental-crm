@@ -5,9 +5,11 @@ import {
   TOOTH_CONDITION_LABELS,
   TRAVEL_GUIDANCE,
   aftercareFor,
+  brandLine,
   computePhaseTotals,
   conditionFromText,
   parseToothNumbers,
+  valuePropsFor,
   type ToothCondition,
 } from '@dental-crm/shared';
 
@@ -63,6 +65,9 @@ const s = StyleSheet.create({
   bulletText: { flex: 1, fontSize: 9.5, lineHeight: 1.5 },
   lead: { fontSize: 10, lineHeight: 1.55, color: '#3f3f46', marginBottom: 8 },
   subTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 12, marginBottom: 5 },
+  // Wraps one complete section — heading, paragraph, bullets, warning card — so react-pdf moves
+  // the whole thing to the next page rather than splitting it and leaving a gap behind.
+  valueBlock: { marginBottom: 6 },
   warnCard: { borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', borderRadius: 4, padding: 9, marginTop: 6 },
   warnLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#b91c1c', marginBottom: 4 },
   // No flex here. bulletText sets flex:1, which is correct inside a row but makes stacked
@@ -467,19 +472,68 @@ function TreatmentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   );
 }
 
-function PortalPage(qrDataUrl: string, portalUrl: string, branding: ClinicBranding) {
+/**
+ * The portal QR, folded into the foot of the last page rather than given one of its own.
+ *
+ * It used to be an entire A4 sheet carrying a single code and two lines of caption — the emptiest
+ * page in the dossier, and the last thing the patient was left looking at.
+ */
+function PortalBlock(qrDataUrl: string, portalUrl: string) {
+  return el(
+    View,
+    { style: s.qrBlock, wrap: false, key: 'portal-block' },
+    el(Image, { src: qrDataUrl, style: s.qr }),
+    el(Text, { style: s.qrCaption }, 'Scan to open your treatment plan, ask a question, or approve it.'),
+    el(Text, { style: s.qrUrl }, portalUrl),
+  );
+}
+
+/**
+ * What the patient is buying, and why it is worth the trip.
+ *
+ * The price table said "Zirconia crown · 220 EUR" and left somebody comparing three clinics to
+ * decide for themselves whether that was good. This answers it, keyed on the procedures actually
+ * in the plan — a patient having four implants does not read about veneers.
+ *
+ * Sits immediately after the pricing, which is where "why this and not the cheaper quote?" gets
+ * asked.
+ */
+function ValuePage(plan: PlanDocumentInput, branding: ClinicBranding) {
+  const conditions = plan.items
+    .map((i) => i.toothCondition ?? conditionFromText(i.treatmentCategory?.name, i.description))
+    .filter((c): c is ToothCondition => !!c);
+  const props = valuePropsFor(conditions);
+  if (props.length === 0) return null;
+
+  // Brand is per procedure, so it comes from the first item matching this proposition that has one
+  // recorded at all — today, usually none, which is why the copy reads finished without it.
+  const extraFor = (condition: ToothCondition): string | undefined => {
+    for (const item of plan.items) {
+      const c = item.toothCondition ?? conditionFromText(item.treatmentCategory?.name, item.description);
+      if (c !== condition) continue;
+      const line = brandLine(item.material, item.brand);
+      if (line) return line;
+    }
+    return undefined;
+  };
+
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'portal' },
-    el(Text, { style: s.h1 }, 'View Online'),
-    el(Text, { style: s.h2 }, 'Your plan, kept up to date'),
-    el(
-      View,
-      { style: s.qrBlock },
-      el(Image, { src: qrDataUrl, style: s.qr }),
-      el(Text, { style: s.qrCaption }, 'Scan to open your treatment plan, ask a question, or approve it.'),
-      el(Text, { style: s.qrUrl }, portalUrl),
-    ),
+    { size: 'A4', style: s.page, key: 'value' },
+    el(Text, { style: s.h1 }, 'What Your Treatment Includes'),
+    el(Text, { style: s.h2 }, 'Why each part of this plan is what we recommend'),
+    ...props.map((prop, i) => {
+      const extra = extraFor(prop.condition);
+      // wrap:false keeps a heading from being orphaned at the foot of a page with its own text
+      // stranded overleaf, which is exactly what made the dossier read as gappy.
+      return el(
+        View,
+        { key: `vp-${i}`, wrap: false, style: s.valueBlock },
+        el(Text, { style: s.subTitle }, prop.title),
+        el(Text, { style: s.lead }, extra ? `${prop.pitch} ${extra}` : prop.pitch),
+        ...Bullets(prop.points, `vpb-${i}`),
+      );
+    }),
     Footer(branding),
   );
 }
@@ -597,28 +651,47 @@ function SchedulePage(plan: PlanDocumentInput, branding: ClinicBranding) {
   );
 }
 
-/** Aftercare for the procedures in this plan, and nothing else. */
-function AftercarePage(sections: typeof AFTERCARE_SECTIONS, branding: ClinicBranding) {
+/**
+ * Aftercare for the procedures in this plan, and nothing else.
+ *
+ * Each procedure's heading, description, instructions and warning card are wrapped in one
+ * unbreakable block. Previously they were loose siblings, so a page could end on a heading with
+ * its instructions overleaf, leaving a half-empty sheet and a section split down the middle.
+ */
+function AftercarePage(
+  sections: typeof AFTERCARE_SECTIONS,
+  branding: ClinicBranding,
+  trailing?: React.ReactElement | null,
+) {
   return el(
     Page,
     { size: 'A4', style: s.page, key: 'aftercare' },
     el(Text, { style: s.h1 }, 'Your Treatment, Explained'),
     el(Text, { style: s.h2 }, 'What to expect, and how to look after yourself afterwards'),
-    ...sections.flatMap((section, i) => [
-      el(Text, { style: s.subTitle, key: `t-${i}` }, section.title),
-      el(Text, { style: s.lead, key: `w-${i}` }, section.whatToExpect),
-      ...Bullets(section.aftercare, `a-${i}`),
-      section.warningSigns
-        ? el(
-            View,
-            { style: s.warnCard, key: `s-${i}`, wrap: false },
-            el(Text, { style: s.warnLabel }, 'CONTACT THE CLINIC IF YOU NOTICE'),
-            ...section.warningSigns.map((w, j) =>
-              el(Text, { style: s.warnText, key: `sw-${i}-${j}` }, `•  ${w}`),
-            ),
-          )
-        : null,
-    ]),
+    ...sections.map((section, i) =>
+      el(
+        View,
+        // Not wrap:false — an aftercare section can run half a page, and forcing the whole thing
+        // to jump leaves exactly the gap this is meant to avoid. minPresenceAhead lets it split,
+        // but only where at least this much of it follows the break, so a heading is never left
+        // stranded at the foot of a page with its instructions overleaf.
+        { key: `sec-${i}`, minPresenceAhead: 90, style: s.valueBlock },
+        el(Text, { style: s.subTitle }, section.title),
+        el(Text, { style: s.lead }, section.whatToExpect),
+        ...Bullets(section.aftercare, `a-${i}`),
+        section.warningSigns
+          ? el(
+              View,
+              { style: s.warnCard, wrap: false },
+              el(Text, { style: s.warnLabel }, 'CONTACT THE CLINIC IF YOU NOTICE'),
+              ...section.warningSigns.map((w, j) =>
+                el(Text, { style: s.warnText, key: `sw-${i}-${j}` }, `•  ${w}`),
+              ),
+            )
+          : null,
+      ),
+    ),
+    trailing ?? null,
     Footer(branding),
   );
 }
@@ -635,6 +708,10 @@ export function TreatmentPlanDocument(
   // document that looked broken rather than one that said the plan is still being drawn up.
   pages.push(TreatmentPage(plan, branding));
 
+  // Directly after the price, where the patient is deciding whether it is worth it.
+  const valuePage = ValuePage(plan, branding);
+  if (valuePage) pages.push(valuePage);
+
   const stay = plan.stay;
   const hasStay =
     !!stay && Object.values(stay).some((v) => v !== null && v !== undefined && String(v).trim() !== '');
@@ -649,8 +726,30 @@ export function TreatmentPlanDocument(
     if (c) conditions.add(c);
   }
   const sections = aftercareFor(conditions);
-  if (sections.length > 0) pages.push(AftercarePage(sections, branding));
+  const portal = qrDataUrl && portalUrl ? PortalBlock(qrDataUrl, portalUrl) : null;
 
-  if (qrDataUrl && portalUrl) pages.push(PortalPage(qrDataUrl, portalUrl, branding));
+  if (sections.length > 0) {
+    // The QR rides at the foot of the last page instead of claiming an A4 sheet to itself.
+    pages.push(AftercarePage(sections, branding, portal));
+  } else if (portal) {
+    // No aftercare to print — a crown-only plan, say — so the code needs a home of its own. Given
+    // a heading and a sentence rather than left floating on an otherwise blank sheet.
+    pages.push(
+      el(
+        Page,
+        { size: 'A4', style: s.page, key: 'portal' },
+        el(Text, { style: s.h1 }, 'Your Plan Online'),
+        el(Text, { style: s.h2 }, 'Kept up to date, and open to your questions'),
+        el(
+          Text,
+          { style: s.lead },
+          'This document is a snapshot of today. The link below always shows the current version of your plan, lets you ask your coordinator a question against any line of it, and is where you approve the plan when you are ready to go ahead.',
+        ),
+        portal,
+        Footer(branding),
+      ),
+    );
+  }
+
   return el(Document, {}, ...pages);
 }
