@@ -1,5 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Path } from '@react-pdf/renderer';
 import React from 'react';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   AFTERCARE_SECTIONS,
   TOOTH_CONDITION_LABELS,
@@ -22,7 +24,11 @@ const s = StyleSheet.create({
   page: { paddingHorizontal: 40, paddingTop: 40, paddingBottom: 56, fontSize: 10, fontFamily: 'Helvetica', color: '#18181b' },
   coverPage: { padding: 0, fontSize: 10, fontFamily: 'Helvetica', color: '#18181b' },
 
-  coverBand: { backgroundColor: '#0f766e', paddingHorizontal: 48, paddingVertical: 56 },
+  // Full bleed: no page padding on the cover, so the photograph runs edge to edge the way it would
+  // in a brochure rather than sitting in a frame of white.
+  coverPhoto: { width: '100%', height: 232, objectFit: 'cover' },
+  // Shorter than it was, because the photograph above it now carries the weight the block used to.
+  coverBand: { backgroundColor: '#0f766e', paddingHorizontal: 48, paddingVertical: 38 },
   coverClinic: { fontSize: 13, color: '#ccfbf1', letterSpacing: 2, fontFamily: 'Helvetica-Bold' },
   coverTitle: { fontSize: 40, color: '#ffffff', marginTop: 18, fontFamily: 'Helvetica-Bold' },
   coverSubtitle: { fontSize: 13, color: '#99f6e4', marginTop: 8 },
@@ -230,11 +236,41 @@ function CoverMark() {
   );
 }
 
+/**
+ * The clinic's own reception, full bleed across the head of the cover.
+ *
+ * Typography alone said nothing about whether this was a real building. A patient in Lyon deciding
+ * whether to board a plane is answering "is this place what it claims to be?", and a photograph
+ * answers it in a way no sentence on the page can.
+ *
+ * Resolved from __dirname so it works both from src under ts-node and from dist in production;
+ * nest-cli copies pdf/assets into the build, since tsc alone drops everything that is not a .ts.
+ * Missing file means no banner rather than a failed render — a dossier that will not generate is
+ * far worse than one without a photograph on it.
+ */
+const COVER_PHOTO = path.join(__dirname, 'assets', 'clinic-cover.jpg');
+
+/**
+ * Read once, as bytes.
+ *
+ * A string `src` is treated as a URL and fetched, so handing react-pdf a filesystem path produced
+ * "fetch failed", a cover with no photograph on it, and a PDF that rendered perfectly well while
+ * quietly dropping the image. Passing the buffer removes the network from the path entirely.
+ */
+const coverPhoto: { data: Buffer; format: 'jpg' } | null = (() => {
+  try {
+    return { data: fs.readFileSync(COVER_PHOTO), format: 'jpg' as const };
+  } catch {
+    return null;
+  }
+})();
+
 function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const location = [branding.address, branding.city, branding.country].filter(Boolean).join(', ');
   return el(
     Page,
     { size: 'A4', style: s.coverPage, key: 'cover' },
+    coverPhoto ? el(Image, { src: coverPhoto, style: s.coverPhoto }) : null,
     el(
       View,
       { style: s.coverBand },
