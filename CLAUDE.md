@@ -59,6 +59,28 @@ Two rules that have already caused outages or near-misses:
 The storage bucket is **private**. Code issues short-lived signed URLs; a public bucket would
 expose patient x-rays to anyone with the link.
 
+## Caching and headers
+
+**Nothing the API returns may be cached.** `CacheControlInterceptor` sets `no-store` on every
+response. An absent `Cache-Control` does not mean "do not cache" — HTTP lets an intermediary apply
+its own heuristics, so patient records were cacheable by any proxy on the path and by the browser's
+disk cache, where they survive logout and the back button. Nothing the API returns is worth caching
+anyway: it is either personal to one user or a few hundred bytes of configuration.
+
+The caching that matters happens on Vercel's CDN and is already correct: `/_next/static` is
+fingerprinted and served `immutable` for a year, and the dashboard pages are static shells that
+fetch their data client-side, so no patient data ever reaches the edge.
+
+`vercel.json` carries the web app's security headers, since Vercel sends no CSP of its own and JSON
+takes no comments. Two things about that CSP:
+
+- `script-src` allows `'unsafe-inline'` and `'unsafe-eval'`. Next's App Router inlines hydration
+  scripts, so a strict policy needs per-request nonces from `middleware.ts` — worth doing, not yet
+  done. What the policy buys today is origin restriction: no third-party script host can execute.
+- `connect-src` names the Render API origin explicitly. **Changing the API's URL means changing
+  this line**, or every request from the browser is blocked with nothing in the server logs to
+  explain it.
+
 ## Database migrations
 
 `prisma migrate dev` fails in this environment (it needs an interactive prompt). Migrations are
