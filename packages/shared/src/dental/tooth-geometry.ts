@@ -81,6 +81,11 @@ export const PALETTE = {
   metal: '#71717a',
   plaque: '#facc15',
   cyst: '#b91c1c',
+  // Grafted bone, the raised sinus membrane, and the level bone has receded to. Distinct from
+  // `bone` so added material reads as added rather than blending into the jaw around it.
+  graft: '#e7d3ae',
+  sinus: '#7c9fd4',
+  boneLoss: '#c2410c',
   // The proposed-treatment chart is drawn in a single green so a patient can tell at a glance which
   // teeth the plan touches, rather than having to decode a dozen material colours.
   planned: '#86c98b',
@@ -288,6 +293,66 @@ export function buildTooth(fdi: string, condition: ToothCondition, mode: ChartMo
       stroke,
       strokeWidth: 0.8,
     });
+  }
+
+  // Grafted bone packed around the root, drawn granular rather than as a smooth fill because that
+  // is how graft reads on a radiograph. Subgingival: this is bone, and it belongs under the gum
+  // with the root it supports. Until now a bone graft drew nothing at all, so a patient being sold
+  // one saw an unchanged chart.
+  if (condition === 'BONE_GRAFT') {
+    below.push({
+      kind: 'path',
+      d: `M ${-spec.neckHalfWidth - 7} 6 C ${-spec.neckHalfWidth - 11} ${spec.rootTip * 0.55} -8 ${spec.rootTip + 8} 0 ${spec.rootTip + 9} C 8 ${spec.rootTip + 8} ${spec.neckHalfWidth + 11} ${spec.rootTip * 0.55} ${spec.neckHalfWidth + 7} 6 Z`,
+      fill: planTint(mode, PALETTE.graft),
+      stroke: mode === 'plan' ? PALETTE.plannedStroke : PALETTE.boneSpeck,
+      strokeWidth: 0.9,
+      opacity: 0.85,
+    });
+    // Fixed offsets rather than random, so the same tooth draws identically every render — a chart
+    // that shimmers between two renders of one plan looks like a bug.
+    for (const [cx, cy] of [[-9, 16], [7, 23], [-4, 32], [11, 38], [-12, 45], [4, 52], [-8, 60]] as const) {
+      if (cy > spec.rootTip + 4) continue;
+      below.push({ kind: 'circle', cx, cy, r: 1.8, fill: mode === 'plan' ? PALETTE.plannedDeep : PALETTE.boneSpeck });
+    }
+  }
+
+  // The sinus floor raised, with graft packed beneath it. It sits deeper than the root apex, which
+  // in this local space means further along positive y — the renderer mirrors the upper arch, so
+  // the same geometry lands correctly above the upper roots with no special case here.
+  if (condition === 'SINUS_LIFT') {
+    const floor = spec.rootTip + 6;
+    const dome = `M -20 ${floor + 20} C -20 ${floor - 6} 20 ${floor - 6} 20 ${floor + 20}`;
+    below.push({
+      kind: 'path',
+      d: `${dome} Z`,
+      fill: planTint(mode, PALETTE.graft),
+      stroke: mode === 'plan' ? PALETTE.plannedStroke : PALETTE.boneSpeck,
+      strokeWidth: 0.9,
+      opacity: 0.85,
+    });
+    // The lifted membrane, drawn heavier so the lift is what the eye catches rather than the
+    // packing underneath it.
+    below.push({
+      kind: 'path',
+      d: dome,
+      fill: 'none',
+      stroke: mode === 'plan' ? PALETTE.plannedDeep : PALETTE.sinus,
+      strokeWidth: 1.8,
+    });
+  }
+
+  // Bone that has receded down the root, marked the way it is read on a radiograph — the level it
+  // has dropped to — rather than as a colour wash, which would say "something is wrong here"
+  // without saying how far it has gone.
+  if (condition === 'RECEDING_BONE') {
+    const level = Math.min(spec.rootTip * 0.55, 34);
+    const c = mode === 'plan' ? PALETTE.plannedStroke : PALETTE.boneLoss;
+    const reach = spec.neckHalfWidth + 8;
+    below.push({ kind: 'line', x1: -reach, y1: level, x2: -4, y2: level, stroke: c, strokeWidth: 1.6 });
+    below.push({ kind: 'line', x1: 4, y1: level, x2: reach, y2: level, stroke: c, strokeWidth: 1.6 });
+    // Uprights at each end, so it reads as a measured level and not a stray rule across the root.
+    below.push({ kind: 'line', x1: -reach, y1: level - 4, x2: -reach, y2: level + 4, stroke: c, strokeWidth: 1.6 });
+    below.push({ kind: 'line', x1: reach, y1: level - 4, x2: reach, y2: level + 4, stroke: c, strokeWidth: 1.6 });
   }
 
   // "Only root" means the crown is gone — there is nothing above the gum.

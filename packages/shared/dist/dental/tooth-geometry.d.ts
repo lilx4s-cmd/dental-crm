@@ -66,6 +66,9 @@ export declare const PALETTE: {
     readonly metal: "#71717a";
     readonly plaque: "#facc15";
     readonly cyst: "#b91c1c";
+    readonly graft: "#e7d3ae";
+    readonly sinus: "#7c9fd4";
+    readonly boneLoss: "#c2410c";
     readonly planned: "#86c98b";
     readonly plannedStroke: "#2f6b39";
     readonly plannedDeep: "#166534";
