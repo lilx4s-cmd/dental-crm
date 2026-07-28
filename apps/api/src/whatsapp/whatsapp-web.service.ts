@@ -1,7 +1,12 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Boom } from '@hapi/boom';
-import makeWASocket, { DisconnectReason, type WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  type WASocket,
+  type WAVersion,
+} from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -141,6 +146,9 @@ export class WhatsAppWebService {
       const { state, saveCreds, clear } = await usePrismaAuthState(this.prisma);
 
       const sock = makeWASocket({
+        // Announcing a stale protocol version gets the connection refused with 405 before any QR
+        // is issued — see currentWebVersion below.
+        version: await this.currentWebVersion(),
         auth: state,
         // Nothing renders a terminal here; the QR goes to the browser instead.
         printQRInTerminal: false,
@@ -203,7 +211,13 @@ export class WhatsAppWebService {
             return;
           }
 
-          this.lastError = lastDisconnect?.error?.message ?? 'Connection closed';
+          // 405 is WhatsApp refusing the handshake outright, almost always because the protocol
+          // version we announced is no longer accepted. It arrives before any QR, so without
+          // naming it the failure reads as "the code never appeared".
+          this.lastError =
+            code === 405
+              ? 'WhatsApp refused the connection (405). This usually means its web protocol moved on — the API fetches the current version on each attempt, so retrying, or a redeploy, normally clears it.'
+              : (lastDisconnect?.error?.message ?? 'Connection closed');
 
           if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
             this.stopped = true;
@@ -237,6 +251,34 @@ export class WhatsAppWebService {
       this.logger.error(`WhatsApp Web connect failed: ${this.lastError}`);
     } finally {
       this.connecting = false;
+    }
+  }
+
+  /**
+   * The WhatsApp Web protocol version to announce when connecting.
+   *
+   * Baileys bundles a version constant that goes stale as WhatsApp ships, and WhatsApp refuses a
+   * connection announcing an old one with status 405 — before emitting any QR at all. The symptom
+   * is not "version mismatch" but "the code never appears": the card sits on Connecting, the
+   * socket closes, and nothing in the flow says why. That is what was happening here; fetching the
+   * current version produced a pairing code immediately.
+   *
+   * Fetched per connect rather than cached, because the process can outlive a WhatsApp release and
+   * a reconnect is exactly when a refreshed version matters. On failure we fall back to whatever
+   * Baileys bundles: a stale version might still work, whereas refusing to start definitely does
+   * not.
+   */
+  private async currentWebVersion(): Promise<WAVersion | undefined> {
+    try {
+      const { version } = await fetchLatestBaileysVersion();
+      return version;
+    } catch (e) {
+      this.logger.warn(
+        `Could not fetch the current WhatsApp Web version (${
+          e instanceof Error ? e.message : 'unknown error'
+        }) — falling back to the one bundled with Baileys.`,
+      );
+      return undefined;
     }
   }
 
