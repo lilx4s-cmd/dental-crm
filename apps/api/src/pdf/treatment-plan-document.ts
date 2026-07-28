@@ -32,9 +32,27 @@ const s = StyleSheet.create({
   coverClinic: { fontSize: 13, color: '#ccfbf1', letterSpacing: 2, fontFamily: 'Helvetica-Bold' },
   coverTitle: { fontSize: 40, color: '#ffffff', marginTop: 18, fontFamily: 'Helvetica-Bold' },
   coverSubtitle: { fontSize: 13, color: '#99f6e4', marginTop: 8 },
-  coverBody: { paddingHorizontal: 48, paddingTop: 44 },
+  coverBody: { paddingHorizontal: 48, paddingTop: 34 },
   coverLabel: { fontSize: 9, color: '#71717a', letterSpacing: 1, marginBottom: 3 },
-  coverValue: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginBottom: 22 },
+  coverValue: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginBottom: 18 },
+  // Date and clinic sit side by side rather than stacked, which is what left the page bottom-heavy
+  // with nothing under it.
+  coverMetaRow: { flexDirection: 'row', marginBottom: 4 },
+  coverMetaCol: { width: '32%' },
+  coverMetaColWide: { flex: 1 },
+  coverMetaValue: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 6 },
+  // The headline figures, filling the band that used to be empty.
+  coverStats: {
+    flexDirection: 'row',
+    marginTop: 26,
+    marginHorizontal: 48,
+    borderTopWidth: 1,
+    borderTopColor: '#e4e4e7',
+    paddingTop: 18,
+  },
+  coverStat: { flex: 1 },
+  coverStatLabel: { fontSize: 8, color: '#71717a', letterSpacing: 1, marginBottom: 5 },
+  coverStatValue: { fontSize: 17, fontFamily: 'Helvetica-Bold', color: '#0f766e' },
   coverFooter: { position: 'absolute', bottom: 40, left: 48, right: 48, fontSize: 8, color: '#a1a1aa' },
 
   h1: { fontSize: 19, fontFamily: 'Helvetica-Bold' },
@@ -183,6 +201,37 @@ function toothCell(toothNumber?: string | null): string {
   return `${teeth.length} teeth`;
 }
 
+/**
+ * The four things a patient wants to know before reading anything else: what it costs, how many
+ * trips it takes, how long it runs, and how many teeth are involved.
+ *
+ * Computed here rather than on the treatment page so the cover and the pricing table can never
+ * disagree about the total — one function, one answer.
+ */
+function planHeadlines(plan: PlanDocumentInput) {
+  const totals = computePhaseTotals(
+    plan.items.map((i) => ({ cost: num(i.cost), phaseNumber: i.phaseNumber })),
+    (plan.phases ?? []).map((p) => ({
+      phaseNumber: p.phaseNumber,
+      name: p.name,
+      discountAmount: p.discountAmount == null ? null : num(p.discountAmount),
+      discountPercent: p.discountPercent == null ? null : num(p.discountPercent),
+      healingPeriodMonths: p.healingPeriodMonths,
+    })),
+  );
+  const total = totals.reduce((acc, t) => acc + t.total, 0);
+
+  // Distinct teeth, not line items: four implants on four teeth is "4 teeth", and a plan touching
+  // one tooth three times is still one tooth.
+  const teeth = new Set<string>();
+  for (const item of plan.items) for (const t of parseToothNumbers(item.toothNumber)) teeth.add(t);
+
+  // Healing between phases is what makes this a second trip rather than a longer first one.
+  const healing = totals.reduce((acc, t) => acc + (t.healingPeriodMonths ?? 0), 0);
+
+  return { total, visits: totals.length, teeth: teeth.size, healingMonths: healing };
+}
+
 /** The mouth as charted today. */
 function diagnosisConditions(plan: PlanDocumentInput): Record<string, ToothCondition> {
   const map: Record<string, ToothCondition> = {};
@@ -265,6 +314,38 @@ const coverPhoto: { data: Buffer; format: 'jpg' } | null = (() => {
   }
 })();
 
+/**
+ * The headline figures, in a strip across the foot of the cover.
+ *
+ * Somebody opening this wants four answers before they read anything: what it costs, how many
+ * trips, how long, how much work. They were previously scattered across pages four and six, under
+ * a quarter of a page of white space.
+ */
+function CoverHeadlines(plan: PlanDocumentInput) {
+  if (plan.items.length === 0) return null;
+  const { total, visits, teeth, healingMonths } = planHeadlines(plan);
+
+  const cells: Array<[string, string]> = [['TOTAL', money(total, plan.currency)]];
+  if (teeth > 0) cells.push(['TEETH TREATED', String(teeth)]);
+  if (visits > 1) cells.push(['VISITS', String(visits)]);
+  // Only stated when there is healing between phases — otherwise it is one trip and saying
+  // "0 months" invites the question it was meant to answer.
+  if (healingMonths > 0) cells.push(['OVER', `${healingMonths} months`]);
+
+  return el(
+    View,
+    { style: s.coverStats },
+    ...cells.map(([label, value], i) =>
+      el(
+        View,
+        { key: `st-${i}`, style: s.coverStat },
+        el(Text, { style: s.coverStatLabel }, label),
+        el(Text, { style: s.coverStatValue }, value),
+      ),
+    ),
+  );
+}
+
 function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const location = [branding.address, branding.city, branding.country].filter(Boolean).join(', ');
   return el(
@@ -284,11 +365,28 @@ function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
       { style: s.coverBody },
       el(Text, { style: s.coverLabel }, 'PREPARED FOR'),
       el(Text, { style: s.coverValue }, `${plan.patient.firstName} ${plan.patient.lastName}`),
-      el(Text, { style: s.coverLabel }, 'DATE'),
-      el(Text, { style: s.coverValue }, fmtDate(plan.createdAt ?? new Date())),
-      location ? el(Text, { style: s.coverLabel }, 'CLINIC') : null,
-      location ? el(Text, { style: s.coverValue }, location) : null,
+      el(
+        View,
+        { style: s.coverMetaRow },
+        el(
+          View,
+          { style: s.coverMetaCol },
+          el(Text, { style: s.coverLabel }, 'DATE'),
+          el(Text, { style: s.coverMetaValue }, fmtDate(plan.createdAt ?? new Date())),
+        ),
+        location
+          ? el(
+              View,
+              { style: s.coverMetaColWide },
+              el(Text, { style: s.coverLabel }, 'CLINIC'),
+              el(Text, { style: s.coverMetaValue }, location),
+            )
+          : null,
+      ),
     ),
+    // The four questions a patient asks before reading a word of the detail. A quarter of this page
+    // used to be blank underneath the address; it now answers them.
+    CoverHeadlines(plan),
     el(
       Text,
       { style: s.coverFooter },
@@ -587,7 +685,9 @@ function Bullets(lines: readonly string[], keyPrefix: string) {
 
 /** Travel, hotel and transfers. Rows with nothing recorded are dropped rather than printed blank. */
 function StayPage(plan: PlanDocumentInput, branding: ClinicBranding) {
-  const stay = plan.stay!;
+  // Tolerates a plan with appointments but no travel booked yet, which is the ordinary state of a
+  // plan between the patient agreeing to it and the coordinator booking flights.
+  const stay = plan.stay ?? {};
   const rows: [string, string][] = [];
   const add = (label: string, value?: string | number | null) => {
     if (value !== null && value !== undefined && String(value).trim() !== '') rows.push([label, String(value)]);
@@ -608,14 +708,15 @@ function StayPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   return el(
     Page,
     { size: 'A4', style: s.page, key: 'stay' },
-    el(Text, { style: s.h1 }, 'Your Stay'),
-    el(Text, { style: s.h2 }, 'Travel, accommodation and transfers'),
+    el(Text, { style: s.h1 }, 'Your Visit'),
+    el(Text, { style: s.h2 }, 'Travel, accommodation, transfers and what happens each day'),
     el(
       View,
       { style: s.fieldGrid },
       ...rows.map(([label, value], i) => Field(label, value, `stay-${i}`)),
     ),
     stay.notes ? el(View, { style: s.card }, el(Text, { style: s.cardLabel }, 'NOTES'), el(Text, {}, stay.notes)) : null,
+    ScheduleBlock(plan),
     el(Text, { style: s.subTitle }, 'Before you travel'),
     ...Bullets(TRAVEL_GUIDANCE.beforeYouTravel, 'bt'),
     el(Text, { style: s.subTitle }, 'During your stay'),
@@ -627,10 +728,19 @@ function StayPage(plan: PlanDocumentInput, branding: ClinicBranding) {
 }
 
 /** Day-by-day itinerary, grouped so each date is announced once. */
-function SchedulePage(plan: PlanDocumentInput, branding: ClinicBranding) {
+/**
+ * The day-by-day schedule, as a block rather than a page.
+ *
+ * On its own it was the emptiest sheet in the dossier — one appointment and 622pt of white below
+ * it. It belongs with the travel and hotel details anyway: they are one trip, and a patient
+ * planning that trip should not have to turn a page between where they are staying and when they
+ * are expected.
+ */
+function ScheduleBlock(plan: PlanDocumentInput) {
   const items = [...(plan.scheduleItems ?? [])].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
+  if (items.length === 0) return null;
 
   const rows: React.ReactElement[] = [];
   let lastDate = '';
@@ -662,16 +772,15 @@ function SchedulePage(plan: PlanDocumentInput, branding: ClinicBranding) {
   }
 
   return el(
-    Page,
-    { size: 'A4', style: s.page, key: 'schedule' },
-    el(Text, { style: s.h1 }, 'Your Schedule'),
-    el(Text, { style: s.h2 }, 'What happens on each day of your visit'),
+    View,
+    { key: 'schedule-block' },
+    el(Text, { style: s.subTitle }, 'Day by day'),
     el(
       View,
       { style: s.table },
       el(
         View,
-        { style: s.thead, fixed: true },
+        { style: s.thead },
         el(Text, { style: [s.th, { width: '18%' }] }, 'Time'),
         el(Text, { style: [s.th, { width: '52%' }] }, 'Appointment'),
         el(Text, { style: [s.th, { width: '30%' }] }, 'Where'),
@@ -683,7 +792,6 @@ function SchedulePage(plan: PlanDocumentInput, branding: ClinicBranding) {
       { style: s.emptyNote },
       'Times may shift slightly on the day. Your coordinator will confirm each appointment with you in advance.',
     ),
-    Footer(branding),
   );
 }
 
@@ -751,8 +859,10 @@ export function TreatmentPlanDocument(
   const stay = plan.stay;
   const hasStay =
     !!stay && Object.values(stay).some((v) => v !== null && v !== undefined && String(v).trim() !== '');
-  if (hasStay) pages.push(StayPage(plan, branding));
-  if ((plan.scheduleItems ?? []).length > 0) pages.push(SchedulePage(plan, branding));
+  // One page for the whole trip. The schedule used to have a sheet of its own and reliably carried
+  // a single appointment on it, which is how the dossier ended up with a near-blank page in the
+  // middle. Either half is enough to warrant the page; both share it.
+  if (hasStay || (plan.scheduleItems ?? []).length > 0) pages.push(StayPage(plan, branding));
 
   // Aftercare covers only the procedures this patient is actually having, so a crown-only plan
   // does not hand someone a page about sinus surgery.
