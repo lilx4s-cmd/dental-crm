@@ -17,6 +17,16 @@ export class SettingsService {
     timezone?: string;
     currency?: string;
     logoUrl?: string;
+    phone?: string;
+    email?: string;
+    whatsapp?: string;
+    website?: string;
+    defaultPackageIncludes?: string[];
+    defaultCardFeePercent?: number;
+    defaultCashDiscountPercent?: number;
+    defaultDepositPercent?: number;
+    defaultPaymentTerms?: string;
+    defaultWarrantyTerms?: string;
   }) {
     return this.prisma.clinicSettings.update({
       where: { id: 'singleton' },

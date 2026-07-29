@@ -31,6 +31,17 @@ export interface ClinicSettings {
   timezone: string;
   currency: string;
   logoUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  whatsapp: string | null;
+  website: string | null;
+  // Standing terms every new plan starts from.
+  defaultPackageIncludes: string[];
+  defaultCardFeePercent: number | null;
+  defaultCashDiscountPercent: number | null;
+  defaultDepositPercent: number | null;
+  defaultPaymentTerms: string | null;
+  defaultWarrantyTerms: string | null;
   updatedAt: string;
 }
 

@@ -20,6 +20,7 @@ import { StorageStatusCard } from '@/components/settings/storage-status-card';
 import { WhatsAppStatusCard } from '@/components/settings/whatsapp-status-card';
 import { EvolutionCard } from '@/components/settings/evolution-card';
 import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
+import { PlanDefaultsCard } from '@/components/settings/plan-defaults-card';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -208,6 +209,9 @@ export default function SettingsPage() {
       </div>
 
       <ClinicSettingsForm />
+
+      {/* The terms every new treatment plan starts from — set once, copied onto each plan. */}
+      <PlanDefaultsCard />
 
       <StorageStatusCard />
 
