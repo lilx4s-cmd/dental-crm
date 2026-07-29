@@ -14,7 +14,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { STAGE_LABELS } from '@dental-crm/shared';
+import { CLINICAL, STAGE_LABELS } from '@dental-crm/shared';
+import { useAuth } from '@/context/auth-context';
 import { useLead, useLeadActivities, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
@@ -33,26 +34,34 @@ function humanize(value: string) {
 // patient. Split out so its three lazy queries (patient/appointments/plans)
 // only ever fire once a patient id actually exists to fetch.
 function PatientRecordSection({ patientId }: { patientId: string }) {
-  const { data: patient, isLoading, isError } = usePatient(patientId);
+  const { user } = useAuth();
+  // A clinical record is not a sales consultant's to read, so the request is skipped rather than
+  // made and refused — a 403 in the console reads as a defect to whoever finds it next.
+  const mayReadClinical = (CLINICAL as readonly string[]).includes(user?.role ?? '');
+
+  const { data: patient, isLoading, isError } = usePatient(patientId, mayReadClinical);
   const { data: appointments, isLoading: apptsLoading } = useAppointments(undefined, undefined, undefined, patientId, true);
   const { data: plans, isLoading: plansLoading } = useTreatmentPlans(patientId);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading patient record…
-      </div>
-    );
-  }
-  if (isError || !patient) {
-    return <p className="text-xs text-destructive">Couldn't load the patient record. Please try again shortly.</p>;
-  }
-
-  const hasClinicalDetails = patient.dateOfBirth || patient.gender || patient.diagnosis || patient.insuranceInfo;
+  // Only the clinical block depends on that fetch. It used to return early on failure, so one call
+  // this role is not allowed to make took the appointments and the treatment plans down with it —
+  // both of which a salesperson may see, and the plans are why they open this panel at all.
+  const hasClinicalDetails =
+    !!patient && (patient.dateOfBirth || patient.gender || patient.diagnosis || patient.insuranceInfo);
 
   return (
     <div className="space-y-4">
-      {hasClinicalDetails ? (
+      {!mayReadClinical ? (
+        <p className="text-xs text-muted-foreground">
+          Clinical details are not shown for your role. Treatment and appointments are below.
+        </p>
+      ) : isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading patient record…
+        </div>
+      ) : isError ? (
+        <p className="text-xs text-destructive">Couldn&apos;t load the clinical record. Please try again shortly.</p>
+      ) : hasClinicalDetails && patient ? (
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
           {patient.dateOfBirth && (
             <>

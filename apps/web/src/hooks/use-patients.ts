@@ -52,12 +52,19 @@ export function usePatients(query: PatientsQuery = {}) {
   });
 }
 
-export function usePatient(id: string) {
+/**
+ * One patient's clinical record.
+ *
+ * `enabled` lets a caller who knows the current role cannot read clinical records skip the request
+ * instead of firing one it knows will be refused. A 403 in the console reads as a defect to
+ * whoever finds it next, and this one is a policy decision rather than a failure.
+ */
+export function usePatient(id: string, enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<Patient>({
     queryKey: ['patients', id],
     queryFn: () => apiRequest(`/api/patients/${id}`, {}, accessToken ?? undefined),
-    enabled: !!id,
+    enabled: enabled && !!id,
   });
 }
 

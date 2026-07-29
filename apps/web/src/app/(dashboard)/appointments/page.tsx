@@ -32,6 +32,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { APPOINTMENT_WRITE } from '@dental-crm/shared';
+import { useAuth } from '@/context/auth-context';
 import { useAppointments, useCreateAppointment, useUpdateAppointment, type Appointment } from '@/hooks/use-appointments';
 import { usePatients } from '@/hooks/use-patients';
 import { useDentists } from '@/hooks/use-users';
@@ -153,6 +155,9 @@ function AppointmentDetailDialog({
   onClose: () => void;
 }) {
   const update = useUpdateAppointment(appointment?.id ?? '');
+  const { user } = useAuth();
+  // Same rule as the Create button: reading the diary and changing it are different rights.
+  const mayBook = (APPOINTMENT_WRITE as readonly string[]).includes(user?.role ?? '');
 
   if (!appointment) return null;
 
@@ -216,7 +221,7 @@ function AppointmentDetailDialog({
           )}
         </div>
 
-        {appointment.status !== 'CANCELLED' && appointment.status !== 'COMPLETED' && (
+        {mayBook && appointment.status !== 'CANCELLED' && appointment.status !== 'COMPLETED' && (
           <DialogFooter className="flex-wrap gap-2">
             {appointment.status === 'SCHEDULED' && (
               <Button size="sm" variant="outline" onClick={() => handleStatus('CONFIRMED')} disabled={update.isPending}>
@@ -410,6 +415,8 @@ function NewAppointmentDialog({
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function AppointmentsPage() {
+  const { user } = useAuth();
+  const mayBook = (APPOINTMENT_WRITE as readonly string[]).includes(user?.role ?? '');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<View>(Views.WEEK);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
@@ -462,9 +469,11 @@ export default function AppointmentsPage() {
   }, []);
 
   const handleSelectSlot = useCallback(({ start }: { start: Date }) => {
+    // Dragging out a slot is a way of starting a booking, so it answers to the same right.
+    if (!mayBook) return;
     setNewDialogDate(start);
     setNewDialogOpen(true);
-  }, []);
+  }, [mayBook]);
 
   // One step is whatever the current view shows, so the arrows always move by exactly the span on
   // screen — a day in day view, a week in week view.
@@ -495,10 +504,15 @@ export default function AppointmentsPage() {
       {/* Google's calendar bar: create on the left, then Today and the arrows, the range title,
           and the view switcher pushed to the right. */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => { setNewDialogDate(new Date()); setNewDialogOpen(true); }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create
-        </Button>
+        {/* Everyone reads the diary, but only the desk and the clinicians book it. Offering the
+            button to a sales consultant led them into a dialog whose patient search returns
+            nothing — patient records are not theirs — and a submit that would be refused. */}
+        {mayBook && (
+          <Button onClick={() => { setNewDialogDate(new Date()); setNewDialogOpen(true); }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create
+          </Button>
+        )}
 
         <Button variant="outline" size="sm" className="ml-2 rounded-full" onClick={goToday}>
           Today

@@ -16,6 +16,7 @@ export {
   PATIENT_FACING,
   SCHEDULING,
   PLAN_COORDINATION,
+  APPOINTMENT_WRITE,
   CLINIC_ADMIN,
 } from '@dental-crm/shared';
 

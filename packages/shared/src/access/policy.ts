@@ -76,6 +76,21 @@ export const PATIENT_FACING = [
  */
 export const SCHEDULING = ALL_STAFF;
 
+/**
+ * Who may actually book and change appointments.
+ *
+ * Narrower than SCHEDULING, which only governs reading the diary. A sales consultant sees who is
+ * coming and when, because they coordinate the trip, but the chair is booked by the desk and the
+ * clinicians. Booking also needs a patient search, and patient records are not theirs to read —
+ * so the button is hidden rather than offered and then refused halfway through.
+ */
+export const APPOINTMENT_WRITE = [
+  Role.SUPER_ADMIN,
+  Role.CLINIC_MANAGER,
+  Role.RECEPTION,
+  Role.DENTIST,
+] as const;
+
 /** Treatment plans: the dentists who write them and the coordinators who quote them. */
 export const PLAN_COORDINATION = [
   Role.SUPER_ADMIN,

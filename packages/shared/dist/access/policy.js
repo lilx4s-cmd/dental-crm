@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ROUTE_ACCESS = exports.CLINIC_ADMIN = exports.PLAN_COORDINATION = exports.SCHEDULING = exports.PATIENT_FACING = exports.PIPELINE_WRITE = exports.PIPELINE = exports.CLINICAL = exports.FINANCE = exports.MANAGEMENT = exports.ALL_STAFF = void 0;
+exports.ROUTE_ACCESS = exports.CLINIC_ADMIN = exports.PLAN_COORDINATION = exports.APPOINTMENT_WRITE = exports.SCHEDULING = exports.PATIENT_FACING = exports.PIPELINE_WRITE = exports.PIPELINE = exports.CLINICAL = exports.FINANCE = exports.MANAGEMENT = exports.ALL_STAFF = void 0;
 exports.canAccessRoute = canAccessRoute;
 exports.landingRoute = landingRoute;
 const enums_1 = require("../enums");
@@ -71,6 +71,20 @@ exports.PATIENT_FACING = [
  * information rather than a privilege.
  */
 exports.SCHEDULING = exports.ALL_STAFF;
+/**
+ * Who may actually book and change appointments.
+ *
+ * Narrower than SCHEDULING, which only governs reading the diary. A sales consultant sees who is
+ * coming and when, because they coordinate the trip, but the chair is booked by the desk and the
+ * clinicians. Booking also needs a patient search, and patient records are not theirs to read —
+ * so the button is hidden rather than offered and then refused halfway through.
+ */
+exports.APPOINTMENT_WRITE = [
+    enums_1.Role.SUPER_ADMIN,
+    enums_1.Role.CLINIC_MANAGER,
+    enums_1.Role.RECEPTION,
+    enums_1.Role.DENTIST,
+];
 /** Treatment plans: the dentists who write them and the coordinators who quote them. */
 exports.PLAN_COORDINATION = [
     enums_1.Role.SUPER_ADMIN,

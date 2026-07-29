@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { SCHEDULING } from '../common/access-policy';
+import { APPOINTMENT_WRITE, SCHEDULING } from '../common/access-policy';
 import { Role } from '@dental-crm/shared';
 import { JwtPayload } from '@dental-crm/shared';
 import { AppointmentsService } from './appointments.service';
@@ -30,13 +30,13 @@ export class AppointmentsController {
   }
 
   @Post()
-  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.RECEPTION, Role.DENTIST)
+  @Roles(...APPOINTMENT_WRITE)
   create(@Body() dto: CreateAppointmentDto, @CurrentUser() user: JwtPayload) {
     return this.appointmentsService.create(dto, user.sub);
   }
 
   @Patch(':id')
-  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.RECEPTION, Role.DENTIST)
+  @Roles(...APPOINTMENT_WRITE)
   update(@Param('id') id: string, @Body() dto: UpdateAppointmentDto) {
     return this.appointmentsService.update(id, dto);
   }

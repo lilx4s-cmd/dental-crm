@@ -55,6 +55,15 @@ export declare const PATIENT_FACING: readonly ["SUPER_ADMIN", "CLINIC_MANAGER", 
  * information rather than a privilege.
  */
 export declare const SCHEDULING: readonly ["SUPER_ADMIN", "CLINIC_MANAGER", "RECEPTION", "SALES_CONSULTANT", "DENTIST"];
+/**
+ * Who may actually book and change appointments.
+ *
+ * Narrower than SCHEDULING, which only governs reading the diary. A sales consultant sees who is
+ * coming and when, because they coordinate the trip, but the chair is booked by the desk and the
+ * clinicians. Booking also needs a patient search, and patient records are not theirs to read —
+ * so the button is hidden rather than offered and then refused halfway through.
+ */
+export declare const APPOINTMENT_WRITE: readonly ["SUPER_ADMIN", "CLINIC_MANAGER", "RECEPTION", "DENTIST"];
 /** Treatment plans: the dentists who write them and the coordinators who quote them. */
 export declare const PLAN_COORDINATION: readonly ["SUPER_ADMIN", "CLINIC_MANAGER", "DENTIST", "SALES_CONSULTANT"];
 /** Changing how the clinic itself is configured, and moving deals between salespeople. */

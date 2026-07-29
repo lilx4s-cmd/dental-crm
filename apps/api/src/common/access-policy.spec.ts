@@ -1,6 +1,7 @@
 import { Role } from '@dental-crm/shared';
 import {
   ALL_STAFF,
+  APPOINTMENT_WRITE,
   CLINICAL,
   CLINIC_ADMIN,
   FINANCE,
@@ -8,6 +9,7 @@ import {
   PATIENT_FACING,
   PIPELINE,
   ROUTE_ACCESS,
+  SCHEDULING,
   canAccessRoute,
   landingRoute,
 } from '@dental-crm/shared';
@@ -40,6 +42,20 @@ describe('access policy groups', () => {
 
   it('keeps the price-negotiation inbox away from the dentist', () => {
     expect(PATIENT_FACING).not.toContain(Role.DENTIST);
+  });
+
+  it('lets everyone read the diary but not everyone book it', () => {
+    // Sales coordinates the trip and needs to know who lands on Thursday; the chair is booked by
+    // the desk and the clinicians. Booking also needs a patient search, which sales cannot make.
+    expect(SCHEDULING).toContain(Role.SALES_CONSULTANT);
+    expect(APPOINTMENT_WRITE).not.toContain(Role.SALES_CONSULTANT);
+    expect(APPOINTMENT_WRITE).toContain(Role.RECEPTION);
+    expect(APPOINTMENT_WRITE).toContain(Role.DENTIST);
+  });
+
+  it('never lets a role write something it cannot read', () => {
+    // A right to change what you cannot see is a bug in the policy, not a feature.
+    for (const role of APPOINTMENT_WRITE) expect(SCHEDULING).toContain(role);
   });
 
   it('leaves the pipeline to the people selling', () => {
