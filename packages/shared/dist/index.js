@@ -20,6 +20,7 @@ __exportStar(require("./treatment-plan/pricing"), exports);
 __exportStar(require("./treatment-plan/presets"), exports);
 __exportStar(require("./treatment-plan/aftercare"), exports);
 __exportStar(require("./treatment-plan/value-props"), exports);
+__exportStar(require("./treatment-plan/package-and-payment"), exports);
 __exportStar(require("./pipeline/filters"), exports);
 __exportStar(require("./pipeline/stages"), exports);
 __exportStar(require("./pipeline/duplicates"), exports);

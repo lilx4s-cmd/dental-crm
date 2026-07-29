@@ -360,6 +360,18 @@ model ClinicSettings {
   logoUrl      String?
   workingHours Json?
   currency     String   @default("USD")
+  phone        String?
+  email        String?
+  whatsapp     String?
+  website      String?
+  // Defaults every new plan starts from. Set once by the clinic; this is most of the difference
+  // between a two-minute proposal and a twenty-minute one.
+  defaultPackageIncludes     String[] @default([])
+  defaultCardFeePercent      Decimal? @db.Decimal(5, 2)
+  defaultCashDiscountPercent Decimal? @db.Decimal(5, 2)
+  defaultDepositPercent      Decimal? @db.Decimal(5, 2)
+  defaultPaymentTerms        String?
+  defaultWarrantyTerms       String?
   updatedAt    DateTime @updatedAt
 
   @@map("clinic_settings")
@@ -745,6 +757,19 @@ model TreatmentPlan {
   diagnosisSnapshot     String?
   // Patient-friendly summary, staff-generated and cached (see Phase E AI module).
   aiSummary             String?
+  // What the quoted price includes, as keys the dossier renders with its own labels. Held on the
+  // plan, not only on the clinic: a proposal sent in March must still say what was promised in
+  // March after the clinic changes its terms in June.
+  packageIncludes       String[]              @default([])
+  // Payment terms as quoted. Nullable throughout, because a zero would read as "no deposit
+  // required" — a different promise from "not decided yet".
+  depositAmount         Decimal?              @db.Decimal(12, 2)
+  cardFeePercent        Decimal?              @db.Decimal(5, 2)
+  cashDiscountPercent   Decimal?              @db.Decimal(5, 2)
+  flightRefundNote      String?
+  paymentTerms          String?
+  // The language this dossier was issued in, so reissuing reproduces what was sent.
+  language              String                @default("en")
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 

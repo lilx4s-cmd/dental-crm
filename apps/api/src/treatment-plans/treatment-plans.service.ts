@@ -29,6 +29,15 @@ const PLAN_SELECT = {
   doctorRecommendation: true,
   diagnosisSnapshot: true,
   aiSummary: true,
+  // What the price covers, and how it is paid. Listed explicitly because PLAN_SELECT is a
+  // whitelist: a column missing from it is a column the dossier silently prints nothing for.
+  packageIncludes: true,
+  depositAmount: true,
+  cardFeePercent: true,
+  cashDiscountPercent: true,
+  flightRefundNote: true,
+  paymentTerms: true,
+  language: true,
   assignedDentistId: true,
   assignedCoordinatorId: true,
   createdAt: true,

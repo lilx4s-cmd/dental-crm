@@ -8,8 +8,10 @@ import {
   TRAVEL_GUIDANCE,
   aftercareFor,
   brandLine,
+  computePaymentSummary,
   computePhaseTotals,
   conditionFromText,
+  packageInclusionDef,
   parseToothNumbers,
   valuePropsFor,
   type ToothCondition,
@@ -92,6 +94,26 @@ const s = StyleSheet.create({
   // Wraps one complete section — heading, paragraph, bullets, warning card — so react-pdf moves
   // the whole thing to the next page rather than splitting it and leaving a gap behind.
   valueBlock: { marginBottom: 6 },
+  // "What's included" checklist.
+  includeRow: { flexDirection: 'row', marginBottom: 11 },
+  includeTick: { width: 18, fontSize: 12, color: '#0f766e', fontFamily: 'Helvetica-Bold' },
+  includeBody: { flex: 1 },
+  includeLabel: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  includeDetail: { fontSize: 9.5, color: '#52525b', lineHeight: 1.45 },
+  assuranceCard: { marginTop: 10, backgroundColor: '#f0fdfa', borderRadius: 4, padding: 12 },
+  assuranceText: { fontSize: 10, color: '#115e59', lineHeight: 1.5 },
+  // Payment page.
+  payHero: { backgroundColor: '#0f766e', borderRadius: 6, padding: 20, marginBottom: 16 },
+  payHeroLabel: { fontSize: 8, color: '#99f6e4', letterSpacing: 1.2, marginBottom: 6 },
+  payHeroValue: { fontSize: 30, color: '#ffffff', fontFamily: 'Helvetica-Bold' },
+  payHeroNote: { fontSize: 9, color: '#ccfbf1', marginTop: 7 },
+  payBlock: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 14 },
+  payRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
+  payLabel: { fontSize: 10, color: '#3f3f46' },
+  payValue: { fontSize: 10, textAlign: 'right' },
+  payCard: { borderWidth: 1, borderColor: '#fed7aa', backgroundColor: '#fff7ed', borderRadius: 4, padding: 12, marginBottom: 12 },
+  payCardTitle: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', marginBottom: 5 },
+  payCardText: { fontSize: 9.5, color: '#7c2d12', lineHeight: 1.5 },
   warnCard: { borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', borderRadius: 4, padding: 9, marginTop: 6 },
   warnLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#b91c1c', marginBottom: 4 },
   // No flex here. bulletText sets flex:1, which is correct inside a row but makes stacked
@@ -146,6 +168,13 @@ export interface PlanDocumentInput {
     phaseNumber?: number | null;
     treatmentCategory?: { name: string } | null;
   }>;
+  /** Keys from PACKAGE_INCLUSIONS. What the quoted price covers. */
+  packageIncludes?: string[];
+  depositAmount?: Numeric | null;
+  cardFeePercent?: Numeric | null;
+  cashDiscountPercent?: Numeric | null;
+  flightRefundNote?: string | null;
+  paymentTerms?: string | null;
   diagnoses?: Array<{ condition: ToothCondition; toothNumbers: string[]; notes?: string | null }>;
   stay?: {
     arrivalDate?: Date | string | null;
@@ -672,6 +701,132 @@ function ValuePage(plan: PlanDocumentInput, branding: ClinicBranding) {
   );
 }
 
+/**
+ * What the price includes, as a checklist.
+ *
+ * The single strongest paragraph on the clinic's old quotation was "the package includes hotel,
+ * medication, X-rays and all necessary aftercare — there are no hidden or additional fees". A
+ * patient comparing quotes is trying to work out what the other clinic has left out of theirs, and
+ * this is the page that answers it.
+ */
+function PackagePage(plan: PlanDocumentInput, branding: ClinicBranding) {
+  const included = (plan.packageIncludes ?? [])
+    .map((key) => packageInclusionDef(key))
+    .filter((d): d is NonNullable<typeof d> => !!d);
+  if (included.length === 0) return null;
+
+  return el(
+    Page,
+    { size: 'A4', style: s.page, key: 'package' },
+    el(Text, { style: s.h1 }, "What's Included"),
+    el(Text, { style: s.h2 }, 'Covered by the price quoted — not billed separately'),
+    ...included.map((item, i) =>
+      el(
+        View,
+        { key: `inc-${i}`, style: s.includeRow, wrap: false },
+        el(Text, { style: s.includeTick }, '✓'),
+        el(
+          View,
+          { style: s.includeBody },
+          el(Text, { style: s.includeLabel }, item.label),
+          el(Text, { style: s.includeDetail }, item.detail),
+        ),
+      ),
+    ),
+    el(
+      View,
+      { style: s.assuranceCard, wrap: false },
+      el(Text, { style: s.assuranceText }, 'There are no hidden or additional fees. Everything listed above is covered by the total on the previous page.'),
+    ),
+    Footer(branding),
+  );
+}
+
+/**
+ * What it costs by payment method, and what is due when.
+ *
+ * The clinic charges the processor's international-card fee through to the patient and discounts
+ * for cash, which is a real difference of hundreds on a full-mouth case. It was previously a
+ * paragraph a coordinator retyped into every proposal, which is how two patients end up holding
+ * two different sets of terms.
+ */
+function PaymentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
+  const { total } = planHeadlines(plan);
+  const hasTerms =
+    plan.depositAmount != null ||
+    plan.cardFeePercent != null ||
+    plan.cashDiscountPercent != null ||
+    !!plan.paymentTerms ||
+    !!plan.flightRefundNote;
+  if (total <= 0 || !hasTerms) return null;
+
+  const sum = computePaymentSummary({
+    total,
+    depositAmount: plan.depositAmount == null ? null : num(plan.depositAmount),
+    cardFeePercent: plan.cardFeePercent == null ? null : num(plan.cardFeePercent),
+    cashDiscountPercent: plan.cashDiscountPercent == null ? null : num(plan.cashDiscountPercent),
+  });
+
+  const line = (label: string, value: string, strong = false) =>
+    el(
+      View,
+      { style: s.payRow, key: label },
+      el(Text, { style: strong ? [s.payLabel, s.bold] : s.payLabel }, label),
+      el(Text, { style: strong ? [s.payValue, s.bold] : s.payValue }, value),
+    );
+
+  return el(
+    Page,
+    { size: 'A4', style: s.page, key: 'payment' },
+    el(Text, { style: s.h1 }, 'Payment'),
+    el(Text, { style: s.h2 }, 'What is due, and what each method costs'),
+
+    el(
+      View,
+      { style: s.payHero, wrap: false },
+      el(Text, { style: s.payHeroLabel }, 'TOTAL, PAID IN CASH'),
+      el(Text, { style: s.payHeroValue }, money(sum.cashTotal, plan.currency)),
+      sum.cashDiscountPercent > 0
+        ? el(Text, { style: s.payHeroNote }, `Includes a ${sum.cashDiscountPercent}% cash discount on ${money(sum.total, plan.currency)}.`)
+        : null,
+    ),
+
+    el(
+      View,
+      { style: s.payBlock },
+      line('Treatment total', money(sum.total, plan.currency)),
+      sum.cashDiscountPercent > 0 ? line(`Cash discount (${sum.cashDiscountPercent}%)`, `- ${money(sum.total - sum.cashTotal, plan.currency)}`) : null,
+      line('Payable in cash', money(sum.cashTotal, plan.currency), true),
+      sum.deposit > 0 ? line('Deposit to reserve your dates', money(sum.deposit, plan.currency)) : null,
+      sum.deposit > 0 ? line('Remaining on arrival', money(sum.remaining, plan.currency), true) : null,
+    ),
+
+    // Stated as the difference rather than only as a percentage: "16%" is abstract, "+560 EUR" is
+    // the number that decides how somebody pays.
+    sum.cardFeePercent > 0
+      ? el(
+          View,
+          { style: s.payCard, wrap: false },
+          el(Text, { style: s.payCardTitle }, `Paying by international card adds ${sum.cardFeePercent}%`),
+          el(
+            Text,
+            { style: s.payCardText },
+            `Card payment comes to ${money(sum.cardTotal, plan.currency)} — ${money(sum.cardExtra, plan.currency)} more than paying in cash. This surcharge is charged by the payment processor on international transactions and is passed on without any addition by the clinic.`,
+          ),
+        )
+      : null,
+
+    plan.flightRefundNote
+      ? el(View, { style: s.card, wrap: false }, el(Text, { style: s.cardLabel }, 'YOUR FLIGHT'), el(Text, {}, plan.flightRefundNote))
+      : null,
+    plan.paymentTerms
+      ? el(View, { style: s.card, wrap: false }, el(Text, { style: s.cardLabel }, 'TERMS'), el(Text, {}, plan.paymentTerms))
+      : null,
+
+    Footer(branding),
+  );
+}
+
 function Bullets(lines: readonly string[], keyPrefix: string) {
   return lines.map((line, i) =>
     el(
@@ -855,6 +1010,13 @@ export function TreatmentPlanDocument(
   // Directly after the price, where the patient is deciding whether it is worth it.
   const valuePage = ValuePage(plan, branding);
   if (valuePage) pages.push(valuePage);
+
+  // What the price covers, then what it costs to pay it. Both immediately after the figure they
+  // qualify, because that is the order the questions arrive in.
+  const packagePage = PackagePage(plan, branding);
+  if (packagePage) pages.push(packagePage);
+  const paymentPage = PaymentPage(plan, branding);
+  if (paymentPage) pages.push(paymentPage);
 
   const stay = plan.stay;
   const hasStay =
