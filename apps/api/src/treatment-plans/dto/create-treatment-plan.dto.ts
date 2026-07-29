@@ -105,4 +105,16 @@ export class CreateTreatmentPlanDto {
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => TreatmentPlanScheduleItemDto)
   scheduleItems?: TreatmentPlanScheduleItemDto[];
+  // What the quoted price covers, and how it is paid. A caller that has not reached that step
+  // omits them entirely and the service fills them from the clinic's defaults — which is most of
+  // the difference between a two-minute proposal and a twenty-minute one.
+  @IsOptional() @IsArray() @IsString({ each: true })
+  packageIncludes?: string[];
+
+  @IsOptional() @IsNumber() @Min(0) depositAmount?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) cardFeePercent?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) cashDiscountPercent?: number;
+  @IsOptional() @IsString() flightRefundNote?: string;
+  @IsOptional() @IsString() paymentTerms?: string;
+  @IsOptional() @IsString() language?: string;
 }

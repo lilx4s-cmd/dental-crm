@@ -186,6 +186,31 @@ export class TreatmentPlansService {
       select: { diagnosis: true },
     });
 
+    // The clinic's standing terms, copied onto the plan at the moment it is created.
+    //
+    // Copied rather than referenced: a proposal sent in March has to keep saying what was promised
+    // in March after the clinic changes its card fee in June. And filled in here rather than left
+    // to the coordinator, because retyping the same package and the same terms into every proposal
+    // is exactly the twenty minutes this is meant to remove — and is how two patients end up
+    // holding two different sets of terms.
+    const settings = await this.prisma.clinicSettings.findUnique({
+      where: { id: 'singleton' },
+      select: {
+        defaultPackageIncludes: true,
+        defaultCardFeePercent: true,
+        defaultCashDiscountPercent: true,
+        defaultDepositPercent: true,
+        defaultPaymentTerms: true,
+      },
+    });
+
+    // A deposit is configured as a percentage but quoted as an amount: "€500 to reserve your
+    // dates" is answerable, "20%" is a sum the patient has to work out themselves.
+    const depositFromPercent =
+      settings?.defaultDepositPercent != null
+        ? Math.round(itemsTotal * (Number(settings.defaultDepositPercent) / 100) * 100) / 100
+        : undefined;
+
     return this.prisma.treatmentPlan.create({
       data: {
         patientId: dto.patientId,
@@ -198,6 +223,15 @@ export class TreatmentPlansService {
         assignedCoordinatorId: dto.assignedCoordinatorId,
         doctorRecommendation: dto.doctorRecommendation,
         diagnosisSnapshot: patient?.diagnosis ?? null,
+        // `??` throughout, not `||`: an explicit empty package or a deliberate 0% card fee is a
+        // decision, and falling back to the clinic default there would overrule the coordinator.
+        packageIncludes: dto.packageIncludes ?? settings?.defaultPackageIncludes ?? [],
+        depositAmount: dto.depositAmount ?? depositFromPercent,
+        cardFeePercent: dto.cardFeePercent ?? settings?.defaultCardFeePercent ?? undefined,
+        cashDiscountPercent: dto.cashDiscountPercent ?? settings?.defaultCashDiscountPercent ?? undefined,
+        flightRefundNote: dto.flightRefundNote,
+        paymentTerms: dto.paymentTerms ?? settings?.defaultPaymentTerms ?? undefined,
+        language: dto.language ?? 'en',
         items: dto.items?.length
           ? {
               create: dto.items.map((item) => ({
@@ -344,6 +378,15 @@ export class TreatmentPlansService {
         doctorRecommendation: dto.doctorRecommendation,
         title: dto.title,
         notes: dto.notes,
+        // Undefined leaves each alone, so saving the package step cannot blank the payment terms
+        // somebody set a moment earlier from a different part of the editor.
+        packageIncludes: dto.packageIncludes,
+        depositAmount: dto.depositAmount,
+        cardFeePercent: dto.cardFeePercent,
+        cashDiscountPercent: dto.cashDiscountPercent,
+        flightRefundNote: dto.flightRefundNote,
+        paymentTerms: dto.paymentTerms,
+        language: dto.language,
         ...approvalPatch,
       },
       select: PLAN_SELECT,

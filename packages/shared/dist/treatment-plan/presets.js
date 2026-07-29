@@ -18,9 +18,16 @@ const LOWER_14 = ['47', ...LOWER_12, '37'];
 // avoids the sinus and the inferior alveolar nerve without grafting.
 const UPPER_ALL_ON_4 = ['15', '13', '23', '25'];
 const LOWER_ALL_ON_4 = ['45', '43', '33', '35'];
+// The teeth that show when somebody smiles: second premolar forward. Everything behind that is
+// invisible in a photograph, and quoting a full mouth for a cosmetic case prices the clinic out of
+// work it would otherwise win.
+const UPPER_SMILE_10 = ['15', '14', '13', '12', '11', '21', '22', '23', '24', '25'];
+const LOWER_SMILE_10 = ['45', '44', '43', '42', '41', '31', '32', '33', '34', '35'];
 const UPPER_6 = ['16', '14', '12', '22', '24', '26'];
 const LOWER_6 = ['46', '44', '42', '32', '34', '36'];
 const ZIRCONIA = { description: 'Zirconia Crown', categoryName: 'Crown', material: 'Zirconia' };
+const EMAX_VENEER = { description: 'E.max Veneer', categoryName: 'Veneer', material: 'E.max' };
+const IMPLANT = { description: 'Implant', categoryName: 'Implant' };
 exports.TREATMENT_PRESETS = [
     {
         id: 'all-on-4-both',
@@ -84,6 +91,41 @@ exports.TREATMENT_PRESETS = [
         name: '28 zirconia crowns',
         summary: 'Fourteen units per jaw, second molar to second molar. No surgical phase.',
         phases: [{ phaseNumber: 1, items: [{ ...ZIRCONIA, teeth: [...UPPER_14, ...LOWER_14] }] }],
+    },
+    {
+        // What the clinic's own quotation calls a Hollywood smile: the twenty teeth that show, not a
+        // full-mouth rehabilitation.
+        id: 'hollywood-smile-20',
+        name: 'Hollywood smile — 20 veneers',
+        summary: 'The ten upper and ten lower teeth that show when smiling. Cosmetic, no surgery.',
+        phases: [{ phaseNumber: 1, items: [{ ...EMAX_VENEER, teeth: [...UPPER_SMILE_10, ...LOWER_SMILE_10] }] }],
+    },
+    {
+        id: 'veneers-upper-10',
+        name: '10 upper veneers',
+        summary: 'The upper smile line only — the most common cosmetic case, and the quickest to quote.',
+        phases: [{ phaseNumber: 1, items: [{ ...EMAX_VENEER, teeth: UPPER_SMILE_10 }] }],
+    },
+    {
+        // Six implants per arch rather than four: more support across a longer span, and the answer
+        // where bone quality will not carry an All-on-4.
+        id: 'all-on-6-both',
+        name: 'All-on-6 — both jaws',
+        summary: 'Six implants per arch, then twelve zirconia crowns per arch after healing.',
+        phases: [
+            { phaseNumber: 1, name: 'Upper implants', items: [{ ...IMPLANT, teeth: UPPER_6 }] },
+            { phaseNumber: 2, name: 'Lower implants', healingPeriodMonths: 3, items: [{ ...IMPLANT, teeth: LOWER_6 }] },
+            { phaseNumber: 3, name: 'Prosthetics', items: [{ ...ZIRCONIA, teeth: [...UPPER_12, ...LOWER_12] }] },
+        ],
+    },
+    {
+        id: 'all-on-6-upper',
+        name: 'All-on-6 — upper only',
+        summary: 'Six upper implants, then twelve upper crowns after three months of healing.',
+        phases: [
+            { phaseNumber: 1, name: 'Upper implants', healingPeriodMonths: 3, items: [{ ...IMPLANT, teeth: UPPER_6 }] },
+            { phaseNumber: 2, name: 'Prosthetics', items: [{ ...ZIRCONIA, teeth: UPPER_12 }] },
+        ],
     },
 ];
 function findPreset(id) {

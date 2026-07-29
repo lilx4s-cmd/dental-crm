@@ -31,6 +31,7 @@ import { PlanAftercare, PlanSchedule, PlanStay } from './plan-itinerary';
 import { PlanDiagnoses, PlanProcedures } from './plan-summary';
 import { TimelineStepper } from './timeline-stepper';
 import { WarrantySection } from './warranty-section';
+import { PackagePaymentSection } from './package-payment-section';
 
 const AI_NOT_CONFIGURED_TOAST = 'AI features are not configured for this clinic';
 
@@ -310,6 +311,11 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         </div>
 
         <PlanAftercare items={plan.items} />
+
+        {/* What the price covers and how it is paid. Both already print on the dossier; until now
+            nothing could set them, so every plan carried whatever the clinic defaults happened to
+            be on the day it was created. */}
+        <PackagePaymentSection plan={plan} patientId={patientId} />
 
         <EditItineraryDialog
           plan={plan}

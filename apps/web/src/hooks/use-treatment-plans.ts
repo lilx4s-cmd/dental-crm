@@ -109,6 +109,14 @@ export interface TreatmentPlan {
   doctorRecommendation: string | null;
   diagnosisSnapshot: string | null;
   aiSummary: string | null;
+  /** Keys from PACKAGE_INCLUSIONS — what the quoted price covers. */
+  packageIncludes: string[];
+  depositAmount: number | null;
+  cardFeePercent: number | null;
+  cashDiscountPercent: number | null;
+  flightRefundNote: string | null;
+  paymentTerms: string | null;
+  language: string;
   assignedDentistId: string | null;
   assignedCoordinatorId: string | null;
   createdAt: string;
@@ -207,6 +215,14 @@ export interface UpdateTreatmentPlanInput {
   doctorRecommendation?: string;
   title?: string;
   notes?: string;
+  // Each independently optional, so saving the package cannot blank terms set from elsewhere.
+  packageIncludes?: string[];
+  depositAmount?: number;
+  cardFeePercent?: number;
+  cashDiscountPercent?: number;
+  flightRefundNote?: string;
+  paymentTerms?: string;
+  language?: string;
 }
 
 export function useTreatmentPlans(patientId: string) {
