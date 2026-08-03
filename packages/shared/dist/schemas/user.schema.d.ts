@@ -1,23 +1,23 @@
 import { z } from 'zod';
 export declare const CreateUserSchema: z.ZodObject<{
     email: z.ZodString;
-    password: z.ZodString;
+    password: z.ZodEffects<z.ZodString, string, string>;
     firstName: z.ZodString;
     lastName: z.ZodString;
     phone: z.ZodOptional<z.ZodString>;
     role: z.ZodEnum<["SUPER_ADMIN", "CLINIC_MANAGER", "RECEPTION", "SALES_CONSULTANT", "DENTIST"]>;
     specialization: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     phone?: string | undefined;
     specialization?: string | undefined;
 }, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
@@ -27,7 +27,7 @@ export declare const CreateUserSchema: z.ZodObject<{
 export type CreateUserDto = z.infer<typeof CreateUserSchema>;
 export declare const UpdateUserSchema: z.ZodObject<Omit<{
     email: z.ZodOptional<z.ZodString>;
-    password: z.ZodOptional<z.ZodString>;
+    password: z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>;
     firstName: z.ZodOptional<z.ZodString>;
     lastName: z.ZodOptional<z.ZodString>;
     phone: z.ZodOptional<z.ZodOptional<z.ZodString>>;

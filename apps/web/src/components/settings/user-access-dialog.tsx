@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, LogOut, ShieldOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { MIN_PASSWORD_LENGTH, PASSWORD_RULES, passwordProblems } from '@dental-crm/shared';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,9 +74,18 @@ export function UserAccessDialog({
     );
   };
 
+  // The same function the API validates with, so the dialog cannot promise something the server
+  // will refuse. Shown live rather than on submit: an admin choosing a password for someone else
+  // should not have to guess at the rules and be told no afterwards.
+  const problems = password ? passwordProblems(password, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  }) : [];
+
   const doReset = () => {
-    if (password.length < 8) {
-      toast.error('Password must be at least 8 characters');
+    if (problems.length > 0) {
+      toast.error(problems[0]);
       return;
     }
     resetPassword.mutate(
@@ -137,15 +147,38 @@ export function UserAccessDialog({
                 id="access-password"
                 type="password"
                 autoComplete="new-password"
-                placeholder="At least 8 characters"
+                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                aria-invalid={problems.length > 0}
+                aria-describedby="access-password-rules"
               />
-              <Button variant="outline" onClick={doReset} disabled={resetPassword.isPending || !password}>
+              <Button
+                variant="outline"
+                onClick={doReset}
+                disabled={resetPassword.isPending || !password || problems.length > 0}
+              >
                 <KeyRound className="mr-2 h-4 w-4" />
                 Reset
               </Button>
             </div>
+
+            <div id="access-password-rules" className="space-y-1">
+              {problems.length > 0 ? (
+                problems.map((problem) => (
+                  <p key={problem} className="text-xs text-destructive">
+                    {problem}
+                  </p>
+                ))
+              ) : (
+                <ul className="text-xs text-muted-foreground">
+                  {PASSWORD_RULES.map((rule) => (
+                    <li key={rule}>· {rule}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Tell them the new password over a channel they already trust, and ask them to change
               it. This also signs them out everywhere.

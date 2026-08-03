@@ -1,15 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { Role } from '@dental-crm/shared';
+import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
+import { MIN_PASSWORD_LENGTH, Role } from '@dental-crm/shared';
+import { IsStrongPassword } from '../../common/validators/is-strong-password.validator';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'john@clinic.com' })
   @IsEmail()
   email: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({ minLength: MIN_PASSWORD_LENGTH })
   @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   password: string;
 
   @ApiProperty()

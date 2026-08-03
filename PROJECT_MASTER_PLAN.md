@@ -154,7 +154,7 @@ Estimates are engineer-weeks, rough, and assume the existing architecture.
 |---|---|---|---|
 | **C-1** | **No password reset, no email verification.** No email transport exists (W-5). | A staff member who forgets their password cannot be recovered except by hand-editing the production database. This is a guaranteed future incident, not a hypothetical. | 1w |
 | **C-2** | **No audit trail on clinical or financial data** (W-1). | Nothing records who changed a diagnosis, a price, or a medication list. For medical records this is a liability and, under GDPR/KVKK, likely a compliance failure. The columns already exist — this is an interceptor, not a migration. | 1w |
-| **C-3** | **No 2FA, no session listing, no session revocation.** `RefreshToken` rows exist but no endpoint lists or revokes them. | The system holds passport scans, radiographs and medical histories. One phished password is total access, with no way to see or kill an attacker's session. | 1.5w |
+| **C-3** | **No 2FA. No self-service password change.** Admin session revocation exists (see S-4); *self-service* account security does not. | The system holds passport scans, radiographs and medical histories. One phished password is total access, and the victim cannot rotate their own password or kill their own sessions — they must find an administrator. | 1.5w |
 | **C-4** | **No verified backup and restore.** Supabase takes automatic backups; nobody has tested a restore. | 1,005 live leads and 6 real treatment plans. An untested backup is not a backup. This is a half-day of work and it is the cheapest insurance on this list. | 0.5w |
 | **C-5** | **No appointment reminders.** `Notification` is dead, `reminderSentAt` is never written, no scheduler (W-3, W-4). | Medical tourism patients fly in. A missed appointment is a wasted flight and a lost case. This is direct, quantifiable revenue loss happening now. | 1.5w |
 | **C-6** | **No rate limit on login.** `main.ts` adds stricter limiters for `/api/portal` (30) and `/api/intake` (10), but `/api/auth/login` sits under the global 300/15min. No account lockout. | 300 password attempts per IP per 15 minutes against a system with no 2FA (C-3). Credential stuffing is trivially viable. **This is the cheapest fix on the list — under an hour.** | 0.2w |
@@ -269,11 +269,11 @@ in an otherwise defended system.
 
 | ID | Finding | Severity |
 |---|---|---|
-| **S-1** | No login rate limit or account lockout (C-6). 300 attempts/15min/IP. | **Critical** |
+| **S-1** | ~~No login rate limit or account lockout.~~ **Done 2026-08-03** (C-6). 10/15min per IP with successes uncounted, plus a per-account lockout escalating 15/30/60 minutes. Also closed a user-enumeration timing side channel: an unknown email skipped bcrypt and answered in under a millisecond where a known one took ~80ms. | **Done** |
 | **S-2** | No 2FA (C-3). | **Critical** |
 | **S-3** | No audit trail on clinical/financial mutations (C-2). | **Critical** |
-| **S-4** | No session listing or revocation. `RefreshToken` rows are never enumerated for a user, so a compromised session cannot be killed without invalidating everyone. | **High** |
-| **S-5** | No password policy — no minimum length, complexity, or breach check. | **High** |
+| **S-4** | ~~No session listing or revocation.~~ **Corrected 2026-08-03 — this was wrong.** `GET /users/:id/sessions`, `POST /users/:id/revoke-sessions` and an admin password reset that revokes sessions all exist (`users.controller.ts:49-65`). What is actually missing: (a) sessions are *counted*, not listed — no device, IP or last-used, so a suspicious session cannot be picked out from a legitimate one, though `RefreshToken` already stores `createdByIp` and `userAgent`; (b) all three are admin-only, so a user who suspects their own account is compromised can do nothing themselves; (c) **there is no self-service password change at all** — only an admin can rotate a password. | **High** |
+| **S-5** | ~~No password policy.~~ **Done 2026-08-03.** Was `min(8)` at creation and `min(6)` at login, so `password` and `12345678` were both legal on accounts that can read every patient's medical history. Now 12 characters, a blocklist, and a check against the user's own name/email — shared between the API validator and the settings form. **Open:** no breach-corpus (HIBP) check; and **the eight existing accounts still hold pre-policy passwords** — see §9.7. | **Done / partial** |
 | **S-6** | Medical data is not encrypted at rest beyond Supabase's disk encryption. `medications`, `medicalConditions`, `isPregnant`, `takesBloodThinners` are plaintext columns. Field-level encryption would mean anyone with a read replica or a leaked backup gets nothing. | **High** |
 | **S-7** | CSRF: mitigated in practice, not by design. The refresh cookie is `SameSite=none` (required — cross-origin deploy), so it *is* sent cross-site. A forged POST to `/api/auth/refresh` would succeed at the cookie level, but CORS prevents the attacker reading the returned token, so impact is limited to token rotation. **Add a double-submit CSRF token anyway** — the current safety is incidental. | **Medium** |
 | **S-8** | No secret rotation procedure. JWT signing key has never been rotated and there is no mechanism to. | **Medium** |
@@ -422,6 +422,14 @@ These change the plan materially and I should not guess:
    join. Clinical copy stays behind human review regardless.
 6. **Consent forms (H-4)** — which jurisdiction's requirements? Turkish KVKK, GDPR for EU patients,
    or both?
+
+7. **Reset the eight existing staff passwords — action for you, not code.** The new policy applies
+   when a password is *set*. It is deliberately not enforced at sign-in, because doing so would
+   have locked all eight accounts out of the system on the day it shipped. So every current
+   password still predates the policy and may well be one of the ones now banned. Until C-3 ships
+   there is no self-service change, so this has to go through
+   Settings → Team → a person → *Set a new password*, which now shows the rules as you type and
+   signs that person out everywhere. **Do this for all eight, including your own.**
 
 ---
 

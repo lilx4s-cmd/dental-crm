@@ -3,9 +3,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserSchema = exports.UpdateUserSchema = exports.CreateUserSchema = void 0;
 const zod_1 = require("zod");
 const enums_1 = require("../enums");
+const password_policy_1 = require("../access/password-policy");
 exports.CreateUserSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
-    password: zod_1.z.string().min(8, 'Password must be at least 8 characters'),
+    // One policy, checked here and by the API's `@IsStrongPassword()` decorator, which reads the
+    // same function. See access/password-policy.ts for why length rather than character classes.
+    password: zod_1.z.string().superRefine((value, ctx) => {
+        for (const message of (0, password_policy_1.passwordProblems)(value)) {
+            ctx.addIssue({ code: zod_1.z.ZodIssueCode.custom, message });
+        }
+    }),
     firstName: zod_1.z.string().min(1),
     lastName: zod_1.z.string().min(1),
     phone: zod_1.z.string().optional(),

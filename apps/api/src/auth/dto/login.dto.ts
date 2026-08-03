@@ -6,8 +6,12 @@ export class LoginDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'password123' })
+  // Deliberately not the password policy. This is a shape check on what someone typed, not a
+  // judgement on it: the policy applies when a password is *set*, and enforcing it at sign-in
+  // would lock out every account whose password predates the policy — on the day it shipped,
+  // that would have been all eight of them.
+  @ApiProperty({ example: 'correct horse battery staple' })
   @IsString()
-  @MinLength(6)
+  @MinLength(1)
   password: string;
 }

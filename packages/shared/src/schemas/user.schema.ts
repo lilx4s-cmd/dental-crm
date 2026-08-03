@@ -1,9 +1,16 @@
 import { z } from 'zod';
 import { Role } from '../enums';
+import { passwordProblems } from '../access/password-policy';
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  // One policy, checked here and by the API's `@IsStrongPassword()` decorator, which reads the
+  // same function. See access/password-policy.ts for why length rather than character classes.
+  password: z.string().superRefine((value, ctx) => {
+    for (const message of passwordProblems(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  }),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   phone: z.string().optional(),

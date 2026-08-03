@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 export const LoginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  // Deliberately *not* the password policy. This is a shape check on what someone typed, not a
+  // judgement on it — the policy applies when a password is set, and applying it here would lock
+  // out every existing account whose password predates the policy. It only needs to be non-empty
+  // for the request to be worth making.
+  password: z.string().min(1, 'Enter your password'),
 });
 export type LoginDto = z.infer<typeof LoginSchema>;
 

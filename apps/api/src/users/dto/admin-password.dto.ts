@@ -1,11 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { IsString } from 'class-validator';
+import { MIN_PASSWORD_LENGTH } from '@dental-crm/shared';
+import { IsStrongPassword } from '../../common/validators/is-strong-password.validator';
 
 export class AdminResetPasswordDto {
-  // Matches the minimum enforced at user creation. Anything an admin sets must clear the same bar
-  // as anything a user chooses.
-  @ApiProperty({ minLength: 8 })
+  // The same policy a user's own password must clear. A reset is exactly the moment a weak
+  // password gets set — an admin picking something temporary and memorable for someone else.
+  @ApiProperty({ minLength: MIN_PASSWORD_LENGTH })
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @IsStrongPassword()
   newPassword!: string;
 }
