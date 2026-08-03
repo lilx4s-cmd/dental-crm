@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 import { TrendingUp, Users, Calendar, DollarSign, AlertCircle, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,16 +9,27 @@ import {
   useKpi, useMonthlyRevenue, useAppointmentStats,
   usePatientGrowth, useLeadFunnel,
 } from '@/hooks/use-reports';
-import { STAGE_LABELS, stageDef } from '@dental-crm/shared';
 import { QueryError } from '@/components/ui/query-state';
 import { formatMoneyRounded } from '@/lib/money';
 
-// ─── Colors ──────────────────────────────────────────────────────────────────
-const APPT_COLORS: Record<string, string> = {
-  SCHEDULED: '#6366f1', CONFIRMED: '#3b82f6', IN_PROGRESS: '#f59e0b',
-  COMPLETED: '#22c55e', CANCELLED: '#ef4444', NO_SHOW: '#f97316',
-};
-const PIE_PALETTE = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+// ─── Charts ──────────────────────────────────────────────────────────────────
+// recharts is the single largest dependency on this route (P-2). Each chart is its own module
+// under components/charts/ so ssr:false + next/dynamic can fetch it as a separate chunk only
+// once the panel is actually about to render, instead of it riding along in the route's
+// first-load JS.
+const chartSkeleton = () => <Skeleton className="h-56 w-full" />;
+const RevenueAreaChart = dynamic(() => import('@/components/charts/revenue-area-chart'), {
+  ssr: false, loading: chartSkeleton,
+});
+const AppointmentStatusPieChart = dynamic(() => import('@/components/charts/appointment-status-pie-chart'), {
+  ssr: false, loading: chartSkeleton,
+});
+const PatientGrowthBarChart = dynamic(() => import('@/components/charts/patient-growth-bar-chart'), {
+  ssr: false, loading: chartSkeleton,
+});
+const LeadFunnelBarChart = dynamic(() => import('@/components/charts/lead-funnel-bar-chart'), {
+  ssr: false, loading: chartSkeleton,
+});
 
 // Aggregates are read for magnitude, so whole units.
 const fmt = formatMoneyRounded;
@@ -138,20 +146,7 @@ export default function ReportsPage() {
             {revenueQ.isLoading ? <Skeleton className="h-56 w-full" />
               : revenueQ.isError ? <QueryError error={revenueQ.error} onRetry={revenueQ.refetch} />
               : hasRevenue ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={revenue} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                  <defs>
-                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} width={48} />
-                  <Tooltip formatter={(v) => [fmt(Number(v)), 'Revenue']} />
-                  <Area type="monotone" dataKey="revenue" stroke="#6366f1" fill="url(#revGrad)" strokeWidth={2} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <RevenueAreaChart data={revenue ?? []} />
             ) : <EmptyChart label="revenue" />}
           </CardContent>
         </Card>
@@ -164,16 +159,7 @@ export default function ReportsPage() {
             {apptQ.isLoading ? <Skeleton className="h-56 w-full" />
               : apptQ.isError ? <QueryError error={apptQ.error} onRetry={apptQ.refetch} />
               : hasAppts ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={apptStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ status, percent }: { status?: string; percent?: number }) => `${String(status).replace(/_/g, ' ')} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
-                    {apptStats?.map((entry, i) => (
-                      <Cell key={i} fill={APPT_COLORS[entry.status] ?? PIE_PALETTE[i % PIE_PALETTE.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v, name) => [v, String(name).replace(/_/g, ' ')]} />
-                </PieChart>
-              </ResponsiveContainer>
+              <AppointmentStatusPieChart data={apptStats ?? []} />
             ) : <EmptyChart label="appointment" />}
           </CardContent>
         </Card>
@@ -189,16 +175,7 @@ export default function ReportsPage() {
             {growthQ.isLoading ? <Skeleton className="h-56 w-full" />
               : growthQ.isError ? <QueryError error={growthQ.error} onRetry={growthQ.refetch} />
               : hasGrowth ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={growth} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} />
-                  <Bar dataKey="newPatients" name="New Patients" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="total" name="Total" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <PatientGrowthBarChart data={growth ?? []} />
             ) : <EmptyChart label="patient growth" />}
           </CardContent>
         </Card>
@@ -212,20 +189,7 @@ export default function ReportsPage() {
               : funnelQ.isError ? <QueryError error={funnelQ.error} onRetry={funnelQ.refetch} />
               : hasFunnel ? (
               <>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={funnel?.stages} layout="vertical" margin={{ top: 0, right: 8, left: 100, bottom: 0 }}>
-                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="stage" tick={{ fontSize: 10 }} width={100}
-                      tickFormatter={(v: string) => STAGE_LABELS[v] ?? v.replace(/_/g, ' ')} />
-                    <Tooltip formatter={(v) => [v, 'Leads']}
-                      labelFormatter={(l) => STAGE_LABELS[String(l)] ?? String(l).replace(/_/g, ' ')} />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {funnel?.stages.map((entry, i) => (
-                        <Cell key={i} fill={stageDef(entry.stage)?.color ?? PIE_PALETTE[i % PIE_PALETTE.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <LeadFunnelBarChart stages={funnel?.stages ?? []} />
                 <div className="mt-3 flex gap-4 text-sm">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle className="h-4 w-4 text-success" />

@@ -1,13 +1,20 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { Users, TrendingUp, UserCheck, DollarSign, Calendar } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { STAGE_LABELS, stageDef } from '@dental-crm/shared';
 import { useDashboardStats, usePipelineGroups } from '@/hooks/use-dashboard';
 import { QueryError } from '@/components/ui/query-state';
 import { formatMoneyRounded } from '@/lib/money';
+
+// recharts is the largest dependency on this route (P-2); pulling it into its own module lets
+// ssr:false + next/dynamic fetch it as a separate chunk only once the panel is about to render.
+const PipelineStageBarChart = dynamic(() => import('@/components/charts/pipeline-stage-bar-chart'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-56 w-full" />,
+});
 
 function StatCard({
   label,
@@ -98,21 +105,7 @@ export default function DashboardPage() {
             ) : pipelineQ.isError ? (
               <QueryError error={pipelineQ.error} onRetry={pipelineQ.refetch} />
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData} margin={{ top: 0, right: 8, left: 0, bottom: 24 }}>
-                  <XAxis dataKey="stage" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    formatter={(value, name) => [value, name === 'count' ? 'Leads' : 'Value']}
-                    labelStyle={{ fontWeight: 600 }}
-                  />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {chartData?.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <PipelineStageBarChart data={chartData ?? []} />
             )}
           </CardContent>
         </Card>
