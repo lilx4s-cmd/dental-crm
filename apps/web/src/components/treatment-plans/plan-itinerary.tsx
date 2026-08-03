@@ -32,6 +32,10 @@ export interface ItineraryLike {
     title: string;
     location: string | null;
     notes: string | null;
+    // Optional because the patient portal projects a narrower shape. Whether a line is booked is
+    // the clinic's business — a patient reading their own itinerary should not be shown that the
+    // clinic has not got round to reserving Wednesday yet.
+    appointmentId?: string | null;
   }>;
   items: Array<{
     description: string;
@@ -120,8 +124,20 @@ export function PlanStay({ stay }: { stay: ItineraryLike['stay'] }) {
   );
 }
 
-export function PlanSchedule({ items }: { items: ItineraryLike['scheduleItems'] }) {
+export function PlanSchedule({
+  items,
+  planId,
+  patientId,
+  onBook,
+}: {
+  items: ItineraryLike['scheduleItems'];
+  /** Omitted on the patient portal, where the itinerary is read-only. */
+  planId?: string;
+  patientId?: string;
+  onBook?: (item: NonNullable<ItineraryLike['scheduleItems']>[number]) => void;
+}) {
   if (!items || items.length === 0) return null;
+  const canBook = !!planId && !!patientId && !!onBook;
 
   // Group by day so each date is announced once, the way the printed itinerary reads.
   const days = new Map<string, typeof items>();
@@ -140,13 +156,27 @@ export function PlanSchedule({ items }: { items: ItineraryLike['scheduleItems'] 
           <div key={day} className="border-b last:border-b-0">
             <p className="bg-muted/50 px-3 py-1.5 text-xs font-semibold">{day}</p>
             {entries.map((e) => (
-              <div key={e.id} className="flex gap-3 border-t px-3 py-2 text-sm first:border-t-0">
+              <div key={e.id} className="flex items-center gap-3 border-t px-3 py-2 text-sm first:border-t-0">
                 <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{e.time ?? ''}</span>
                 <span className="min-w-0 flex-1">
                   {e.title}
                   {e.notes && <span className="text-muted-foreground"> — {e.notes}</span>}
                 </span>
                 {e.location && <span className="shrink-0 text-muted-foreground">{e.location}</span>}
+                {/* Whether the diary actually holds this day. The dossier promises the patient a
+                    date; until somebody books it, nothing in the calendar knows. */}
+                {canBook &&
+                  (e.appointmentId ? (
+                    <span className="shrink-0 text-xs text-success">Booked</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs text-primary hover:underline"
+                      onClick={() => onBook?.(e)}
+                    >
+                      Book
+                    </button>
+                  ))}
               </div>
             ))}
           </div>

@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { computePlanTotal } from '@dental-crm/shared';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatment-plan.dto';
 import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
+import { BookScheduleItemDto } from './dto/book-schedule-item.dto';
 
 // Declared outside PLAN_SELECT: the `as const` there would make this a readonly tuple, which
 // Prisma's orderBy input does not accept.
@@ -115,7 +116,20 @@ const PLAN_SELECT = {
     },
   },
   scheduleItems: {
-    select: { id: true, date: true, time: true, title: true, location: true, notes: true },
+    select: {
+      id: true,
+      date: true,
+      time: true,
+      title: true,
+      location: true,
+      notes: true,
+      // Whether this line is actually in the diary. Without it the itinerary promises a day the
+      // calendar may know nothing about, and no screen shows the discrepancy.
+      appointmentId: true,
+      appointment: {
+        select: { id: true, startTime: true, endTime: true, status: true },
+      },
+    },
     // Time is free text ("Morning", "09:30") so it cannot be sorted on in SQL; date orders the
     // days and the entry order within a day is whatever the coordinator typed.
     orderBy: SCHEDULE_ORDER,
@@ -306,6 +320,93 @@ export class TreatmentPlansService {
    * disagreeing with the one on screen. The stay is upserted so a coordinator can fill it in
    * progressively — hotel first, flight number a week later — which is the normal case.
    */
+  /**
+   * Books an itinerary line into the diary.
+   *
+   * The dossier promises the patient a day; until somebody makes a booking, the calendar knows
+   * nothing about it. This creates the appointment from the line and links them both ways, so the
+   * itinerary can show what is actually reserved and the diary can say which plan it serves.
+   *
+   * Times are passed in rather than parsed from the line. `time` on a schedule item is free text —
+   * "Morning" is a legitimate value while the exact slot is undecided — and guessing a start time
+   * from prose would book a chair at the wrong hour and look like the system's own idea.
+   */
+  async bookScheduleItem(
+    planId: string,
+    itemId: string,
+    dto: BookScheduleItemDto,
+    createdById: string,
+  ) {
+    const item = await this.prisma.treatmentPlanScheduleItem.findFirst({
+      where: { id: itemId, treatmentPlanId: planId },
+      select: {
+        id: true,
+        title: true,
+        notes: true,
+        appointmentId: true,
+        treatmentPlan: { select: { id: true, patientId: true } },
+      },
+    });
+    if (!item) throw new NotFoundException('Schedule item not found on this plan');
+    // Rebooking would orphan the first appointment while leaving it in the diary occupying a
+    // chair. Cancel or unlink that one first, deliberately.
+    if (item.appointmentId) {
+      throw new BadRequestException('This itinerary line is already booked');
+    }
+
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('Start and end must be valid times');
+    }
+    if (end <= start) throw new BadRequestException('The appointment must end after it starts');
+
+    return this.prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.create({
+        data: {
+          patientId: item.treatmentPlan.patientId,
+          treatmentPlanId: planId,
+          dentistId: dto.dentistId || undefined,
+          createdById,
+          type: (dto.type as $Enums.AppointmentType) ?? $Enums.AppointmentType.TREATMENT,
+          startTime: start,
+          endTime: end,
+          // The line's own title and note carry over, so the diary entry says the same thing the
+          // patient is reading rather than a second description of the same visit.
+          notes: [item.title, item.notes].filter(Boolean).join(' — ') || undefined,
+        },
+        select: { id: true, startTime: true, endTime: true, status: true },
+      });
+
+      await tx.treatmentPlanScheduleItem.update({
+        where: { id: itemId },
+        data: { appointmentId: appointment.id },
+      });
+
+      return appointment;
+    });
+  }
+
+  /**
+   * Detaches a booking from its itinerary line without cancelling it.
+   *
+   * Used when a visit is rescheduled: the line goes back to unbooked so it shows as outstanding,
+   * and the appointment stays in the diary for reception to move or cancel on its own terms.
+   */
+  async unbookScheduleItem(planId: string, itemId: string) {
+    const item = await this.prisma.treatmentPlanScheduleItem.findFirst({
+      where: { id: itemId, treatmentPlanId: planId },
+      select: { id: true },
+    });
+    if (!item) throw new NotFoundException('Schedule item not found on this plan');
+
+    await this.prisma.treatmentPlanScheduleItem.update({
+      where: { id: itemId },
+      data: { appointmentId: null },
+    });
+    return { id: itemId };
+  }
+
   async updateItinerary(id: string, dto: UpdateItineraryDto) {
     await this.findOne(id);
 

@@ -59,6 +59,16 @@ export interface TreatmentPlanScheduleItem {
   title: string;
   location: string | null;
   notes: string | null;
+  /** The booking that realises this line, once somebody has made one. */
+  appointmentId: string | null;
+  appointment: { id: string; startTime: string; endTime: string; status: string } | null;
+}
+
+export interface BookScheduleItemInput {
+  startTime: string;
+  endTime: string;
+  dentistId?: string;
+  type?: string;
 }
 
 export interface TreatmentPlanPhase {
@@ -322,6 +332,47 @@ export function useDownloadPlanPdf() {
     a.remove();
     setTimeout(() => window.URL.revokeObjectURL(url), 0);
   };
+}
+
+/**
+ * Books an itinerary line into the diary.
+ *
+ * Invalidates appointments as well as plans: the booking appears in two places at once and the
+ * calendar must not keep showing yesterday's answer.
+ */
+export function useBookScheduleItem(patientId: string) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, BookScheduleItemInput & { planId: string; itemId: string }>({
+    mutationFn: ({ planId, itemId, ...data }) =>
+      apiRequest(
+        `/api/treatment-plans/${planId}/schedule-items/${itemId}/book`,
+        { method: 'POST', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['treatment-plans', patientId] });
+      qc.invalidateQueries({ queryKey: ['appointments'] });
+    },
+  });
+}
+
+/** Releases the line without cancelling the appointment, which reception owns. */
+export function useUnbookScheduleItem(patientId: string) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { planId: string; itemId: string }>({
+    mutationFn: ({ planId, itemId }) =>
+      apiRequest(
+        `/api/treatment-plans/${planId}/schedule-items/${itemId}/book`,
+        { method: 'DELETE' },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['treatment-plans', patientId] });
+      qc.invalidateQueries({ queryKey: ['appointments'] });
+    },
+  });
 }
 
 export function useUpdateTimelineStep(patientId: string) {

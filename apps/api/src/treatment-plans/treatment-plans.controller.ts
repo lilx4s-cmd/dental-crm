@@ -11,6 +11,7 @@ import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatme
 import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { UpdateTimelineStepDto } from './dto/update-timeline-step.dto';
+import { BookScheduleItemDto } from './dto/book-schedule-item.dto';
 
 // Named role groups mirror leads.controller.ts's PIPELINE_ROLES convention.
 // STAFF = clinical authorship (dentists own the plan); COORDINATION adds the sales
@@ -123,6 +124,26 @@ export class TreatmentPlansController {
       'Content-Disposition': `attachment; filename="treatment-plan-${id}.pdf"`,
     });
     res.send(buffer);
+  }
+
+  // Turning a printed itinerary line into a real booking, and releasing it again. Same group that
+  // writes the plan: the itinerary is theirs, and the appointment it creates belongs to the visit
+  // they are coordinating.
+  @Post(':id/schedule-items/:itemId/book')
+  @Roles(...PLAN_COORDINATION_ROLES)
+  bookScheduleItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: BookScheduleItemDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.bookScheduleItem(id, itemId, dto, user.sub);
+  }
+
+  @Delete(':id/schedule-items/:itemId/book')
+  @Roles(...PLAN_COORDINATION_ROLES)
+  unbookScheduleItem(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.service.unbookScheduleItem(id, itemId);
   }
 
   @Put(':id/itinerary')

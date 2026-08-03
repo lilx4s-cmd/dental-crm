@@ -33,6 +33,7 @@ import { TimelineStepper } from './timeline-stepper';
 import { WarrantySection } from './warranty-section';
 import { PackagePaymentSection } from './package-payment-section';
 import { LabOrdersSection } from './lab-orders-section';
+import { BookScheduleItemDialog, type BookableScheduleItem } from './book-schedule-item-dialog';
 
 const AI_NOT_CONFIGURED_TOAST = 'AI features are not configured for this clinic';
 
@@ -134,6 +135,8 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   // stored server-side), so it's used opportunistically to embed a working QR in the PDF.
   const [lastShareToken, setLastShareToken] = useState<string | null>(null);
   const [editingItinerary, setEditingItinerary] = useState(false);
+  // The itinerary line waiting to be turned into a booking.
+  const [bookingItem, setBookingItem] = useState<BookableScheduleItem | null>(null);
 
   const handleGenerateSummary = () => {
     generateSummary.mutate(
@@ -308,7 +311,12 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
             </Button>
           </div>
           <PlanStay stay={plan.stay} />
-          <PlanSchedule items={plan.scheduleItems} />
+          <PlanSchedule
+            items={plan.scheduleItems}
+            planId={plan.id}
+            patientId={patientId}
+            onBook={setBookingItem}
+          />
         </div>
 
         <PlanAftercare items={plan.items} />
@@ -317,6 +325,14 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
             nothing could set them, so every plan carried whatever the clinic defaults happened to
             be on the day it was created. */}
         <PackagePaymentSection plan={plan} patientId={patientId} />
+
+        <BookScheduleItemDialog
+          planId={plan.id}
+          patientId={patientId}
+          item={bookingItem}
+          open={!!bookingItem}
+          onClose={() => setBookingItem(null)}
+        />
 
         <EditItineraryDialog
           plan={plan}

@@ -743,11 +743,18 @@ model Appointment {
   cancelReason          String?
   googleCalendarEventId String?
   reminderSentAt        DateTime?
+  /// Which treatment plan this appointment serves, when it was booked from one. Nullable: routine
+  /// check-ups and emergencies belong to no plan.
+  treatmentPlanId       String?
+  treatmentPlan         TreatmentPlan?    @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+  /// The itinerary line this booking realises, if it came from one.
+  scheduleItem          TreatmentPlanScheduleItem?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
   @@index([startTime])
   @@index([dentistId, startTime])
+  @@index([treatmentPlanId])
   @@map("appointments")
 }
 
@@ -814,6 +821,7 @@ model TreatmentPlan {
   stay          TreatmentPlanStay?
   scheduleItems TreatmentPlanScheduleItem[]
   labOrders     LabOrder[]
+  appointments  Appointment[]
 
   @@index([assignedDentistId])
   @@index([assignedCoordinatorId])
@@ -874,6 +882,11 @@ model TreatmentPlanScheduleItem {
   createdAt DateTime @default(now())
 
   @@index([treatmentPlanId])
+  /// The booking that realises this line, once somebody has made one. Until then the itinerary
+  /// promises a day the diary knows nothing about, which is the discrepancy this exists to show.
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
   @@map("treatment_plan_schedule_items")
 }
 
