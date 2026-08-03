@@ -72,7 +72,10 @@ export function formatDealValue(amount: number, currency = 'USD'): string {
       minimumFractionDigits: hasCents ? 2 : 0,
       maximumFractionDigits: 2,
     })
-    // Narrow no-break space, so a grouped number never wraps mid-figure in a 250px column.
-    .replace(/,/g, ' ');
+    // A no-break space, so a grouped number never breaks across two lines in a narrow kanban
+    // column. This was an ordinary space against a comment claiming otherwise, so the wrap it
+    // was written to prevent was still possible. U+00A0 rather than the narrower U+202F because
+    // font coverage for U+202F is patchy and a missing glyph renders as a box.
+    .replace(/,/g, ' ');
   return `${grouped} ${SYMBOLS[currency] ?? currency}`;
 }

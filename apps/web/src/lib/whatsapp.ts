@@ -12,6 +12,11 @@
  */
 export function normalizePhoneForWhatsApp(rawPhone: string): string {
   const digits = rawPhone.replace(/\D/g, '');
+  // "00" is the international dialling prefix, not a local trunk zero. A Gulf patient who writes
+  // their number as 00966… was previously read as a Turkish local number and turned into
+  // 900966…, which opens a chat with nobody. The CSV importer already strips it
+  // (`normalisePhone` in packages/shared/src/import/csv.ts); this path did not.
+  if (digits.startsWith('00')) return digits.slice(2);
   if (digits.startsWith('0')) return `90${digits.slice(1)}`;
   return digits;
 }
