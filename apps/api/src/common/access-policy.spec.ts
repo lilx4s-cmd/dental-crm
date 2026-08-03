@@ -4,12 +4,14 @@ import {
   APPOINTMENT_WRITE,
   CLINICAL,
   CLINIC_ADMIN,
+  FILE_OWNER_ACCESS,
   FINANCE,
   MANAGEMENT,
   PATIENT_FACING,
   PIPELINE,
   ROUTE_ACCESS,
   SCHEDULING,
+  canAccessFilesFor,
   canAccessRoute,
   landingRoute,
 } from '@dental-crm/shared';
@@ -51,6 +53,34 @@ describe('access policy groups', () => {
     expect(APPOINTMENT_WRITE).not.toContain(Role.SALES_CONSULTANT);
     expect(APPOINTMENT_WRITE).toContain(Role.RECEPTION);
     expect(APPOINTMENT_WRITE).toContain(Role.DENTIST);
+  });
+
+  it('gates a record\'s files the same way it gates the record', () => {
+    // Storage is polymorphic — one endpoint serves radiographs on a patient and passport scans on
+    // a deal — so a single role list on the controller is wrong in one direction or the other.
+    // The previous one gave sales API access to X-rays and locked reception out of the passport
+    // they had just scanned.
+    expect(canAccessFilesFor('PATIENT', Role.SALES_CONSULTANT)).toBe(false);
+    expect(canAccessFilesFor('PATIENT', Role.DENTIST)).toBe(true);
+    expect(canAccessFilesFor('PATIENT', Role.RECEPTION)).toBe(true);
+
+    // A deal's paperwork is travel documents, collected by sales and the front desk.
+    expect(canAccessFilesFor('LEAD', Role.SALES_CONSULTANT)).toBe(true);
+    expect(canAccessFilesFor('LEAD', Role.RECEPTION)).toBe(true);
+
+    expect(canAccessFilesFor('INVOICE', Role.RECEPTION)).toBe(false);
+  });
+
+  it('refuses files on an owner type nobody has classified', () => {
+    // Fail closed: adding a new attachable thing should require saying whose files they are.
+    expect(canAccessFilesFor('SOMETHING_NEW', Role.SUPER_ADMIN)).toBe(false);
+    expect(canAccessFilesFor('PATIENT', undefined)).toBe(false);
+  });
+
+  it('lets the super admin reach every classified owner type', () => {
+    for (const ownerType of Object.keys(FILE_OWNER_ACCESS)) {
+      expect(canAccessFilesFor(ownerType, Role.SUPER_ADMIN)).toBe(true);
+    }
   });
 
   it('never lets a role write something it cannot read', () => {

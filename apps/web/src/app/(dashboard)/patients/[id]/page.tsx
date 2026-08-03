@@ -4,7 +4,7 @@ import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Edit2, Plus,
-  CreditCard, FileText, Stethoscope, Trash2, ClipboardList,
+  CreditCard, FileText, Stethoscope, Trash2, ClipboardList, Paperclip,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -28,6 +28,7 @@ import { useInvoices, useCreateInvoice, useRecordPayment } from '@/hooks/use-inv
 import { useDentists } from '@/hooks/use-users';
 import { num } from '@/lib/numeric-input';
 import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
+import { CLINICAL_FILE_CATEGORIES, FileSection } from '@/components/files/file-section';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number, currency = 'USD') {
@@ -491,6 +492,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <TabsTrigger value="appointments" className="gap-2"><Calendar className="h-4 w-4" />Appointments</TabsTrigger>
           <TabsTrigger value="invoices" className="gap-2"><FileText className="h-4 w-4" />Invoices</TabsTrigger>
           <TabsTrigger value="plans" className="gap-2"><Stethoscope className="h-4 w-4" />Treatment Plans</TabsTrigger>
+          <TabsTrigger value="files" className="gap-2"><Paperclip className="h-4 w-4" />Files</TabsTrigger>
         </TabsList>
 
         <TabsContent value="planning" className="mt-4">
@@ -504,6 +506,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         </TabsContent>
         <TabsContent value="plans" className="mt-4">
           <TreatmentPlansTab patientId={id} patientPhone={patient.whatsappNumber || patient.phone} />
+        </TabsContent>
+        {/* Radiographs, scans, clinical photographs and paperwork. The storage backend has
+            always supported these and nothing in the product could reach them, so an X-ray
+            could not be attached to the patient it belongs to. */}
+        <TabsContent value="files" className="mt-4">
+          <FileSection
+            ownerType="PATIENT"
+            ownerId={id}
+            categories={CLINICAL_FILE_CATEGORIES}
+            title="Patient files"
+            emptyHint="No radiographs, scans or documents on file yet."
+          />
         </TabsContent>
       </Tabs>
 

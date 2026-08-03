@@ -69,6 +69,19 @@ export declare const PLAN_COORDINATION: readonly ["SUPER_ADMIN", "CLINIC_MANAGER
 /** Changing how the clinic itself is configured, and moving deals between salespeople. */
 export declare const CLINIC_ADMIN: readonly ["SUPER_ADMIN"];
 /**
+ * Who may reach the files attached to a given kind of record.
+ *
+ * Files are stored polymorphically — one endpoint serves radiographs on a patient and passport
+ * scans on a deal — so a single role list on the controller is necessarily wrong in one direction
+ * or the other. Gating the whole module to the treatment-plan roles gave a sales consultant access
+ * to X-rays through the API while locking reception out of the passport they had just scanned.
+ *
+ * The rule is that a record's files answer to the same people as the record itself.
+ */
+export declare const FILE_OWNER_ACCESS: Record<string, readonly Role[]>;
+/** Whether this role may read or write files hanging off this kind of record. */
+export declare function canAccessFilesFor(ownerType: string, role: string | undefined): boolean;
+/**
  * Which roles may open each page of the dashboard.
  *
  * Mirrors the @Roles on the endpoints each page depends on. A page listed for a role it cannot

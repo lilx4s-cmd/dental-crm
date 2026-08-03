@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
@@ -6,6 +6,7 @@ import { $Enums } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { ConfirmFileDto } from './dto/confirm-file.dto';
+import { canAccessFilesFor, type JwtPayload } from '@dental-crm/shared';
 
 @Injectable()
 export class FilesService {
@@ -103,7 +104,40 @@ export class FilesService {
     return this.supabase;
   }
 
-  async createUploadUrl(dto: CreateUploadUrlDto) {
+  /**
+   * Refuses a file operation the caller's role has no business performing.
+   *
+   * Storage is polymorphic, so the controller cannot express this: one endpoint serves radiographs
+   * on a patient and passport scans on a deal, and those answer to different people. The rule is
+   * that a record's files are reachable by whoever may reach the record.
+   */
+  private assertOwnerAccess(ownerType: string, user: JwtPayload) {
+    if (!canAccessFilesFor(ownerType, user.role)) {
+      // Deliberately says what is refused rather than what exists: a sales consultant probing for
+      // a patient's radiographs should not learn whether any are on file.
+      throw new ForbiddenException('Your role cannot access files on this record');
+    }
+  }
+
+  async createUploadUrl(dto: CreateUploadUrlDto, user: JwtPayload) {
+    this.assertOwnerAccess(dto.ownerType, user);
+    return this.signUpload(dto);
+  }
+
+  /**
+   * An upload slot for a caller already authorised some other way.
+   *
+   * The public enquiry form has no staff role. It proves possession of that submission's upload
+   * token instead, which IntakeService verifies before reaching here. Kept as a separate method
+   * with an awkward name rather than an optional `user` argument: the role check is the only thing
+   * between a sales consultant and a patient's radiographs, and an optional parameter is one that
+   * eventually gets omitted.
+   */
+  async createUploadUrlForVerifiedIntake(dto: CreateUploadUrlDto) {
+    return this.signUpload(dto);
+  }
+
+  private async signUpload(dto: CreateUploadUrlDto) {
     const client = this.getClient();
     const path = `${dto.ownerType}/${dto.ownerId}/${randomUUID()}-${dto.fileName}`;
     const { data, error } = await client.storage.from(this.bucket).createSignedUploadUrl(path);
@@ -118,7 +152,8 @@ export class FilesService {
     };
   }
 
-  async confirm(dto: ConfirmFileDto, uploadedById: string) {
+  async confirm(dto: ConfirmFileDto, uploadedById: string, user: JwtPayload) {
+    this.assertOwnerAccess(dto.ownerType, user);
     return this.prisma.file.create({
       data: {
         ownerType: dto.ownerType as $Enums.AttachableType,
@@ -134,16 +169,18 @@ export class FilesService {
     });
   }
 
-  async findByOwner(ownerType: string, ownerId: string) {
+  async findByOwner(ownerType: string, ownerId: string, user: JwtPayload) {
+    this.assertOwnerAccess(ownerType, user);
     return this.prisma.file.findMany({
       where: { ownerType: ownerType as $Enums.AttachableType, ownerId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getDownloadUrl(id: string) {
+  async getDownloadUrl(id: string, user: JwtPayload) {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
+    this.assertOwnerAccess(file.ownerType, user);
 
     const client = this.getClient();
     const { data, error } = await client.storage
@@ -155,9 +192,10 @@ export class FilesService {
     return { signedUrl: data.signedUrl };
   }
 
-  async remove(id: string) {
+  async remove(id: string, user: JwtPayload) {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
+    this.assertOwnerAccess(file.ownerType, user);
 
     const client = this.getClient();
     await client.storage.from(file.s3Bucket).remove([file.s3Key]);

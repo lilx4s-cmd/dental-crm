@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ROUTE_ACCESS = exports.CLINIC_ADMIN = exports.PLAN_COORDINATION = exports.APPOINTMENT_WRITE = exports.SCHEDULING = exports.PATIENT_FACING = exports.PIPELINE_WRITE = exports.PIPELINE = exports.CLINICAL = exports.FINANCE = exports.MANAGEMENT = exports.ALL_STAFF = void 0;
+exports.ROUTE_ACCESS = exports.FILE_OWNER_ACCESS = exports.CLINIC_ADMIN = exports.PLAN_COORDINATION = exports.APPOINTMENT_WRITE = exports.SCHEDULING = exports.PATIENT_FACING = exports.PIPELINE_WRITE = exports.PIPELINE = exports.CLINICAL = exports.FINANCE = exports.MANAGEMENT = exports.ALL_STAFF = void 0;
+exports.canAccessFilesFor = canAccessFilesFor;
 exports.canAccessRoute = canAccessRoute;
 exports.landingRoute = landingRoute;
 const enums_1 = require("../enums");
@@ -94,6 +95,40 @@ exports.PLAN_COORDINATION = [
 ];
 /** Changing how the clinic itself is configured, and moving deals between salespeople. */
 exports.CLINIC_ADMIN = [enums_1.Role.SUPER_ADMIN];
+/**
+ * Who may reach the files attached to a given kind of record.
+ *
+ * Files are stored polymorphically — one endpoint serves radiographs on a patient and passport
+ * scans on a deal — so a single role list on the controller is necessarily wrong in one direction
+ * or the other. Gating the whole module to the treatment-plan roles gave a sales consultant access
+ * to X-rays through the API while locking reception out of the passport they had just scanned.
+ *
+ * The rule is that a record's files answer to the same people as the record itself.
+ */
+exports.FILE_OWNER_ACCESS = {
+    // Radiographs, CT scans and clinical photographs are the medical record.
+    PATIENT: exports.CLINICAL,
+    TREATMENT_PLAN: exports.PLAN_COORDINATION,
+    TREATMENT_PLAN_ITEM: exports.PLAN_COORDINATION,
+    WARRANTY: exports.PLAN_COORDINATION,
+    // A deal's paperwork is passports and flight tickets, collected by sales and the front desk.
+    LEAD: exports.PIPELINE_WRITE,
+    INVOICE: exports.FINANCE,
+    APPOINTMENT: exports.SCHEDULING,
+    USER: exports.MANAGEMENT,
+    OTHER: exports.MANAGEMENT,
+};
+/** Whether this role may read or write files hanging off this kind of record. */
+function canAccessFilesFor(ownerType, role) {
+    if (!role)
+        return false;
+    const allowed = exports.FILE_OWNER_ACCESS[ownerType];
+    // An owner type nobody has classified is refused rather than waved through: adding a new
+    // attachable thing should require saying whose it is.
+    if (!allowed)
+        return false;
+    return allowed.includes(role);
+}
 /**
  * Which roles may open each page of the dashboard.
  *

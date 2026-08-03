@@ -103,6 +103,40 @@ export const PLAN_COORDINATION = [
 export const CLINIC_ADMIN = [Role.SUPER_ADMIN] as const;
 
 /**
+ * Who may reach the files attached to a given kind of record.
+ *
+ * Files are stored polymorphically — one endpoint serves radiographs on a patient and passport
+ * scans on a deal — so a single role list on the controller is necessarily wrong in one direction
+ * or the other. Gating the whole module to the treatment-plan roles gave a sales consultant access
+ * to X-rays through the API while locking reception out of the passport they had just scanned.
+ *
+ * The rule is that a record's files answer to the same people as the record itself.
+ */
+export const FILE_OWNER_ACCESS: Record<string, readonly Role[]> = {
+  // Radiographs, CT scans and clinical photographs are the medical record.
+  PATIENT: CLINICAL,
+  TREATMENT_PLAN: PLAN_COORDINATION,
+  TREATMENT_PLAN_ITEM: PLAN_COORDINATION,
+  WARRANTY: PLAN_COORDINATION,
+  // A deal's paperwork is passports and flight tickets, collected by sales and the front desk.
+  LEAD: PIPELINE_WRITE,
+  INVOICE: FINANCE,
+  APPOINTMENT: SCHEDULING,
+  USER: MANAGEMENT,
+  OTHER: MANAGEMENT,
+};
+
+/** Whether this role may read or write files hanging off this kind of record. */
+export function canAccessFilesFor(ownerType: string, role: string | undefined): boolean {
+  if (!role) return false;
+  const allowed = FILE_OWNER_ACCESS[ownerType];
+  // An owner type nobody has classified is refused rather than waved through: adding a new
+  // attachable thing should require saying whose it is.
+  if (!allowed) return false;
+  return (allowed as readonly string[]).includes(role);
+}
+
+/**
  * Which roles may open each page of the dashboard.
  *
  * Mirrors the @Roles on the endpoints each page depends on. A page listed for a role it cannot

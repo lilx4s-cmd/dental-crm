@@ -166,7 +166,7 @@ export class IntakeService {
     // Reuses the storage module rather than talking to Supabase here. When the bucket is not
     // configured this raises a 503, which the form treats as "enquiry saved, photos did not send"
     // rather than failing the whole submission.
-    return this.filesService.createUploadUrl({
+    return this.filesService.createUploadUrlForVerifiedIntake({
       ownerType: $Enums.AttachableType.LEAD,
       ownerId: submissionId,
       fileName: dto.fileName,
