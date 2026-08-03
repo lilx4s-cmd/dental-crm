@@ -32,6 +32,7 @@ import { PlanDiagnoses, PlanProcedures } from './plan-summary';
 import { TimelineStepper } from './timeline-stepper';
 import { WarrantySection } from './warranty-section';
 import { PackagePaymentSection } from './package-payment-section';
+import { LabOrdersSection } from './lab-orders-section';
 
 const AI_NOT_CONFIGURED_TOAST = 'AI features are not configured for this clinic';
 
@@ -329,6 +330,10 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           <p className="text-xs font-semibold text-muted-foreground">Timeline</p>
           <TimelineStepper steps={plan.timelineSteps} onStepClick={handleStepClick} />
         </div>
+
+        {/* Cases out at the lab. Sits beside warranties: both are things that happen to the
+            work after it is quoted, and both are asked about by date. */}
+        <LabOrdersSection planId={plan.id} />
 
         {/* Warranties */}
         <WarrantySection plan={plan} patientId={patientId} />

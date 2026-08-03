@@ -17,6 +17,7 @@ import { FacebookModule } from './facebook/facebook.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { TreatmentPlansModule } from './treatment-plans/treatment-plans.module';
 import { WarrantiesModule } from './warranties/warranties.module';
+import { LabOrdersModule } from './lab-orders/lab-orders.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
@@ -53,6 +54,7 @@ import { HealthController } from './health/health.controller';
     AppointmentsModule,
     TreatmentPlansModule,
     WarrantiesModule,
+    LabOrdersModule,
     InvoicesModule,
     ReportsModule,
     SettingsModule,

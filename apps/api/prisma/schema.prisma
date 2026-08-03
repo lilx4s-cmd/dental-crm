@@ -247,6 +247,15 @@ enum WarrantyStatus {
   CLAIMED
 }
 
+enum LabOrderStatus {
+  DRAFT
+  SENT
+  IN_PRODUCTION
+  READY
+  RECEIVED
+  REMAKE
+}
+
 enum TimelineStepStatus {
   PENDING
   IN_PROGRESS
@@ -329,6 +338,7 @@ model User {
   filesUploaded               File[]                   @relation("FileUploadedBy")
   notifications               Notification[]
   auditLogs                   AuditLog[]
+  labOrdersCreated            LabOrder[]               @relation("LabOrderCreatedBy")
 
   @@index([role])
   @@map("users")
@@ -803,6 +813,7 @@ model TreatmentPlan {
   phases        TreatmentPlanPhase[]
   stay          TreatmentPlanStay?
   scheduleItems TreatmentPlanScheduleItem[]
+  labOrders     LabOrder[]
 
   @@index([assignedDentistId])
   @@index([assignedCoordinatorId])
@@ -864,6 +875,45 @@ model TreatmentPlanScheduleItem {
 
   @@index([treatmentPlanId])
   @@map("treatment_plan_schedule_items")
+}
+
+/// A case sent out to the laboratory.
+///
+/// Crowns, veneers and bridges are made externally, and this is where a dispatch is recorded: what
+/// was sent, in what shade and material, when it is due back, and whether it has returned. Before
+/// this, lab work existed only as a lump sum on the patient's case economics — a number with no
+/// case behind it, so nobody could answer whether a bridge would be back before the patient flew
+/// home without ringing the lab.
+///
+/// Attached to the plan rather than to one item: a dispatch usually carries several units, and
+/// splitting it per tooth would mean chasing five orders for one parcel.
+model LabOrder {
+  id              String         @id @default(uuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan  @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  labName         String
+  status          LabOrderStatus @default(DRAFT)
+  /// Shade and material are the two things a remake is usually caused by, so they are fields
+  /// rather than something buried in a note.
+  shade           String?
+  material        String?
+  /// FDI numbers this dispatch covers.
+  toothNumbers    String[]       @default([])
+  sentAt          DateTime?
+  /// When the case is needed for the patient's appointment. This is what makes an order late
+  /// rather than merely open.
+  dueAt           DateTime?
+  receivedAt      DateTime?
+  trackingRef     String?
+  notes           String?
+  createdById     String
+  createdBy       User           @relation("LabOrderCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([treatmentPlanId])
+  @@index([status, dueAt])
+  @@map("lab_orders")
 }
 
 // The patient's dental status as charted when the plan was drawn up. Held against the plan rather
