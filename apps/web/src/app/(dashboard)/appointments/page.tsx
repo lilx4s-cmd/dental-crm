@@ -37,6 +37,7 @@ import { useAuth } from '@/context/auth-context';
 import { useAppointments, useCreateAppointment, useUpdateAppointment, type Appointment } from '@/hooks/use-appointments';
 import { usePatients } from '@/hooks/use-patients';
 import { useDentists } from '@/hooks/use-users';
+import { QueryError } from '@/components/ui/query-state';
 
 // ─── date-fns localizer ────────────────────────────────────────────────────
 const locales = { 'en-US': enUS };
@@ -447,7 +448,8 @@ export default function AppointmentsPage() {
     }
   }, [currentDate, currentView]);
 
-  const { data: appointments, isLoading } = useAppointments(rangeFrom, rangeTo);
+  const calendarQuery = useAppointments(rangeFrom, rangeTo);
+  const { data: appointments, isLoading } = calendarQuery;
 
   // Map API appointments → calendar events
   const events = useMemo(
@@ -532,7 +534,7 @@ export default function AppointmentsPage() {
         </h1>
 
         <span className="text-xs text-muted-foreground">
-          {isLoading ? 'Loading…' : `${appointments?.length ?? 0} in view`}
+          {isLoading ? 'Loading…' : calendarQuery.isError ? 'Not loaded' : `${appointments?.length ?? 0} in view`}
         </span>
 
         <div className="ml-auto flex gap-0.5 rounded-lg border p-0.5">
@@ -555,6 +557,10 @@ export default function AppointmentsPage() {
       {/* Calendar */}
       {isLoading ? (
         <Skeleton className="w-full flex-1 rounded-lg" style={{ minHeight: 500 }} />
+      ) : calendarQuery.isError ? (
+        // An empty grid is the one thing this screen must never show on failure: a receptionist
+        // reads a blank week as a free week and books over it.
+        <QueryError error={calendarQuery.error} onRetry={calendarQuery.refetch} variant="page" />
       ) : (
         <div className="min-h-0 flex-1" style={{ minHeight: 560 }}>
           <Calendar

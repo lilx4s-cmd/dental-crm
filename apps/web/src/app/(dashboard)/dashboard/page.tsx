@@ -4,32 +4,10 @@ import { Users, TrendingUp, UserCheck, DollarSign, Calendar } from 'lucide-react
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { STAGE_LABELS, stageDef } from '@dental-crm/shared';
 import { useDashboardStats, usePipelineGroups } from '@/hooks/use-dashboard';
+import { QueryError } from '@/components/ui/query-state';
 import { formatMoneyRounded } from '@/lib/money';
-
-const STAGE_COLORS: Record<string, string> = {
-  NEW_DEAL: '#6366f1',
-  CONTACTED: '#8b5cf6',
-  WAITING_PHOTOS: '#a78bfa',
-  CONSULTATION: '#3b82f6',
-  OFFER_SENT: '#06b6d4',
-  WAITING_FOR_TICKET: '#10b981',
-  NEGOTIATION: '#f59e0b',
-  DONE: '#22c55e',
-  LOST: '#ef4444',
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  NEW_DEAL: 'New Deal',
-  CONTACTED: 'Contacted',
-  WAITING_PHOTOS: 'Waiting Photos',
-  CONSULTATION: 'Consult Sched.',
-  OFFER_SENT: 'Consult Done',
-  WAITING_FOR_TICKET: 'Proposed',
-  NEGOTIATION: 'Negotiation',
-  DONE: 'Done',
-  LOST: 'Lost',
-};
 
 function StatCard({
   label,
@@ -37,6 +15,8 @@ function StatCard({
   icon: Icon,
   color,
   loading,
+  error,
+  onRetry,
   suffix = '',
 }: {
   label: string;
@@ -44,6 +24,8 @@ function StatCard({
   icon: React.ElementType;
   color: string;
   loading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
   suffix?: string;
 }) {
   return (
@@ -55,6 +37,8 @@ function StatCard({
       <CardContent>
         {loading ? (
           <Skeleton className="h-8 w-24" />
+        ) : error ? (
+          <QueryError error={error} onRetry={onRetry} variant="inline" className="h-8 items-center" />
         ) : (
           <p className="text-2xl font-bold">
             {value}
@@ -67,16 +51,23 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
-  const { data: pipeline, isLoading: pipelineLoading } = usePipelineGroups();
+  const statsQ = useDashboardStats();
+  const pipelineQ = usePipelineGroups();
+  const { data: stats } = statsQ;
+  const { data: pipeline } = pipelineQ;
 
+  // Labels and colours come from the shared stage table, the same one the board and the filter bar
+  // read. This page used to carry its own copy that called OFFER_SENT "Consult Done" and
+  // WAITING_FOR_TICKET "Proposed" — two names for a stage nobody on the board would recognise —
+  // and omitted six stages entirely, so those bars were labelled with the raw enum.
   const chartData = pipeline?.map((g) => ({
     stage: STAGE_LABELS[g.stage] ?? g.stage,
     count: g.count,
     value: g.totalValue,
-    color: STAGE_COLORS[g.stage] ?? '#6366f1',
+    color: stageDef(g.stage)?.color ?? '#6366f1',
   }));
 
+  const statsError = statsQ.isError ? statsQ.error : undefined;
   const pipelineValue = stats?.pipelineValueTotal
     ? formatMoneyRounded(stats.pipelineValueTotal)
     : '—';
@@ -89,11 +80,11 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Leads Today" value={stats?.leadsToday} icon={TrendingUp} color="text-blue-500" loading={statsLoading} />
-        <StatCard label="Total Leads" value={stats?.leadsTotal} icon={TrendingUp} color="text-indigo-500" loading={statsLoading} />
-        <StatCard label="Active Patients" value={stats?.patientsTotal} icon={Users} color="text-accent-foreground" loading={statsLoading} />
-        <StatCard label="Appts Today" value={stats?.appointmentsToday} icon={Calendar} color="text-cyan-500" loading={statsLoading} />
-        <StatCard label="Conversion Rate" value={stats?.conversionRate} icon={UserCheck} color="text-success" loading={statsLoading} suffix="%" />
+        <StatCard label="Leads Today" value={stats?.leadsToday} icon={TrendingUp} color="text-blue-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Total Leads" value={stats?.leadsTotal} icon={TrendingUp} color="text-indigo-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Active Patients" value={stats?.patientsTotal} icon={Users} color="text-accent-foreground" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Appts Today" value={stats?.appointmentsToday} icon={Calendar} color="text-cyan-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Conversion Rate" value={stats?.conversionRate} icon={UserCheck} color="text-success" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} suffix="%" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -102,8 +93,10 @@ export default function DashboardPage() {
             <CardTitle>Pipeline by Stage</CardTitle>
           </CardHeader>
           <CardContent>
-            {pipelineLoading ? (
+            {pipelineQ.isLoading ? (
               <Skeleton className="h-56 w-full" />
+            ) : pipelineQ.isError ? (
+              <QueryError error={pipelineQ.error} onRetry={pipelineQ.refetch} />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData} margin={{ top: 0, right: 8, left: 0, bottom: 24 }}>
@@ -132,12 +125,14 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {statsLoading ? (
+            {statsQ.isLoading ? (
               <Skeleton className="h-12 w-full" />
+            ) : statsError ? (
+              <QueryError error={statsError} onRetry={statsQ.refetch} variant="inline" />
             ) : (
               <p className="text-3xl font-bold text-success">{pipelineValue}</p>
             )}
-            {!statsLoading && (
+            {!statsQ.isLoading && (
               <div className="mt-4 space-y-2">
                 {pipeline?.filter((g) => g.count > 0).map((g) => (
                   <div key={g.stage} className="flex items-center justify-between text-sm">

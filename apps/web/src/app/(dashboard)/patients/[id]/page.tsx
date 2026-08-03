@@ -29,6 +29,7 @@ import { useDentists } from '@/hooks/use-users';
 import { num } from '@/lib/numeric-input';
 import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
 import { CLINICAL_FILE_CATEGORIES, FileSection } from '@/components/files/file-section';
+import { QueryError } from '@/components/ui/query-state';
 import { formatMoney } from '@/lib/money';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -245,7 +246,8 @@ function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; o
 
 // ─── Appointments Tab ─────────────────────────────────────────────────────────
 function AppointmentsTab({ patientId }: { patientId: string }) {
-  const { data: appts, isLoading } = useAppointments(undefined, undefined, undefined, patientId);
+  const query = useAppointments(undefined, undefined, undefined, patientId);
+  const { data: appts, isLoading } = query;
   const [newOpen, setNewOpen] = useState(false);
 
   const patientAppts = appts ?? [];
@@ -259,6 +261,8 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
       </div>
       {isLoading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+      ) : query.isError ? (
+        <QueryError error={query.error} onRetry={query.refetch} />
       ) : patientAppts.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">
           <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -305,7 +309,8 @@ function AppointmentRow({ appt }: { appt: NonNullable<ReturnType<typeof useAppoi
 
 // ─── Invoices Tab ─────────────────────────────────────────────────────────────
 function InvoicesTab({ patientId }: { patientId: string }) {
-  const { data: invoices, isLoading } = useInvoices(patientId);
+  const query = useInvoices(patientId);
+  const { data: invoices, isLoading } = query;
   const [newOpen, setNewOpen] = useState(false);
   const [payInvoiceId, setPayInvoiceId] = useState<string | null>(null);
 
@@ -327,6 +332,8 @@ function InvoicesTab({ patientId }: { patientId: string }) {
       </div>
       {isLoading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+      ) : query.isError ? (
+        <QueryError error={query.error} onRetry={query.refetch} />
       ) : !invoices?.length ? (
         <div className="text-center py-10 text-muted-foreground">
           <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -410,7 +417,8 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
 export default function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { data: patient, isLoading } = usePatient(id);
+  const patientQuery = usePatient(id);
+  const { data: patient, isLoading } = patientQuery;
   const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
@@ -419,6 +427,20 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         <Skeleton className="h-10 w-64" />
         <div className="grid grid-cols-2 gap-4"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  // "Patient not found" used to cover every way this could fail, including a dropped connection
+  // and a permission denial. Telling someone a patient does not exist when the record is merely
+  // unreachable invites them to create a duplicate.
+  if (patientQuery.isError) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/patients')}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to patients
+        </Button>
+        <QueryError error={patientQuery.error} onRetry={patientQuery.refetch} variant="page" />
       </div>
     );
   }

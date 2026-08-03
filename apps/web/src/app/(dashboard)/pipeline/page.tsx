@@ -31,6 +31,7 @@ import {
   type PipelineGroup,
 } from '@/hooks/use-leads';
 import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
+import { QueryError } from '@/components/ui/query-state';
 import { formatDealValue } from '@/lib/money';
 import { cn } from '@/lib/utils';
 // The board draws whatever the shared stage list says, so renaming a stage renames it here,
@@ -136,7 +137,8 @@ function moveErrorMessage(e: unknown): string {
 export default function PipelinePage() {
   const { user } = useAuth();
   const [filters, setFilters] = useState<PipelineFilters>({});
-  const { data: groups, isLoading } = useLeadsByStage(filters);
+  const boardQuery = useLeadsByStage(filters);
+  const { data: groups, isLoading } = boardQuery;
   const updateStage = useUpdateLeadStage();
 
   const [localGroups, setLocalGroups] = useState<PipelineGroup[]>([]);
@@ -279,6 +281,11 @@ export default function PipelinePage() {
             <Skeleton key={s.id} className="h-full shrink-0 rounded-[3px]" style={{ width: COLUMN_WIDTH }} />
           ))}
         </div>
+      ) : boardQuery.isError && localGroups.length === 0 ? (
+        // Only when there is nothing to fall back to. A refetch that fails after the board has
+        // loaded leaves the last good columns up, which is more useful than clearing them —
+        // the cards on screen were real a minute ago.
+        <QueryError error={boardQuery.error} onRetry={boardQuery.refetch} variant="page" />
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3">

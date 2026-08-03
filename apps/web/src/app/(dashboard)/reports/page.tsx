@@ -12,14 +12,11 @@ import {
   useKpi, useMonthlyRevenue, useAppointmentStats,
   usePatientGrowth, useLeadFunnel,
 } from '@/hooks/use-reports';
+import { STAGE_LABELS, stageDef } from '@dental-crm/shared';
+import { QueryError } from '@/components/ui/query-state';
 import { formatMoneyRounded } from '@/lib/money';
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
-const STAGE_COLORS: Record<string, string> = {
-  NEW_DEAL: '#6366f1', CONTACTED: '#8b5cf6', WAITING_PHOTOS: '#a78bfa',
-  CONSULTATION: '#3b82f6', OFFER_SENT: '#06b6d4',
-  WAITING_FOR_TICKET: '#10b981', NEGOTIATION: '#f59e0b', DONE: '#22c55e', LOST: '#ef4444',
-};
 const APPT_COLORS: Record<string, string> = {
   SCHEDULED: '#6366f1', CONFIRMED: '#3b82f6', IN_PROGRESS: '#f59e0b',
   COMPLETED: '#22c55e', CANCELLED: '#ef4444', NO_SHOW: '#f97316',
@@ -31,10 +28,11 @@ const fmt = formatMoneyRounded;
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
 function KpiCard({
-  label, value, sub, icon: Icon, color, loading,
+  label, value, sub, icon: Icon, color, loading, error, onRetry,
 }: {
   label: string; value: string; sub?: string;
   icon: React.ElementType; color: string; loading: boolean;
+  error?: unknown; onRetry?: () => void;
 }) {
   return (
     <Card>
@@ -43,7 +41,11 @@ function KpiCard({
         <Icon className={`h-5 w-5 ${color}`} />
       </CardHeader>
       <CardContent>
-        {loading ? <Skeleton className="h-8 w-24" /> : (
+        {loading ? <Skeleton className="h-8 w-24" /> : error ? (
+          // Never a figure here on failure. A KPI tile is read at a glance and believed; showing
+          // $0 because the request 500'd is worse than showing nothing at all.
+          <QueryError error={error} onRetry={onRetry} variant="inline" className="h-8 items-center" />
+        ) : (
           <>
             <p className="text-2xl font-bold">{value}</p>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
@@ -66,11 +68,18 @@ function EmptyChart({ label }: { label: string }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
-  const { data: kpi, isLoading: kpiLoading } = useKpi();
-  const { data: revenue, isLoading: revLoading } = useMonthlyRevenue();
-  const { data: apptStats, isLoading: apptLoading } = useAppointmentStats();
-  const { data: growth, isLoading: growthLoading } = usePatientGrowth();
-  const { data: funnel, isLoading: funnelLoading } = useLeadFunnel();
+  // Each chart owns its own request, so one failing endpoint costs one panel rather than the page.
+  const kpiQ = useKpi();
+  const revenueQ = useMonthlyRevenue();
+  const apptQ = useAppointmentStats();
+  const growthQ = usePatientGrowth();
+  const funnelQ = useLeadFunnel();
+
+  const { data: kpi } = kpiQ;
+  const { data: revenue } = revenueQ;
+  const { data: apptStats } = apptQ;
+  const { data: growth } = growthQ;
+  const { data: funnel } = funnelQ;
 
   const hasRevenue = revenue?.some((r) => r.revenue > 0);
   const hasGrowth = growth?.some((g) => g.newPatients > 0);
@@ -89,27 +98,33 @@ export default function ReportsPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Total Revenue"
-          value={kpiLoading ? '—' : fmt(kpi?.totalRevenue ?? 0)}
-          sub={kpiLoading ? undefined : `${fmt(kpi?.revenueThisMonth ?? 0)} this month`}
-          icon={DollarSign} color="text-success" loading={kpiLoading}
+          value={fmt(kpi?.totalRevenue ?? 0)}
+          sub={`${fmt(kpi?.revenueThisMonth ?? 0)} this month`}
+          icon={DollarSign} color="text-success"
+          loading={kpiQ.isLoading} error={kpiQ.isError ? kpiQ.error : undefined} onRetry={kpiQ.refetch}
         />
         <KpiCard
           label="Active Patients"
-          value={kpiLoading ? '—' : String(kpi?.totalPatients ?? 0)}
-          sub={kpiLoading ? undefined : `+${kpi?.newPatientsThisMonth ?? 0} this month`}
-          icon={Users} color="text-blue-500" loading={kpiLoading}
+          value={String(kpi?.totalPatients ?? 0)}
+          sub={`+${kpi?.newPatientsThisMonth ?? 0} this month`}
+          icon={Users} color="text-blue-500"
+          loading={kpiQ.isLoading} error={kpiQ.isError ? kpiQ.error : undefined} onRetry={kpiQ.refetch}
         />
         <KpiCard
           label="Appointments"
-          value={kpiLoading ? '—' : String(kpi?.totalAppointments ?? 0)}
-          sub={kpiLoading ? undefined : `${kpi?.completionRate ?? 0}% completion rate`}
-          icon={Calendar} color="text-accent-foreground" loading={kpiLoading}
+          value={String(kpi?.totalAppointments ?? 0)}
+          sub={`${kpi?.completionRate ?? 0}% completion rate`}
+          icon={Calendar} color="text-accent-foreground"
+          loading={kpiQ.isLoading} error={kpiQ.isError ? kpiQ.error : undefined} onRetry={kpiQ.refetch}
         />
         <KpiCard
           label="Lead Conversion"
-          value={kpiLoading ? '—' : `${funnel?.summary.conversionRate ?? 0}%`}
-          sub={kpiLoading ? undefined : `${funnel?.summary.won ?? 0} won · ${funnel?.summary.lost ?? 0} lost`}
-          icon={TrendingUp} color="text-indigo-500" loading={kpiLoading || funnelLoading}
+          value={`${funnel?.summary.conversionRate ?? 0}%`}
+          sub={`${funnel?.summary.won ?? 0} won · ${funnel?.summary.lost ?? 0} lost`}
+          icon={TrendingUp} color="text-indigo-500"
+          loading={funnelQ.isLoading}
+          error={funnelQ.isError ? funnelQ.error : undefined}
+          onRetry={funnelQ.refetch}
         />
       </div>
 
@@ -120,7 +135,9 @@ export default function ReportsPage() {
             <CardTitle>Monthly Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            {revLoading ? <Skeleton className="h-56 w-full" /> : hasRevenue ? (
+            {revenueQ.isLoading ? <Skeleton className="h-56 w-full" />
+              : revenueQ.isError ? <QueryError error={revenueQ.error} onRetry={revenueQ.refetch} />
+              : hasRevenue ? (
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={revenue} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                   <defs>
@@ -144,7 +161,9 @@ export default function ReportsPage() {
             <CardTitle>Appointments by Status</CardTitle>
           </CardHeader>
           <CardContent>
-            {apptLoading ? <Skeleton className="h-56 w-full" /> : hasAppts ? (
+            {apptQ.isLoading ? <Skeleton className="h-56 w-full" />
+              : apptQ.isError ? <QueryError error={apptQ.error} onRetry={apptQ.refetch} />
+              : hasAppts ? (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie data={apptStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ status, percent }: { status?: string; percent?: number }) => `${String(status).replace(/_/g, ' ')} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
@@ -167,7 +186,9 @@ export default function ReportsPage() {
             <CardTitle>Patient Growth</CardTitle>
           </CardHeader>
           <CardContent>
-            {growthLoading ? <Skeleton className="h-56 w-full" /> : hasGrowth ? (
+            {growthQ.isLoading ? <Skeleton className="h-56 w-full" />
+              : growthQ.isError ? <QueryError error={growthQ.error} onRetry={growthQ.refetch} />
+              : hasGrowth ? (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={growth} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
@@ -187,17 +208,20 @@ export default function ReportsPage() {
             <CardTitle>Lead Pipeline Funnel</CardTitle>
           </CardHeader>
           <CardContent>
-            {funnelLoading ? <Skeleton className="h-56 w-full" /> : hasFunnel ? (
+            {funnelQ.isLoading ? <Skeleton className="h-56 w-full" />
+              : funnelQ.isError ? <QueryError error={funnelQ.error} onRetry={funnelQ.refetch} />
+              : hasFunnel ? (
               <>
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={funnel?.stages} layout="vertical" margin={{ top: 0, right: 8, left: 100, bottom: 0 }}>
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="stage" tick={{ fontSize: 10 }} width={100}
-                      tickFormatter={(v) => v.replace(/_/g, ' ')} />
-                    <Tooltip formatter={(v) => [v, 'Leads']} labelFormatter={(l) => String(l).replace(/_/g, ' ')} />
+                      tickFormatter={(v: string) => STAGE_LABELS[v] ?? v.replace(/_/g, ' ')} />
+                    <Tooltip formatter={(v) => [v, 'Leads']}
+                      labelFormatter={(l) => STAGE_LABELS[String(l)] ?? String(l).replace(/_/g, ' ')} />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                       {funnel?.stages.map((entry, i) => (
-                        <Cell key={i} fill={STAGE_COLORS[entry.stage] ?? PIE_PALETTE[i % PIE_PALETTE.length]} />
+                        <Cell key={i} fill={stageDef(entry.stage)?.color ?? PIE_PALETTE[i % PIE_PALETTE.length]} />
                       ))}
                     </Bar>
                   </BarChart>

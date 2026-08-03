@@ -12,6 +12,8 @@ import { useAuth } from '@/context/auth-context';
 import { useUsers, type User } from '@/hooks/use-users';
 import { useSalesActivity, type SalesActivity } from '@/hooks/use-leads';
 import { TransferPanel } from '@/components/team/transfer-panel';
+import { QueryError } from '@/components/ui/query-state';
+import { STAGE_LABELS } from '@dental-crm/shared';
 
 
 function userName(u: { firstName: string; lastName: string } | null | undefined) {
@@ -19,7 +21,8 @@ function userName(u: { firstName: string; lastName: string } | null | undefined)
 }
 
 function stageLabel(s: string | null) {
-  return s ? s.replace(/_/g, ' ') : '—';
+  if (!s) return '—';
+  return STAGE_LABELS[s] ?? s.replace(/_/g, ' ');
 }
 
 function fmtWhen(iso: string) {
@@ -35,9 +38,10 @@ function ActivityFeed({ users, isAdmin }: { users: User[]; isAdmin: boolean }) {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const { data, isLoading } = useSalesActivity({
+  const activity = useSalesActivity({
     page, limit, userId: isAdmin && filterUserId !== 'all' ? filterUserId : undefined,
   });
+  const { data, isLoading } = activity;
 
   const rows = data?.data ?? [];
   const meta = data?.meta;
@@ -110,7 +114,9 @@ function ActivityFeed({ users, isAdmin }: { users: User[]; isAdmin: boolean }) {
             </tbody>
           </table>
 
-          {!isLoading && rows.length === 0 && (
+          {activity.isError && <QueryError error={activity.error} onRetry={activity.refetch} className="py-16" />}
+
+          {!isLoading && !activity.isError && rows.length === 0 && (
             <div className="py-16 text-center text-muted-foreground">No activity recorded yet.</div>
           )}
         </div>

@@ -30,6 +30,7 @@ import {
   type Invoice,
 } from '@/hooks/use-invoices';
 import { usePatients } from '@/hooks/use-patients';
+import { QueryError } from '@/components/ui/query-state';
 import { num } from '@/lib/numeric-input';
 import { formatMoney } from '@/lib/money';
 
@@ -63,12 +64,16 @@ function SummaryCard({
   icon: Icon,
   color,
   loading,
+  error,
+  onRetry,
 }: {
   label: string;
   value: string;
   icon: React.ElementType;
   color: string;
   loading: boolean;
+  error?: unknown;
+  onRetry?: () => void;
 }) {
   return (
     <Card>
@@ -77,7 +82,9 @@ function SummaryCard({
         <Icon className={`h-5 w-5 ${color}`} />
       </CardHeader>
       <CardContent>
-        {loading ? <Skeleton className="h-8 w-28" /> : <p className="text-2xl font-bold">{value}</p>}
+        {loading ? <Skeleton className="h-8 w-28" />
+          : error ? <QueryError error={error} onRetry={onRetry} variant="inline" className="h-8 items-center" />
+          : <p className="text-2xl font-bold">{value}</p>}
       </CardContent>
     </Card>
   );
@@ -534,8 +541,11 @@ function CreateInvoiceDialog({ open, onClose }: { open: boolean; onClose: () => 
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function FinancePage() {
-  const { data: summary, isLoading: summaryLoading } = useFinanceSummary();
-  const { data: invoices, isLoading: invoicesLoading } = useInvoices();
+  const summaryQ = useFinanceSummary();
+  const invoicesQ = useInvoices();
+  const { data: summary } = summaryQ;
+  const { data: invoices } = invoicesQ;
+  const summaryError = summaryQ.isError ? summaryQ.error : undefined;
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
@@ -563,24 +573,30 @@ export default function FinancePage() {
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryCard
           label="Total Revenue"
-          value={summaryLoading ? '—' : fmt(summary?.totalRevenue ?? 0)}
+          value={fmt(summary?.totalRevenue ?? 0)}
           icon={DollarSign}
           color="text-success"
-          loading={summaryLoading}
+          loading={summaryQ.isLoading}
+          error={summaryError}
+          onRetry={summaryQ.refetch}
         />
         <SummaryCard
           label="Pending Amount"
-          value={summaryLoading ? '—' : fmt(summary?.pendingAmount ?? 0)}
+          value={fmt(summary?.pendingAmount ?? 0)}
           icon={Clock}
           color="text-orange-500"
-          loading={summaryLoading}
+          loading={summaryQ.isLoading}
+          error={summaryError}
+          onRetry={summaryQ.refetch}
         />
         <SummaryCard
           label="Total Invoices"
-          value={summaryLoading ? '—' : String(summary?.invoiceCount ?? 0)}
+          value={String(summary?.invoiceCount ?? 0)}
           icon={FileText}
           color="text-blue-500"
-          loading={summaryLoading}
+          loading={summaryQ.isLoading}
+          error={summaryError}
+          onRetry={summaryQ.refetch}
         />
       </div>
 
@@ -601,10 +617,12 @@ export default function FinancePage() {
           </Select>
         </CardHeader>
         <CardContent className="p-0">
-          {invoicesLoading ? (
+          {invoicesQ.isLoading ? (
             <div className="p-6 space-y-3">
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
+          ) : invoicesQ.isError ? (
+            <QueryError error={invoicesQ.error} onRetry={invoicesQ.refetch} className="py-16" />
           ) : filtered && filtered.length > 0 ? (
             <Table>
               <TableHeader>

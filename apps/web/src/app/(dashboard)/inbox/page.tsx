@@ -21,6 +21,7 @@ import {
   useSendingStatus,
 } from '@/hooks/use-conversations';
 import type { ConversationSummary, Message } from '@/hooks/use-conversations';
+import { QueryError } from '@/components/ui/query-state';
 
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp',
@@ -144,7 +145,8 @@ function MessageBubble({ msg, onRetry, retrying }: { msg: Message; onRetry: () =
 }
 
 function MessageThread({ conversationId }: { conversationId: string }) {
-  const { data: conv, isLoading } = useConversation(conversationId);
+  const threadQuery = useConversation(conversationId);
+  const { data: conv, isLoading } = threadQuery;
   const sendMessage = useSendMessage(conversationId);
   const retryMessage = useRetryMessage(conversationId);
   const archiveConversation = useArchiveConversation();
@@ -177,6 +179,9 @@ function MessageThread({ conversationId }: { conversationId: string }) {
   }
 
   if (isLoading) return <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>;
+  // A thread that fails to load rendered as a blank panel, which reads as "no messages" next to a
+  // conversation row that says there are some.
+  if (threadQuery.isError) return <QueryError error={threadQuery.error} onRetry={threadQuery.refetch} variant="page" />;
   if (!conv) return null;
 
   const contact = conv.patient ?? conv.lead;
@@ -248,7 +253,8 @@ function InboxView() {
   // from a lead, instead of dropping them at an inbox they then have to search.
   const params = useSearchParams();
   const [channel, setChannel] = useState<string | undefined>(undefined);
-  const { data: conversations, isLoading } = useConversations(channel);
+  const listQuery = useConversations(channel);
+  const { data: conversations, isLoading } = listQuery;
   const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
 
   return (
@@ -271,6 +277,8 @@ function InboxView() {
             <div className="w-72 border-r overflow-y-auto shrink-0">
               {isLoading
                 ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 m-2 rounded-lg" />)
+                : listQuery.isError
+                ? <QueryError error={listQuery.error} onRetry={listQuery.refetch} className="px-4 py-16" />
                 : conversations?.length === 0
                 ? (
                   <div className="py-16 text-center text-muted-foreground text-sm px-4">

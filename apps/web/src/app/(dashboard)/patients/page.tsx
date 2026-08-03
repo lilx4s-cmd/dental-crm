@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { NewPatientDialog } from '@/components/patients/new-patient-dialog';
+import { QueryError } from '@/components/ui/query-state';
 import { usePatients } from '@/hooks/use-patients';
 
 export default function PatientsPage() {
@@ -18,7 +19,8 @@ export default function PatientsPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const { data, isLoading } = usePatients({ page, limit, search: search || undefined });
+  const query = usePatients({ page, limit, search: search || undefined });
+  const { data, isLoading } = query;
 
   const patients = data?.data ?? [];
   const meta = data?.meta;
@@ -110,7 +112,11 @@ export default function PatientsPage() {
             </tbody>
           </table>
 
-          {!isLoading && patients.length === 0 && (
+          {/* A failed list is not an empty one. Telling a clinic with a thousand records that it
+              has "no patients yet" is worse than saying nothing, because it looks like an answer. */}
+          {query.isError && <QueryError error={query.error} onRetry={query.refetch} className="py-16" />}
+
+          {!isLoading && !query.isError && patients.length === 0 && (
             <div className="py-16 text-center text-muted-foreground">
               {search ? `No patients matching "${search}"` : 'No patients yet. Add your first patient.'}
             </div>

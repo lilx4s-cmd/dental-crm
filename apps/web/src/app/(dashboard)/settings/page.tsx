@@ -21,6 +21,7 @@ import { WhatsAppStatusCard } from '@/components/settings/whatsapp-status-card';
 import { EvolutionCard } from '@/components/settings/evolution-card';
 import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
 import { PlanDefaultsCard } from '@/components/settings/plan-defaults-card';
+import { QueryError } from '@/components/ui/query-state';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -39,7 +40,8 @@ const TIMEZONES = [
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'TRY', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'JOD'];
 
 function ClinicSettingsForm() {
-  const { data: settings, isLoading } = useClinicSettings();
+  const settingsQuery = useClinicSettings();
+  const { data: settings, isLoading } = settingsQuery;
   const update = useUpdateClinicSettings();
 
   const [form, setForm] = useState({
@@ -81,6 +83,12 @@ function ClinicSettingsForm() {
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
           </div>
+        ) : settingsQuery.isError ? (
+          // The form must not render on a failed load. Its fields default to empty strings, so a
+          // user who pressed Save would write blanks over the clinic's real address, timezone and
+          // currency — the last two are what invoices and every date on the system are formatted
+          // from. An unreachable settings endpoint should cost nothing.
+          <QueryError error={settingsQuery.error} onRetry={settingsQuery.refetch} />
         ) : (
           <>
             <div className="space-y-1">
@@ -135,7 +143,8 @@ function ClinicSettingsForm() {
 }
 
 function UserManagement() {
-  const { data: users, isLoading } = useUsers();
+  const usersQuery = useUsers();
+  const { data: users, isLoading } = usersQuery;
   const { user: currentUser } = useAuth();
   const [accessUser, setAccessUser] = useState<User | null>(null);
 
@@ -156,6 +165,8 @@ function UserManagement() {
           <div className="p-6 space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
           </div>
+        ) : usersQuery.isError ? (
+          <QueryError error={usersQuery.error} onRetry={usersQuery.refetch} className="py-10" />
         ) : (
           <div className="divide-y">
             {users?.map((u) => (

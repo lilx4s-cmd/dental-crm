@@ -34,6 +34,7 @@ import { WarrantySection } from './warranty-section';
 import { PackagePaymentSection } from './package-payment-section';
 import { LabOrdersSection } from './lab-orders-section';
 import { BookScheduleItemDialog, type BookableScheduleItem } from './book-schedule-item-dialog';
+import { QueryError } from '@/components/ui/query-state';
 import { formatMoney } from '@/lib/money';
 
 const AI_NOT_CONFIGURED_TOAST = 'AI features are not configured for this clinic';
@@ -380,7 +381,8 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
 }
 
 export function TreatmentPlansTab({ patientId, patientPhone }: { patientId: string; patientPhone?: string | null }) {
-  const { data: plans, isLoading } = useTreatmentPlans(patientId);
+  const query = useTreatmentPlans(patientId);
+  const { data: plans, isLoading } = query;
   const [newOpen, setNewOpen] = useState(false);
 
   return (
@@ -392,6 +394,10 @@ export function TreatmentPlansTab({ patientId, patientPhone }: { patientId: stri
       </div>
       {isLoading ? (
         <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+      ) : query.isError ? (
+        // A coordinator who sees "no treatment plans yet" on a patient who has one will quote the
+        // case again from scratch, and the second quote will not match the first.
+        <QueryError error={query.error} onRetry={query.refetch} />
       ) : !plans?.length ? (
         <div className="py-10 text-center text-muted-foreground">
           <Stethoscope className="mx-auto mb-2 h-8 w-8 opacity-30" />

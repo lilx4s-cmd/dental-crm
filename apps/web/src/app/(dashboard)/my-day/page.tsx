@@ -15,6 +15,7 @@ import { useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai'
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
 import { AssistantPanel } from '@/components/ai/assistant-panel';
+import { QueryError } from '@/components/ui/query-state';
 import type { Lead } from '@/hooks/use-leads';
 
 const AI_NOT_CONFIGURED = 'AI drafting is not configured for this clinic';
@@ -153,7 +154,8 @@ function List({
  * writes the message, once the rules have decided who needs one.
  */
 export default function MyDayPage() {
-  const { data, isLoading } = useWorkList();
+  const workList = useWorkList();
+  const { data, isLoading } = workList;
   const [detail, setDetail] = useState<Lead | null>(null);
 
   return (
@@ -173,6 +175,10 @@ export default function MyDayPage() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
+      ) : workList.isError ? (
+        // "Nothing overdue" is exactly the wrong thing to tell someone whose follow-up list
+        // failed to load — it is the sentence that sends them home.
+        <QueryError error={workList.error} onRetry={workList.refetch} variant="page" />
       ) : (
         <Tabs defaultValue="due">
           <TabsList>

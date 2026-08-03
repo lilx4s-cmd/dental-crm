@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCampaigns, useCreateCampaign } from '@/hooks/use-campaigns';
+import { QueryError } from '@/components/ui/query-state';
 import { formatMoneyRounded } from '@/lib/money';
 
 const PLATFORMS = [
@@ -113,7 +114,8 @@ function NewCampaignDialog() {
 }
 
 export default function CampaignsPage() {
-  const { data: campaigns, isLoading } = useCampaigns();
+  const query = useCampaigns();
+  const { data: campaigns, isLoading } = query;
 
   return (
     <div className="space-y-6">
@@ -129,6 +131,12 @@ export default function CampaignsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
         </div>
+      ) : query.isError ? (
+        <Card>
+          <CardContent className="py-8">
+            <QueryError error={query.error} onRetry={query.refetch} />
+          </CardContent>
+        </Card>
       ) : campaigns?.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
