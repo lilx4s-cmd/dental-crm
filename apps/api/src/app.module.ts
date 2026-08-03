@@ -31,6 +31,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { CacheControlInterceptor } from './common/interceptors/cache-control.interceptor';
+import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -72,6 +73,9 @@ import { HealthController } from './health/health.controller';
     // Runs before the logger so the header is set even on a route that streams its own response.
     { provide: APP_INTERCEPTOR, useClass: CacheControlInterceptor },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    // Last, so it sees the outcome of everything in front of it — including a request the roles
+    // guard refused, which is exactly the kind an audit trail is kept for.
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule {}

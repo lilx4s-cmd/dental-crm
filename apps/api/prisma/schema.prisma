@@ -1218,6 +1218,11 @@ model AuditLog {
   createdAt  DateTime    @default(now())
 
   @@index([entityType, entityId])
+  // Added with the audit interceptor. The table went from two writes per session to one per
+  // clinical or financial mutation, so the two questions anyone actually asks of it — "what did
+  // this person do" and "what happened that day" — needed to stop being sequential scans.
+  @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
