@@ -687,6 +687,15 @@ export class LeadsService {
   async convertToPatient(id: string, currentUser?: JwtPayload) {
     const lead = await this.findOne(id, currentUser);
 
+    // The enquiry form asks for a full medical history — medications, conditions, previous
+    // surgeries, smoking, alcohol, pregnancy, blood thinners — and conversion used to copy a name,
+    // an email and a phone number. Everything clinical stayed on the lead, so a dentist opening
+    // the patient record saw no mention of the blood thinners that patient had declared.
+    //
+    // Submissions are ordered newest first, so the most recent answers win where somebody filled
+    // the form twice.
+    const intake = lead.intakeSubmissions?.[0];
+
     const [patient, updatedLead] = await this.prisma.$transaction(async (tx) => {
       const newPatient = await tx.patient.create({
         data: {
@@ -695,6 +704,23 @@ export class LeadsService {
           email: lead.email ?? undefined,
           phone: lead.phone ?? undefined,
           whatsappNumber: lead.whatsappNumber ?? undefined,
+          // `?? undefined` throughout: an unanswered question must stay unanswered on the record.
+          // Defaulting a blank to false would turn "we never asked" into "the patient said no",
+          // which on blood thinners is the difference between a question and a hazard.
+          dateOfBirth: intake?.dateOfBirth ?? undefined,
+          gender: intake?.gender ?? undefined,
+          nationality: intake?.nationality ?? undefined,
+          country: intake?.countryOfResidence ?? undefined,
+          allergies: intake?.allergies ?? undefined,
+          medications: intake?.medications ?? undefined,
+          medicalConditions: intake?.medicalConditions ?? undefined,
+          previousSurgeries: intake?.previousSurgeries ?? undefined,
+          isSmoker: intake?.isSmoker ?? undefined,
+          drinksAlcohol: intake?.drinksAlcohol ?? undefined,
+          isPregnant: intake?.isPregnant ?? undefined,
+          takesBloodThinners: intake?.takesBloodThinners ?? undefined,
+          heightCm: intake?.heightCm ?? undefined,
+          weightKg: intake?.weightKg ?? undefined,
           convertedFromLeadId: lead.id,
           // This path sets the deal to DONE, so the patient starts in after-care for the same
           // reason the stage-change path does.

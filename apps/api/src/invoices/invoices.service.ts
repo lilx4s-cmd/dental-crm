@@ -27,6 +27,18 @@ const INVOICE_SELECT = {
 export class InvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * The next invoice number.
+   *
+   * Derived from a row count, which is wrong in two ways that only show up under load: two
+   * concurrent creates read the same count and produce the same number, and `invoiceNumber` is
+   * unique, so one of them fails with a constraint violation the caller sees as a 500. Deleting an
+   * invoice would also make the next one reuse a number already issued to a patient.
+   *
+   * Kept as a count for now — introducing a Postgres sequence mid-life would need the current
+   * maximum seeded into it — but the collision is caught and retried by the caller, so a clash
+   * costs a round trip rather than a failed invoice.
+   */
   private async generateInvoiceNumber(): Promise<string> {
     const count = await this.prisma.invoice.count();
     return `INV-${String(count + 1).padStart(5, '0')}`;
@@ -56,30 +68,46 @@ export class InvoicesService {
     const tax = dto.tax ?? 0;
     const total = subtotal - discount + tax;
 
-    return this.prisma.invoice.create({
-      data: {
-        invoiceNumber: await this.generateInvoiceNumber(),
-        patientId: dto.patientId,
-        treatmentPlanId: dto.treatmentPlanId,
-        createdById,
-        status: $Enums.InvoiceStatus.DRAFT,
-        subtotal,
-        discount,
-        tax,
-        total,
-        currency: dto.currency ?? 'USD',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-        items: {
-          create: dto.items.map((item) => ({
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.unitPrice * item.quantity,
-          })),
-        },
-      },
-      select: INVOICE_SELECT,
-    });
+    // Two receptionists raising an invoice at the same moment read the same count and generate the
+    // same number; the unique constraint then fails one of them with a 500 and no invoice. Retry
+    // on that specific collision — the second attempt reads a count that now includes the first.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.prisma.invoice.create({
+          data: {
+            invoiceNumber: await this.generateInvoiceNumber(),
+            patientId: dto.patientId,
+            treatmentPlanId: dto.treatmentPlanId,
+            createdById,
+            status: $Enums.InvoiceStatus.DRAFT,
+            subtotal,
+            discount,
+            tax,
+            total,
+            currency: dto.currency ?? 'USD',
+            dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+            items: {
+              create: dto.items.map((item) => ({
+                description: item.description,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                total: item.unitPrice * item.quantity,
+              })),
+            },
+          },
+          select: INVOICE_SELECT,
+        });
+      } catch (e) {
+        const isDuplicateNumber =
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002' &&
+          String(e.meta?.target ?? '').includes('invoiceNumber');
+        // Anything else is a real failure and must surface unchanged. Five attempts is far beyond
+        // the contention this clinic will ever see; the bound exists so a persistent fault fails
+        // loudly rather than spinning.
+        if (!isDuplicateNumber || attempt >= 4) throw e;
+      }
+    }
   }
 
   async updateStatus(id: string, status: $Enums.InvoiceStatus) {
@@ -101,23 +129,27 @@ export class InvoicesService {
       .filter((p) => p.status === $Enums.PaymentStatus.COMPLETED)
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
-    const payment = await this.prisma.payment.create({
-      data: {
-        invoiceId,
-        createdById,
-        amount: dto.amount,
-        method: dto.method as $Enums.PaymentMethod,
-        status: $Enums.PaymentStatus.COMPLETED,
-        paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-        reference: dto.reference,
-      },
-    });
-
     const newTotal = paidSoFar + dto.amount;
     const invoiceTotal = Number(invoice.total);
     const newStatus = newTotal >= invoiceTotal ? $Enums.InvoiceStatus.PAID : $Enums.InvoiceStatus.PARTIALLY_PAID;
 
-    await this.prisma.invoice.update({ where: { id: invoiceId }, data: { status: newStatus } });
+    // One transaction. These were two unsynchronised statements: a failure between them left the
+    // money recorded against an invoice still marked unpaid, which is the worst of both — the
+    // patient has paid, the ledger says they have, and the invoice says they have not.
+    const [payment] = await this.prisma.$transaction([
+      this.prisma.payment.create({
+        data: {
+          invoiceId,
+          createdById,
+          amount: dto.amount,
+          method: dto.method as $Enums.PaymentMethod,
+          status: $Enums.PaymentStatus.COMPLETED,
+          paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+          reference: dto.reference,
+        },
+      }),
+      this.prisma.invoice.update({ where: { id: invoiceId }, data: { status: newStatus } }),
+    ]);
 
     return payment;
   }

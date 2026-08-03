@@ -401,6 +401,19 @@ model Patient {
   // distinction matters — patient-facing documents only print an allergies section when this is
   // set, so a blank is never rendered as a clean bill of health.
   allergies           String?
+  // The medical questionnaire the patient answered on the enquiry form. Copied here on conversion
+  // rather than left on the lead: a dentist opens the patient record, not the deal that produced
+  // it, and declared blood thinners have to be visible where treatment is planned.
+  medications         String?
+  medicalConditions   String?
+  previousSurgeries   String?
+  isSmoker            Boolean?
+  drinksAlcohol       Boolean?
+  isPregnant          Boolean?
+  takesBloodThinners  Boolean?
+  heightCm            Int?
+  weightKg            Int?
+  nationality         String?
   // Set when the deal that produced this patient reaches Done. Treatment is finished and the
   // relationship moves from selling to looking after them, which is a different job with different
   // follow-ups — so it is a date, not a flag: how long someone has been in after-care matters.
@@ -430,6 +443,7 @@ model Patient {
 
   @@index([phone])
   @@index([email])
+  @@index([isActive, createdAt])
   @@map("patients")
 }
 
@@ -527,6 +541,11 @@ model Lead {
   @@index([mergedIntoId])
   @@index([phone])
   @@index([whatsappNumber])
+  // Set by the shared where-builder on every pipeline query, and needed by source attribution.
+  @@index([status])
+  @@index([source])
+  @@index([createdAt])
+  @@index([campaignId])
   @@map("leads")
 }
 
@@ -678,6 +697,8 @@ model LeadActivity {
   note      String?
   createdAt DateTime       @default(now())
 
+  @@index([leadId])
+  @@index([userId, createdAt])
   @@map("lead_activities")
 }
 
@@ -785,6 +806,7 @@ model TreatmentPlan {
 
   @@index([assignedDentistId])
   @@index([assignedCoordinatorId])
+  @@index([patientId])
   @@map("treatment_plans")
 }
 
@@ -937,6 +959,8 @@ model Invoice {
   payments        Payment[]
   installmentPlan InstallmentPlan?
 
+  @@index([status])
+  @@index([patientId])
   @@map("invoices")
 }
 
@@ -951,6 +975,7 @@ model InvoiceItem {
   unitPrice           Decimal            @db.Decimal(12, 2)
   total               Decimal            @db.Decimal(12, 2)
 
+  @@index([invoiceId])
   @@map("invoice_items")
 }
 
@@ -998,6 +1023,8 @@ model Payment {
 
   installmentSchedule InstallmentSchedule?
 
+  @@index([status, paidAt])
+  @@index([invoiceId])
   @@map("payments")
 }
 

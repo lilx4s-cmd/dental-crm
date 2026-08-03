@@ -15,7 +15,6 @@ export interface PipelineGroup {
   stage: string;
   count: number;
   totalValue: number;
-  leads: unknown[];
 }
 
 export function useDashboardStats() {
