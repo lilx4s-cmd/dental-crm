@@ -37,6 +37,27 @@ async function bootstrap() {
     }),
   );
 
+  // Sign-in, which was the loosest door in the building: it sat under the global 300 above — the
+  // same budget as browsing the app — so one address could try three hundred passwords a quarter
+  // hour against a system with no second factor. Ten is generous for someone who has forgotten
+  // which of their passwords they used, and hopeless for anyone working through a word list.
+  //
+  // This is the per-IP half of the defence. The per-account half is the lockout in AuthService,
+  // which is what stops a botnet spreading the same guesses across many addresses so that no
+  // single IP ever trips this limit. `skipSuccessfulRequests` so a clinic behind one NAT at eight
+  // in the morning is never rationed for signing in correctly.
+  app.use(
+    '/api/auth/login',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 10,
+      skipSuccessfulRequests: true,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { statusCode: 429, message: 'Too many sign-in attempts. Try again shortly.' },
+    }),
+  );
+
   // Stricter limiter for the public, unauthenticated patient portal — path-scoped via the
   // first argument so it stacks on top of (not replaces) the global limiter above.
   app.use(

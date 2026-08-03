@@ -229,6 +229,8 @@ enum AuditAction {
   UPDATE
   DELETE
   LOGIN
+  LOGIN_FAILED
+  LOCKOUT
   LOGOUT
   EXPORT
   OTHER
@@ -313,6 +315,11 @@ model User {
   hireDate         DateTime?
   specialization   String?
   calendarColor    String?
+  // Failed sign-in tracking. The counter is not reset when the account locks — it keeps climbing
+  // so the lock duration can escalate for someone who is clearly guessing, and is cleared only by
+  // a successful sign-in. See packages/shared/src/access/lockout.ts.
+  failedLoginAttempts Int           @default(0)
+  lockedUntil      DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 

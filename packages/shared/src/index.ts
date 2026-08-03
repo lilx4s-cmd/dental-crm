@@ -9,6 +9,7 @@ export * from './pipeline/filters';
 export * from './pipeline/stages';
 export * from './pipeline/duplicates';
 export * from './access/policy';
+export * from './access/lockout';
 export * from './pipeline/next-action';
 export * from './finance/case-economics';
 export * from './schemas/auth.schema';

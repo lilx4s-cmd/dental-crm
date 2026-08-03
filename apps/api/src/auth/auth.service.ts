@@ -9,10 +9,27 @@ import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
-import { JwtPayload, AuthTokens } from '@dental-crm/shared';
+import {
+  JwtPayload,
+  AuthTokens,
+  afterFailedAttempt,
+  afterSuccessfulLogin,
+  isLocked,
+  minutesUntilUnlock,
+} from '@dental-crm/shared';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const BCRYPT_ROUNDS = 10;
+
+/**
+ * A real bcrypt hash of a string nobody knows, compared against when the email does not exist.
+ *
+ * Without it, a request for an unknown address returns as fast as the database can answer, while
+ * a known one waits ~80ms for bcrypt. That difference is measurable over the network, so the login
+ * form doubles as an oracle for "does this person work at the clinic" — the first thing an attacker
+ * wants before spending guesses. Now both paths pay the same cost.
+ */
+const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 
 @Injectable()
 export class AuthService {
@@ -23,11 +40,36 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, res: Response, ip?: string, userAgent?: string): Promise<AuthTokens> {
+    const now = new Date();
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+    // Always run a comparison, even with nothing to compare against — see DUMMY_HASH.
+    const passwordMatch = await bcrypt.compare(dto.password, user?.passwordHash ?? DUMMY_HASH);
+
     if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
 
-    const passwordMatch = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatch) throw new UnauthorizedException('Invalid credentials');
+    if (isLocked(user.lockedUntil, now)) {
+      // The lock is only *explained* to someone who proved they are the account holder. An
+      // attacker guessing passwords gets the same "Invalid credentials" as always, so the lockout
+      // never becomes a way to discover which email addresses are real; the actual owner, who is
+      // the one inconvenienced, is told plainly what happened and when they can try again.
+      if (passwordMatch) {
+        const minutes = minutesUntilUnlock(user.lockedUntil as Date, now);
+        throw new UnauthorizedException(
+          `Too many failed sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+        );
+      }
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!passwordMatch) {
+      await this.recordFailedAttempt(user.id, user.failedLoginAttempts, now, ip, userAgent);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.failedLoginAttempts > 0) {
+      await this.prisma.user.update({ where: { id: user.id }, data: afterSuccessfulLogin() });
+    }
 
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.signAccessToken(payload);
@@ -40,6 +82,44 @@ export class AuthService {
     });
 
     return { accessToken };
+  }
+
+  /**
+   * Counts a wrong password, locking the account once the threshold is crossed.
+   *
+   * Both writes are audited. A run of LOGIN_FAILED rows against one account, or the same address
+   * across many, is the only evidence of an attempted break-in this system keeps — and until the
+   * audit interceptor lands it is the only evidence of anything beyond a login journal.
+   */
+  private async recordFailedAttempt(
+    userId: string,
+    currentAttempts: number,
+    now: Date,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    const next = afterFailedAttempt(currentAttempts, now);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: next }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: next.lockedUntil ? 'LOCKOUT' : 'LOGIN_FAILED',
+          entityType: 'User',
+          entityId: userId,
+          ipAddress: ip,
+          userAgent,
+          newValues: { failedLoginAttempts: next.failedLoginAttempts },
+        },
+      }),
+    ]);
+
+    if (next.lockedUntil) {
+      // Every session is cut as well as the account being locked. If the attempts were an attacker
+      // succeeding elsewhere, a refresh token they already hold would otherwise outlive the lock.
+      await this.revokeAllUserTokens(userId);
+    }
   }
 
   async refresh(userId: string, rawToken: string, res: Response): Promise<AuthTokens> {

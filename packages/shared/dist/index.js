@@ -25,6 +25,7 @@ __exportStar(require("./pipeline/filters"), exports);
 __exportStar(require("./pipeline/stages"), exports);
 __exportStar(require("./pipeline/duplicates"), exports);
 __exportStar(require("./access/policy"), exports);
+__exportStar(require("./access/lockout"), exports);
 __exportStar(require("./pipeline/next-action"), exports);
 __exportStar(require("./finance/case-economics"), exports);
 __exportStar(require("./schemas/auth.schema"), exports);
