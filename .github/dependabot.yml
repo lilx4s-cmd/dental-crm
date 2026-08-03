@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Single root entry is enough: this is an npm workspaces monorepo with one lockfile, and
+    # Dependabot resolves apps/api, apps/web and packages/shared from it automatically.
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"

@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A push and its own PR would otherwise run this twice; cancelling the stale run matters more here
+# than usual because apps/api's suite alone runs ~25 minutes on the runners this was budgeted for.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # packages/shared ships a committed dist/ (see root .gitignore) because both apps resolve
+      # @dental-crm/shared through it at runtime. apps/api's tsconfig has no path alias back to the
+      # source (unlike apps/web's), so its typecheck resolves the package through node_modules ->
+      # dist/index.d.ts. A stale dist here means api typechecks against yesterday's shared types.
+      - run: npm run build --workspace=packages/shared
+      # prisma generate only reads schema.prisma to emit client types; it never opens a connection,
+      # so DATABASE_URL is not needed. `prisma migrate` is the one that needs a live DB, and CI never
+      # calls migrate. Confirmed locally: generate succeeds with no DATABASE_URL and no .env present.
+      - run: npm run db:generate --workspace=apps/api
+      - run: npx tsc --noEmit -p packages/shared/tsconfig.json
+      - run: npx tsc --noEmit -p apps/api/tsconfig.json
+      - run: npx tsc --noEmit -p apps/web/tsconfig.json
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  test-api:
+    name: Test (api)
+    needs: typecheck
+    runs-on: ubuntu-latest
+    # Confirmed unit tests never import AppModule, so ConfigModule's env validation (which requires
+    # DATABASE_URL) never runs — no DB secret needed here. Runs after typecheck so a broken build
+    # fails in ~2 minutes instead of burning the full ~25-minute suite on code that can't compile.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=packages/shared
+      - run: npm run db:generate --workspace=apps/api
+      - run: npm run test:api
+
+  test-web:
+    name: Test (web)
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # jest.config.js maps @dental-crm/shared straight to packages/shared/src, so this build isn't
+      # load-bearing for the test run itself — kept only so this job's setup matches the others and
+      # doesn't silently drift if that mapping is ever removed.
+      - run: npm run build --workspace=packages/shared
+      - run: npm run test:web
+
+  audit:
+    name: Dependency audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Advisory, not a gate: a high-severity advisory can sit on a transitive dependency with no
+      # fixed version published yet, and that is not a reason to stop a clinic from shipping a bug
+      # fix. continue-on-error keeps the finding visible in the run summary (with a warning marker)
+      # without failing the job, so it can never be a required check that blocks a merge.
+      - run: npm audit --audit-level=high
+        continue-on-error: true
