@@ -34,12 +34,11 @@ import { WarrantySection } from './warranty-section';
 import { PackagePaymentSection } from './package-payment-section';
 import { LabOrdersSection } from './lab-orders-section';
 import { BookScheduleItemDialog, type BookableScheduleItem } from './book-schedule-item-dialog';
+import { formatMoney } from '@/lib/money';
 
 const AI_NOT_CONFIGURED_TOAST = 'AI features are not configured for this clinic';
 
-function fmt(n: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
-}
+const fmt = formatMoney;
 
 // Keyed on the REAL TreatmentStatus enum (PLANNED | IN_PROGRESS | COMPLETED | CANCELLED).
 // The previous version keyed on non-existent 'DRAFT'/'ACTIVE' literals, so badges rendered

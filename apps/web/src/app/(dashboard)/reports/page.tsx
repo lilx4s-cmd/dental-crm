@@ -12,6 +12,7 @@ import {
   useKpi, useMonthlyRevenue, useAppointmentStats,
   usePatientGrowth, useLeadFunnel,
 } from '@/hooks/use-reports';
+import { formatMoneyRounded } from '@/lib/money';
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const STAGE_COLORS: Record<string, string> = {
@@ -25,9 +26,8 @@ const APPT_COLORS: Record<string, string> = {
 };
 const PIE_PALETTE = ['#6366f1', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+// Aggregates are read for magnitude, so whole units.
+const fmt = formatMoneyRounded;
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
 function KpiCard({

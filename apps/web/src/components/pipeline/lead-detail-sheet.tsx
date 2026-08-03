@@ -23,6 +23,7 @@ import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
 import { useClinicSettings } from '@/hooks/use-reports';
 import { useStartConversation } from '@/hooks/use-conversations';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
+import { formatMoney } from '@/lib/money';
 
 const BITRIX_DOMAIN = process.env.NEXT_PUBLIC_BITRIX_DOMAIN;
 
@@ -121,7 +122,7 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
                 <span className="truncate">{p.title}</span>
                 <span className="flex items-center gap-1.5 shrink-0">
                   <Badge variant="outline" className="capitalize">{humanize(p.status)}</Badge>
-                  <span className="text-muted-foreground">{Number(p.totalCost).toLocaleString()} {p.currency}</span>
+                  <span className="text-muted-foreground">{formatMoney(Number(p.totalCost), p.currency)}</span>
                 </span>
               </li>
             ))}
@@ -252,7 +253,7 @@ export function LeadDetailSheet({
               {lead.estimatedValue != null && (
                 <div className="flex items-center gap-2 text-sm font-medium text-success">
                   <DollarSign className="h-4 w-4" />
-                  <span>{lead.estimatedValue.toLocaleString()} {lead.currency}</span>
+                  <span>{formatMoney(lead.estimatedValue, lead.currency)}</span>
                 </div>
               )}
 

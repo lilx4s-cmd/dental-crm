@@ -23,6 +23,7 @@ import { useDentists, useCoordinators } from '@/hooks/use-users';
 import { num } from '@/lib/numeric-input';
 import { DentalChart } from './dental-chart';
 import { DiagnosesEditor, type DiagnosisEntry } from './diagnoses-editor';
+import { formatMoney } from '@/lib/money';
 import { QuickPlanPicker } from './quick-plan-picker';
 import {
   EMPTY_STAY,
@@ -317,7 +318,7 @@ export function NewTreatmentPlanDialog({
 
         <DialogFooter className="items-center justify-between sm:justify-between">
           <span className="text-sm">
-            Total: <strong className="tabular-nums">{total.toLocaleString()}</strong> {currency}
+            Total: <strong className="tabular-nums">{formatMoney(total, currency)}</strong>
           </span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>

@@ -29,11 +29,10 @@ import { useDentists } from '@/hooks/use-users';
 import { num } from '@/lib/numeric-input';
 import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
 import { CLINICAL_FILE_CATEGORIES, FileSection } from '@/components/files/file-section';
+import { formatMoney } from '@/lib/money';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(n: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
-}
+const fmt = formatMoney;
 
 const APPT_STATUS_COLORS: Record<string, string> = {
   SCHEDULED: 'bg-info-muted text-info-muted-foreground',

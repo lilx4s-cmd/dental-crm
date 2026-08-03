@@ -9,6 +9,7 @@ import {
 } from '@dental-crm/shared';
 
 import { DentalChart, type ToothItem } from './dental-chart';
+import { formatMoney } from '@/lib/money';
 
 /**
  * The subset of a plan these views actually draw. Declared structurally rather than importing the
@@ -39,9 +40,7 @@ export interface PlanLike {
   }>;
 }
 
-function fmt(n: number, currency: string) {
-  return `${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency}`;
-}
+const fmt = formatMoney;
 
 /** What the mouth looks like today, straight from the charted findings. */
 export function diagnosisConditions(plan: PlanLike): Record<string, ToothCondition> {

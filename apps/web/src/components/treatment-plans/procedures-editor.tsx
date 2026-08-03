@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { TreatmentCategory } from '@/hooks/use-treatment-plans';
 import { num } from '@/lib/numeric-input';
+import { formatMoney } from '@/lib/money';
 
 // Numeric fields are held as text, not numbers — see `@/lib/numeric-input` for why.
 export interface ItemForm {
@@ -139,7 +140,7 @@ export function ProceduresEditor({
           <Plus className="mr-1 h-3 w-3" /> Add Phase
         </Button>
         <span className="text-sm">
-          Total: <strong className="tabular-nums">{grandTotal.toLocaleString()}</strong> {currency}
+          Total: <strong className="tabular-nums">{formatMoney(grandTotal, currency)}</strong>
         </span>
       </div>
     </div>
@@ -189,9 +190,9 @@ function PhaseBlock({
         <div className="flex items-center gap-3">
           <span className="text-sm tabular-nums">
             {phase.discount > 0 && (
-              <span className="mr-2 text-muted-foreground line-through">{phase.subtotal.toLocaleString()}</span>
+              <span className="mr-2 text-muted-foreground line-through">{formatMoney(phase.subtotal, currency)}</span>
             )}
-            <strong>{phase.total.toLocaleString()}</strong> {currency}
+            <strong>{formatMoney(phase.total, currency)}</strong>
           </span>
           {canRemove && (
             <Button
@@ -286,7 +287,7 @@ function PhaseBlock({
                 onChange={(e) => onUpdateItem(idx, { discount: e.target.value })}
               />
               <div className="col-span-1 flex items-center justify-end text-xs font-medium tabular-nums">
-                {lineCost(item).toLocaleString()}
+                {formatMoney(lineCost(item), currency)}
               </div>
             </div>
             <Input

@@ -13,10 +13,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { num } from '@/lib/numeric-input';
 import { cn } from '@/lib/utils';
 import { useUpdateTreatmentPlan, type TreatmentPlan } from '@/hooks/use-treatment-plans';
+import { formatMoney } from '@/lib/money';
 
-function money(n: number, currency: string) {
-  return `${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`;
-}
+const money = formatMoney;
 
 /**
  * What the price includes and how it is paid, on one panel.

@@ -27,10 +27,9 @@ import { TimelineStepper } from '@/components/treatment-plans/timeline-stepper';
 import { usePortalApprove, usePortalReject, portalPdfUrl, type PortalResponse } from '@/hooks/use-portal';
 import { PortalCommentThread } from './portal-comment-thread';
 import { PortalWarrantySection } from './portal-warranty-section';
+import { formatMoney } from '@/lib/money';
 
-function fmt(n: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
-}
+const fmt = formatMoney;
 
 const APPROVAL_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive'; label: string }> = {
   PENDING: { variant: 'warning', label: 'Awaiting your decision' },

@@ -14,9 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { useCaseFile, useUpdateCaseEconomics } from '@/hooks/use-case-file';
 import { useUsers } from '@/hooks/use-users';
+import { formatMoney } from '@/lib/money';
 
-const money = (n: number, currency: string) =>
-  `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+const money = formatMoney;
 
 function Figure({
   label,

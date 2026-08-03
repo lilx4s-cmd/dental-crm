@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboardStats, usePipelineGroups } from '@/hooks/use-dashboard';
+import { formatMoneyRounded } from '@/lib/money';
 
 const STAGE_COLORS: Record<string, string> = {
   NEW_DEAL: '#6366f1',
@@ -77,7 +78,7 @@ export default function DashboardPage() {
   }));
 
   const pipelineValue = stats?.pipelineValueTotal
-    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(stats.pipelineValueTotal)
+    ? formatMoneyRounded(stats.pipelineValueTotal)
     : '—';
 
   return (

@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCampaigns, useCreateCampaign } from '@/hooks/use-campaigns';
+import { formatMoneyRounded } from '@/lib/money';
 
 const PLATFORMS = [
   { value: 'FACEBOOK', label: 'Facebook' },
@@ -153,7 +154,7 @@ export default function CampaignsPage() {
                 {c.budget != null && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Budget</span>
-                    <span className="font-semibold">${Number(c.budget).toLocaleString()}</span>
+                    <span className="font-semibold">{formatMoneyRounded(Number(c.budget))}</span>
                   </div>
                 )}
                 {c.startDate && (

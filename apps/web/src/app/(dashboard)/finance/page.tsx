@@ -31,6 +31,7 @@ import {
 } from '@/hooks/use-invoices';
 import { usePatients } from '@/hooks/use-patients';
 import { num } from '@/lib/numeric-input';
+import { formatMoney } from '@/lib/money';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -53,13 +54,7 @@ const PAYMENT_METHODS = [
 ];
 
 // ─── Format currency ──────────────────────────────────────────────────────────
-function fmt(amount: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+const fmt = formatMoney;
 
 // ─── Summary card ─────────────────────────────────────────────────────────────
 function SummaryCard({
