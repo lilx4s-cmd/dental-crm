@@ -19,111 +19,153 @@ import {
 
 import { DentalChartPdf } from './dental-chart-pdf';
 
-// A4 at 72dpi is 595x842pt; 40pt margins leave 515pt of usable width for the charts and tables.
-const CONTENT_WIDTH = 515;
+
+/**
+ * The document's design tokens.
+ *
+ * White page, one accent, and space. A quotation reads cheap when it is dense and boxed: every
+ * panel outlined, every table headed with a filled bar, colour used as decoration rather than as
+ * meaning. This document earns its weight typographically instead — hairline rules, a fixed type
+ * scale, and margins wide enough to be obviously deliberate.
+ *
+ * `accent` is the clinic's own blue, sampled from its brand banner rather than chosen. It is used
+ * sparingly and on purpose: totals, and the single filled block on the payment page. A colour that
+ * appears everywhere emphasises nothing.
+ */
+const T = {
+  accent: '#183858',
+  accentDeep: '#102841',
+  /** For text on the accent fill — light enough to read, quiet enough not to compete. */
+  accentOn: '#A9C4DC',
+  accentTint: '#F4F7FA',
+  ink: '#16191D',
+  body: '#3A414A',
+  /** Measured at 4.6:1 on white — the quiet grey that still clears AA. */
+  muted: '#5C6570',
+  faint: '#8A929C',
+  hairline: '#E2E6EB',
+  hairlineSoft: '#F0F3F6',
+  white: '#FFFFFF',
+  // Warnings keep their own hues. A payment surcharge and a clinical red flag must not read as
+  // brand furniture, so these stay boxed while everything else loses its outline.
+  warnBg: '#FFF8F1',
+  warnEdge: '#F0D6B8',
+  warnInk: '#8A4A16',
+  alertBg: '#FEF3F2',
+  alertEdge: '#F3CBC7',
+  alertInk: '#A62B22',
+} as const;
+
+// A4 at 72dpi is 595x842pt; 56pt margins leave 483pt of usable width.
+const CONTENT_WIDTH = 483;
 
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 40, paddingTop: 40, paddingBottom: 56, fontSize: 10, fontFamily: 'Helvetica', color: '#18181b' },
-  coverPage: { padding: 0, fontSize: 10, fontFamily: 'Helvetica', color: '#18181b' },
+  page: { paddingHorizontal: 56, paddingTop: 56, paddingBottom: 64, fontSize: 10, fontFamily: 'Helvetica', color: T.ink },
+  coverPage: { padding: 0, fontSize: 10, fontFamily: 'Helvetica', color: T.ink },
 
   // Full bleed: no page padding on the cover, so the photograph runs edge to edge the way it would
   // in a brochure rather than sitting in a frame of white.
-  coverPhoto: { width: '100%', height: 232, objectFit: 'cover' },
-  // Shorter than it was, because the photograph above it now carries the weight the block used to.
-  coverBand: { backgroundColor: '#0f766e', paddingHorizontal: 48, paddingVertical: 38 },
-  coverClinic: { fontSize: 13, color: '#ccfbf1', letterSpacing: 2, fontFamily: 'Helvetica-Bold' },
-  coverTitle: { fontSize: 40, color: '#ffffff', marginTop: 18, fontFamily: 'Helvetica-Bold' },
-  coverSubtitle: { fontSize: 13, color: '#99f6e4', marginTop: 8 },
-  coverBody: { paddingHorizontal: 48, paddingTop: 34 },
-  coverLabel: { fontSize: 9, color: '#71717a', letterSpacing: 1, marginBottom: 3 },
-  coverValue: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginBottom: 18 },
+  coverPhoto: { width: '100%', height: 250, objectFit: 'cover' },
+  // The title block sits on white beneath the photograph. It used to sit on a filled band, which
+  // made the cover read as a form header rather than the front of something considered.
+  coverBody: { paddingHorizontal: 56, paddingTop: 44 },
+  coverClinic: { fontSize: 9, color: T.muted, letterSpacing: 1.6, fontFamily: 'Helvetica-Bold' },
+  coverTitle: { fontSize: 34, color: T.ink, marginTop: 16, fontFamily: 'Helvetica-Bold', letterSpacing: -0.9 },
+  coverSubtitle: { fontSize: 12, color: T.muted, marginTop: 10 },
+  coverLabel: { fontSize: 8, color: T.faint, letterSpacing: 1.1, marginBottom: 4 },
+  coverValue: { fontSize: 15, fontFamily: 'Helvetica-Bold', marginBottom: 18 },
   // Date and clinic sit side by side rather than stacked, which is what left the page bottom-heavy
   // with nothing under it.
-  coverMetaRow: { flexDirection: 'row', marginBottom: 4 },
-  coverMetaCol: { width: '32%' },
+  coverMetaRow: { flexDirection: 'row', marginTop: 30 },
+  coverMetaCol: { width: '34%' },
   coverMetaColWide: { flex: 1 },
   coverMetaValue: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 6 },
   // The headline figures, filling the band that used to be empty.
   coverStats: {
     flexDirection: 'row',
-    marginTop: 26,
-    marginHorizontal: 48,
+    marginTop: 34,
+    marginHorizontal: 56,
     borderTopWidth: 1,
-    borderTopColor: '#e4e4e7',
-    paddingTop: 18,
+    borderTopColor: T.hairline,
+    paddingTop: 22,
   },
   coverStat: { flex: 1 },
-  coverStatLabel: { fontSize: 8, color: '#71717a', letterSpacing: 1, marginBottom: 5 },
-  coverStatValue: { fontSize: 17, fontFamily: 'Helvetica-Bold', color: '#0f766e' },
-  coverFooter: { position: 'absolute', bottom: 40, left: 48, right: 48, fontSize: 8, color: '#a1a1aa' },
+  coverStatLabel: { fontSize: 7.5, color: T.faint, letterSpacing: 1.1, marginBottom: 6 },
+  coverStatValue: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: T.accent, letterSpacing: -0.3 },
+  coverFooter: { position: 'absolute', bottom: 46, left: 56, right: 56, fontSize: 8, color: T.faint, lineHeight: 1.5 },
 
-  h1: { fontSize: 19, fontFamily: 'Helvetica-Bold' },
-  h2: { fontSize: 11, color: '#52525b', marginTop: 3, marginBottom: 14 },
-  sectionTitle: { fontSize: 13, fontFamily: 'Helvetica-Bold', marginTop: 18, marginBottom: 8 },
+  // One stepped type scale, so nine pages of headings stay in a relationship with each other.
+  h1: { fontSize: 26, fontFamily: 'Helvetica-Bold', letterSpacing: -0.7, color: T.ink },
+  h2: { fontSize: 11, color: T.muted, marginTop: 8, marginBottom: 30 },
+  sectionTitle: { fontSize: 13, fontFamily: 'Helvetica-Bold', marginTop: 24, marginBottom: 10 },
 
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  field: { width: '50%', marginBottom: 14 },
-  fieldLabel: { fontSize: 9, color: '#0f766e', marginBottom: 2 },
-  fieldValue: { fontSize: 12 },
+  field: { width: '50%', marginBottom: 18 },
+  fieldLabel: { fontSize: 8, color: T.faint, letterSpacing: 1, marginBottom: 4 },
+  fieldValue: { fontSize: 11.5 },
 
-  card: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 4, padding: 10, marginBottom: 8 },
-  cardLabel: { fontSize: 9, color: '#71717a', fontFamily: 'Helvetica-Bold', marginBottom: 4 },
+  // A rule above rather than a box around. An outlined panel says "form"; a rule says "section".
+  card: { borderTopWidth: 1, borderTopColor: T.hairline, paddingTop: 10, marginBottom: 16 },
+  cardLabel: { fontSize: 8, color: T.faint, letterSpacing: 1, fontFamily: 'Helvetica-Bold', marginBottom: 6 },
 
-  table: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 4, marginTop: 10 },
-  thead: { flexDirection: 'row', backgroundColor: '#0f766e', paddingVertical: 6, paddingHorizontal: 8 },
-  th: { color: '#ffffff', fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
-  tr: { flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: '#f4f4f5' },
-  trPhase: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: '#e4e4e7', backgroundColor: '#f4f4f5' },
-  trTotal: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 8, borderTopWidth: 2, borderTopColor: '#0f766e' },
+  // Typographic table: a rule under the head and between rows, no outline, no filled header bar.
+  table: { marginTop: 18 },
+  thead: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: T.ink, paddingBottom: 7 },
+  th: { color: T.muted, fontSize: 7.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1 },
+  tr: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.hairlineSoft },
+  trPhase: { flexDirection: 'row', paddingTop: 16, paddingBottom: 7, borderBottomWidth: 1, borderBottomColor: T.hairline },
+  trTotal: { flexDirection: 'row', paddingTop: 12, borderTopWidth: 1, borderTopColor: T.ink, marginTop: 2 },
   td: { fontSize: 9.5 },
   bold: { fontFamily: 'Helvetica-Bold' },
   right: { textAlign: 'right' },
   center: { textAlign: 'center' },
 
-  chartWrap: { marginTop: 8, marginBottom: 4 },
-  qrBlock: { alignItems: 'center', marginTop: 40 },
-  qr: { width: 190, height: 190 },
-  qrCaption: { fontSize: 11, marginTop: 14, color: '#52525b' },
-  qrUrl: { fontSize: 9, marginTop: 6, color: '#0f766e' },
+  chartWrap: { marginTop: 14, marginBottom: 10 },
+  qrBlock: { alignItems: 'center', marginTop: 44 },
+  qr: { width: 180, height: 180 },
+  qrCaption: { fontSize: 10.5, marginTop: 16, color: T.muted },
+  qrUrl: { fontSize: 9, marginTop: 6, color: T.accent },
 
-  bullet: { flexDirection: 'row', marginBottom: 5 },
-  bulletDot: { width: 12, fontSize: 9.5, color: '#0f766e' },
-  bulletText: { flex: 1, fontSize: 9.5, lineHeight: 1.5 },
-  lead: { fontSize: 10, lineHeight: 1.55, color: '#3f3f46', marginBottom: 8 },
-  subTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 12, marginBottom: 5 },
+  bullet: { flexDirection: 'row', marginBottom: 7 },
+  bulletDot: { width: 13, fontSize: 9.5, color: T.accent },
+  bulletText: { flex: 1, fontSize: 9.5, lineHeight: 1.6 },
+  lead: { fontSize: 10, lineHeight: 1.7, color: T.body, marginBottom: 12 },
+  subTitle: { fontSize: 12, fontFamily: 'Helvetica-Bold', marginTop: 22, marginBottom: 8, color: T.ink },
   // Wraps one complete section — heading, paragraph, bullets, warning card — so react-pdf moves
   // the whole thing to the next page rather than splitting it and leaving a gap behind.
-  valueBlock: { marginBottom: 6 },
+  valueBlock: { marginBottom: 10 },
   // "What's included" checklist.
-  includeRow: { flexDirection: 'row', marginBottom: 11 },
-  includeTick: { width: 18, fontSize: 12, color: '#0f766e', fontFamily: 'Helvetica-Bold' },
+  includeRow: { flexDirection: 'row', marginBottom: 14 },
+  includeTick: { width: 19, fontSize: 11, color: T.accent, fontFamily: 'Helvetica-Bold' },
   includeBody: { flex: 1 },
-  includeLabel: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-  includeDetail: { fontSize: 9.5, color: '#52525b', lineHeight: 1.45 },
-  assuranceCard: { marginTop: 10, backgroundColor: '#f0fdfa', borderRadius: 4, padding: 12 },
-  assuranceText: { fontSize: 10, color: '#115e59', lineHeight: 1.5 },
-  // Payment page.
-  payHero: { backgroundColor: '#0f766e', borderRadius: 6, padding: 20, marginBottom: 16 },
-  payHeroLabel: { fontSize: 8, color: '#99f6e4', letterSpacing: 1.2, marginBottom: 6 },
-  payHeroValue: { fontSize: 30, color: '#ffffff', fontFamily: 'Helvetica-Bold' },
-  payHeroNote: { fontSize: 9, color: '#ccfbf1', marginTop: 7 },
-  payBlock: { borderWidth: 1, borderColor: '#e4e4e7', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 14 },
-  payRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
-  payLabel: { fontSize: 10, color: '#3f3f46' },
+  includeLabel: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 3 },
+  includeDetail: { fontSize: 9.5, color: T.muted, lineHeight: 1.5 },
+  assuranceCard: { marginTop: 18, backgroundColor: T.accentTint, padding: 16 },
+  assuranceText: { fontSize: 10, color: T.accentDeep, lineHeight: 1.6 },
+
+  // The payment hero is the one filled block in the document. Reserving colour for a single moment
+  // is what lets that moment carry weight.
+  payHero: { backgroundColor: T.accent, padding: 26, marginBottom: 22 },
+  payHeroLabel: { fontSize: 7.5, color: T.accentOn, letterSpacing: 1.4, marginBottom: 8 },
+  payHeroValue: { fontSize: 34, color: T.white, fontFamily: 'Helvetica-Bold', letterSpacing: -0.8 },
+  payHeroNote: { fontSize: 9, color: T.accentOn, marginTop: 9 },
+  payBlock: { marginBottom: 18 },
+  payRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: T.hairlineSoft },
+  payLabel: { fontSize: 10, color: T.body },
   payValue: { fontSize: 10, textAlign: 'right' },
-  payCard: { borderWidth: 1, borderColor: '#fed7aa', backgroundColor: '#fff7ed', borderRadius: 4, padding: 12, marginBottom: 12 },
-  payCardTitle: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', marginBottom: 5 },
-  payCardText: { fontSize: 9.5, color: '#7c2d12', lineHeight: 1.5 },
-  warnCard: { borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', borderRadius: 4, padding: 9, marginTop: 6 },
-  warnLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#b91c1c', marginBottom: 4 },
+  payCard: { borderWidth: 1, borderColor: T.warnEdge, backgroundColor: T.warnBg, padding: 14, marginBottom: 14 },
+  payCardTitle: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: T.warnInk, marginBottom: 6 },
+  payCardText: { fontSize: 9.5, color: T.warnInk, lineHeight: 1.6 },
+  warnCard: { borderWidth: 1, borderColor: T.alertEdge, backgroundColor: T.alertBg, padding: 11, marginTop: 8 },
+  warnLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: T.alertInk, letterSpacing: 0.8, marginBottom: 5 },
   // No flex here. bulletText sets flex:1, which is correct inside a row but makes stacked
   // siblings in a column share one line and render on top of each other.
-  warnText: { fontSize: 9.5, lineHeight: 1.5, marginBottom: 2 },
-  dayRow: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: '#f4f4f5' },
-  emptyNote: { fontSize: 10, color: '#71717a', marginTop: 12 },
+  warnText: { fontSize: 9.5, lineHeight: 1.6, marginBottom: 3 },
+  dayRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.hairlineSoft },
+  emptyNote: { fontSize: 9.5, color: T.muted, marginTop: 16, lineHeight: 1.6 },
 
-  footer: { position: 'absolute', bottom: 26, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between' },
-  footerText: { fontSize: 8, color: '#a1a1aa' },
+  footer: { position: 'absolute', bottom: 32, left: 56, right: 56, flexDirection: 'row', justifyContent: 'space-between' },
+  footerText: { fontSize: 8, color: T.faint },
 });
 
 export interface ClinicBranding {
@@ -301,18 +343,9 @@ function Footer(branding: ClinicBranding) {
   );
 }
 
-/** A small tooth mark for the cover, drawn from the same silhouette language as the chart. */
-function CoverMark() {
-  return el(
-    Svg,
-    { viewBox: '0 0 40 46', width: 34, height: 39 },
-    el(Path, {
-      d: 'M20 3 C11 3 5 9 5 17 c0 6 2 9 3 14 c1 5 1 11 3 12 c2 1 3 -3 4 -7 c1 -3 2 -6 5 -6 s4 3 5 6 c1 4 2 8 4 7 c2 -1 2 -7 3 -12 c1 -5 3 -8 3 -14 C35 9 29 3 20 3 Z',
-      fill: '#ffffff',
-      opacity: 0.9,
-    }),
-  );
-}
+// The cover's tooth mark is gone. It existed to give a filled band something to hold; with a
+// photograph of the clinic at the head of the page and the name set in type beneath it, a drawn
+// icon was a third thing saying what the first two already said.
 
 /**
  * The clinic's own reception, full bleed across the head of the cover.
@@ -381,18 +414,16 @@ function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
     Page,
     { size: 'A4', style: s.coverPage, key: 'cover' },
     coverPhoto ? el(Image, { src: coverPhoto, style: s.coverPhoto }) : null,
-    el(
-      View,
-      { style: s.coverBand },
-      el(CoverMark, {}),
-      el(Text, { style: s.coverClinic }, branding.clinicName.toUpperCase()),
-      el(Text, { style: s.coverTitle }, 'Your Treatment Plan'),
-      el(Text, { style: s.coverSubtitle }, plan.title),
-    ),
+    // The title sits on white under the photograph rather than on a filled band. The band made the
+    // cover read as a form header; a photograph and then quiet type reads as the front of something
+    // somebody meant.
     el(
       View,
       { style: s.coverBody },
-      el(Text, { style: s.coverLabel }, 'PREPARED FOR'),
+      el(Text, { style: s.coverClinic }, branding.clinicName.toUpperCase()),
+      el(Text, { style: s.coverTitle }, 'Your Treatment Plan'),
+      el(Text, { style: s.coverSubtitle }, plan.title),
+      el(Text, { style: [s.coverLabel, { marginTop: 38 }] }, 'PREPARED FOR'),
       el(Text, { style: s.coverValue }, `${plan.patient.firstName} ${plan.patient.lastName}`),
       el(
         View,
