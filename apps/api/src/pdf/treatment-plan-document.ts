@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet, Image, Svg, Path } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import React from 'react';
 import * as fs from 'fs';
 import * as path from 'path';

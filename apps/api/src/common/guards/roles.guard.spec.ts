@@ -1,7 +1,7 @@
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext } from '@nestjs/common';
 import { RolesGuard } from './roles.guard';
-import { ROLES_KEY } from '../decorators/roles.decorator';
+import {} from '../decorators/roles.decorator';
 
 const makeContext = (role: string) => ({
   switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }),

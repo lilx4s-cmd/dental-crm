@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, Min, IsOptional, IsEnum, IsDateString } from 'class-validator';
+import { IsString, IsNumber, Min, IsOptional, IsEnum, IsDateString } from 'class-validator';
 
 const PAYMENT_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER', 'INSTALLMENT', 'ONLINE', 'OTHER'] as const;
 

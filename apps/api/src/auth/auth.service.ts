@@ -123,8 +123,10 @@ export class AuthService {
   }
 
   async refresh(userId: string, rawToken: string, res: Response): Promise<AuthTokens> {
-    const tokenHash = await bcrypt.hash(rawToken, BCRYPT_ROUNDS);
-
+    // A `const tokenHash = await bcrypt.hash(rawToken, …)` stood here, computed and then never
+    // read — the comparison below uses bcrypt.compare against the stored hash instead. It cost a
+    // full bcrypt round, about 80ms, on every refresh: once per user per fifteen minutes, for
+    // nothing. Lint would have found it years ago; nothing was running lint on this package.
     const stored = await this.prisma.refreshToken.findFirst({
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },

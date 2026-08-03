@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { APPOINTMENT_WRITE, SCHEDULING } from '../common/access-policy';
-import { Role } from '@dental-crm/shared';
+import {} from '@dental-crm/shared';
 import { JwtPayload } from '@dental-crm/shared';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
