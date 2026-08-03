@@ -482,6 +482,10 @@ model PatientTag {
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([patientId, tagId])
+  // The composite primary key already serves lookups by patientId, being the leftmost column, but
+  // not by tagId alone — which is the direction the patient list filters in
+  // (`where.tags = { some: { tagId } }`, patients.service.ts).
+  @@index([tagId])
   @@map("patient_tags")
 }
 
@@ -500,6 +504,11 @@ model Campaign {
 
   leads Lead[]
 
+  // externalId is looked up on every inbound Meta lead-ad webhook, which is an unauthenticated
+  // external path — the one place a sequential scan is someone else's to trigger. `name` backs the
+  // duplicate check on create; see TECHNICAL_DEBT.md on making that a real unique constraint.
+  @@index([externalId])
+  @@index([name])
   @@map("campaigns")
 }
 
@@ -1002,6 +1011,10 @@ model TreatmentPlanItem {
   invoiceItems InvoiceItem[]
   warranties   Warranty[]
 
+  // Postgres does not index a foreign key for you. Every plan detail view, every dossier render
+  // and the warranties lookup that walks item -> plan -> patient all filter on this column.
+  @@index([treatmentPlanId])
+  @@index([treatmentCategoryId])
   @@map("treatment_plan_items")
 }
 
