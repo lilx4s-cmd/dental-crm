@@ -32,6 +32,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { CacheControlInterceptor } from './common/interceptors/cache-control.interceptor';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
+import { MailModule } from './mail/mail.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -64,6 +65,7 @@ import { HealthController } from './health/health.controller';
     PortalModule,
     IntakeModule,
     AiModule,
+    MailModule,
   ],
   controllers: [HealthController],
   providers: [

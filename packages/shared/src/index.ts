@@ -11,6 +11,7 @@ export * from './pipeline/duplicates';
 export * from './access/policy';
 export * from './access/lockout';
 export * from './access/password-policy';
+export * from './access/password-reset';
 export * from './pipeline/next-action';
 export * from './finance/case-economics';
 export * from './schemas/auth.schema';

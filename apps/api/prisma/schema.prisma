@@ -231,6 +231,7 @@ enum AuditAction {
   LOGIN
   LOGIN_FAILED
   LOCKOUT
+  PASSWORD_RESET
   LOGOUT
   EXPORT
   OTHER
@@ -345,6 +346,7 @@ model User {
   filesUploaded               File[]                   @relation("FileUploadedBy")
   notifications               Notification[]
   auditLogs                   AuditLog[]
+  passwordResetTokens         PasswordResetToken[]
   labOrdersCreated            LabOrder[]               @relation("LabOrderCreatedBy")
 
   @@index([role])
@@ -1215,6 +1217,28 @@ model Notification {
 
   @@index([userId, status])
   @@map("notifications")
+}
+
+/// A single-use, time-limited password-reset link.
+///
+/// Only the hash is stored. The raw token exists in exactly two places — the email that was sent
+/// and the URL the user clicks — so a leaked database read gives an attacker nothing usable, in
+/// the same way the password column gives them nothing usable.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  // Kept rather than deleted after redemption, so "this link was already used" can be told apart
+  // from "this link never existed". Cleared on the next successful reset for the account.
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  requestIp String?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model AuditLog {

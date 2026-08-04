@@ -50,6 +50,31 @@ export default () => ({
     // available for telling a real delivery from anyone who found the endpoint.
     webhookToken: process.env.EVOLUTION_WEBHOOK_TOKEN,
   },
+  // Outbound email. SMTP rather than a vendor HTTP API so the clinic's existing mailbox works
+  // without signing up to anything new, and so nothing here is locked to one provider.
+  //
+  // Optional at boot, like every other integration: an unconfigured mail server must not stop the
+  // clinic booting. MailService reports what is missing and refuses to pretend it sent anything.
+  mail: {
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    // Implicit TLS on 465, STARTTLS on 587. Defaulting from the port rather than asking for a
+    // third setting nobody can answer without reading their provider's documentation.
+    secure: process.env.SMTP_SECURE
+      ? process.env.SMTP_SECURE === 'true'
+      : process.env.SMTP_PORT === '465',
+    user: process.env.SMTP_USER,
+    // .env.example has documented SMTP_PASS since before any mail code existed, so that name is
+    // the one anyone configuring this server will already have typed. SMTP_PASSWORD is accepted
+    // too because it is the commoner spelling elsewhere, and a mail server that silently does not
+    // authenticate because of a four-character difference is a bad afternoon.
+    password: process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD,
+    // What the patient-facing world sees in the From line.
+    from: process.env.MAIL_FROM,
+  },
+  // Where a password-reset link should point. The API and the app are on different origins, so the
+  // API cannot infer this from its own request.
+  webUrl: process.env.WEB_APP_URL ?? 'http://localhost:3000',
   xai: {
     apiKey: process.env.XAI_API_KEY,
     model: process.env.XAI_MODEL || 'grok-4.5',

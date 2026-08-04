@@ -33,6 +33,19 @@ const envSchema = z.object({
   EVOLUTION_API_KEY: z.string().optional(),
   EVOLUTION_INSTANCE: z.string().optional(),
   EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
+  // Optional: outbound email. Unset means password reset is unavailable and says so, rather than
+  // the API refusing to boot — the same trade made for storage and messaging above. MailService
+  // reports the gap through /auth/forgot-password's logs and the health surface.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_SECURE: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
+  // Origin of the web app, used to build password-reset links. Not a hard requirement: it falls
+  // back to localhost, which is wrong in production but visible immediately in the email itself.
+  WEB_APP_URL: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via
   // xAI's Grok API degrade gracefully when unset — see ai/ai.service.ts.
   XAI_API_KEY: z.string().optional(),

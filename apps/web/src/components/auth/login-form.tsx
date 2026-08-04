@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -43,7 +44,17 @@ export function LoginForm() {
             {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="password">Password</Label>
+              {/* The only route to account recovery. Without it the reset flow exists but nobody
+                  can reach it, which is the same as not having built it. */}
+              <Link
+                href="/forgot-password"
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
             {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
           </div>

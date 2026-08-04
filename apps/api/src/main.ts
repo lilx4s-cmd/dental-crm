@@ -58,6 +58,22 @@ async function bootstrap() {
     }),
   );
 
+  // Password reset. Both endpoints are public and unauthenticated, and each is abusable in its
+  // own way: /forgot-password sends real email to a real mailbox, so an unthrottled loop turns
+  // this API into a way to flood someone's inbox and burn the clinic's sending reputation;
+  // /reset-password is where a stolen-token guess would be attempted. Five per quarter hour is
+  // several times what a person who has genuinely lost their password will need.
+  app.use(
+    ['/api/auth/forgot-password', '/api/auth/reset-password'],
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { statusCode: 429, message: 'Too many password reset attempts. Try again shortly.' },
+    }),
+  );
+
   // Stricter limiter for the public, unauthenticated patient portal — path-scoped via the
   // first argument so it stacks on top of (not replaces) the global limiter above.
   app.use(
