@@ -50,7 +50,7 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap((result) => {
         void this.write(rule.entityType, actorId, req, {
-          action: actionFor(req.method),
+          action: actionFor(req.method, rule),
           // A create has no id in the URL; take it from what the handler returned.
           entityId: entityId ?? this.idFromResult(result),
           requested,
@@ -60,7 +60,7 @@ export class AuditInterceptor implements NestInterceptor {
       catchError((error: unknown) => {
         const status = (error as { status?: number })?.status;
         void this.write(rule.entityType, actorId, req, {
-          action: actionFor(req.method),
+          action: actionFor(req.method, rule),
           entityId,
           requested,
           outcome: `failed:${status ?? 500}`,

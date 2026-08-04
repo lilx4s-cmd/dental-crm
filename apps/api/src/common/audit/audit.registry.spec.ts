@@ -57,6 +57,50 @@ describe('actionFor', () => {
     expect(actionFor('PUT')).toBe('UPDATE');
     expect(actionFor('DELETE')).toBe('DELETE');
   });
+
+  it('lets a rule override the verb, for POSTs that are commands not creations', () => {
+    const rule = ruleFor('users/:id/reset-password', 'POST');
+    expect(actionFor('POST', rule)).toBe('UPDATE');
+  });
+});
+
+describe('command routes are not recorded as creations', () => {
+  // Found in production: the first seven real password resets were written to the trail as
+  // "CREATE User", because the action was derived from the HTTP verb alone. An audit trail that
+  // describes the wrong thing is worse than one with a gap — a gap is visibly a gap.
+  const commands: Array<[string, string]> = [
+    ['users/:id/reset-password', 'POST'],
+    ['users/:id/revoke-sessions', 'POST'],
+    ['users/:id/activate', 'PATCH'],
+    ['leads/duplicates/merge', 'POST'],
+    ['leads/:id/convert', 'POST'],
+    ['invoices/:id/payments', 'POST'],
+    ['treatment-plans/:id/share-link', 'POST'],
+  ];
+
+  it.each(commands)('%s %s is an UPDATE', (path, method) => {
+    const rule = ruleFor(path, method);
+    expect(rule).toBeDefined();
+    expect(actionFor(method, rule)).toBe('UPDATE');
+  });
+
+  it('still records a genuine creation as CREATE', () => {
+    // The override must not swallow the ordinary case — these sit above the entity-wide rules in
+    // the list, and `ruleFor` takes the first match.
+    expect(actionFor('POST', ruleFor('users', 'POST'))).toBe('CREATE');
+    expect(actionFor('POST', ruleFor('treatment-plans', 'POST'))).toBe('CREATE');
+    expect(actionFor('POST', ruleFor('invoices', 'POST'))).toBe('CREATE');
+    expect(actionFor('POST', ruleFor('leads', 'POST'))).toBe('CREATE');
+  });
+
+  it('still records a deletion as DELETE', () => {
+    expect(actionFor('DELETE', ruleFor('files/:id', 'DELETE'))).toBe('DELETE');
+    expect(actionFor('DELETE', ruleFor('users/:id', 'DELETE'))).toBe('DELETE');
+  });
+
+  it('keeps the entity id, so the row names which account was reset', () => {
+    expect(ruleFor('users/:id/reset-password', 'POST')?.idParam).toBe(':id');
+  });
 });
 
 describe('redact', () => {

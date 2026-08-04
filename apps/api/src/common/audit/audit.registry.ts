@@ -31,11 +31,43 @@ export interface AuditRule {
   readonly entityType: string;
   /** Which route parameter carries the entity's id, when the URL has one. */
   readonly idParam?: string;
+  /**
+   * Overrides the verb-derived action for endpoints where POST does not mean "created".
+   *
+   * Plenty of routes here are commands rather than creations — resetting a password, merging
+   * duplicates, converting a lead. Deriving the action from the HTTP verb alone labelled all of
+   * them CREATE, so the production trail recorded seven password resets as "CREATE User". A trail
+   * that describes the wrong thing is worse than a gap, because a gap is visibly a gap.
+   */
+  readonly action?: AuditAction;
 }
 
 const ID = ':id';
 
 export const AUDIT_RULES: readonly AuditRule[] = [
+  // Commands first: `ruleFor` takes the first match, so anything more specific than the
+  // entity-wide rules below has to be listed above them.
+  {
+    path: /^users\/[^/]+\/(reset-password|revoke-sessions|activate)$/,
+    methods: ['POST', 'PATCH'],
+    entityType: 'User',
+    idParam: ID,
+    action: 'UPDATE',
+  },
+  { path: /^leads\/duplicates\/merge$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
+  // A conversion is the moment a lead becomes a patient record — the most consequential single
+  // write in the pipeline, and not a creation of the lead it names.
+  { path: /^leads\/[^/]+\/convert$/, methods: ['POST'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },
+  { path: /^patients\/[^/]+\/tags\//, methods: ['POST', 'DELETE'], entityType: 'Patient', idParam: ID, action: 'UPDATE' },
+  { path: /^invoices\/[^/]+\/payments$/, methods: ['POST'], entityType: 'Invoice', idParam: ID, action: 'UPDATE' },
+  {
+    path: /^treatment-plans\/[^/]+\/(share-link|schedule-items)/,
+    methods: ['POST'],
+    entityType: 'TreatmentPlan',
+    idParam: ID,
+    action: 'UPDATE',
+  },
+
   // The clinical record.
   { path: /^patients(\/[^/]+)?$/, methods: ['POST', 'PATCH', 'DELETE'], entityType: 'Patient', idParam: ID },
   { path: /^patients\/[^/]+\/(economics|case)/, methods: ['POST', 'PATCH'], entityType: 'Patient', idParam: ID },
@@ -64,7 +96,8 @@ export function ruleFor(path: string, method: string): AuditRule | undefined {
   return AUDIT_RULES.find((rule) => rule.methods.includes(method) && rule.path.test(normalised));
 }
 
-export function actionFor(method: string): AuditAction {
+export function actionFor(method: string, rule?: AuditRule): AuditAction {
+  if (rule?.action) return rule.action;
   if (method === 'POST') return 'CREATE';
   if (method === 'DELETE') return 'DELETE';
   return 'UPDATE';
