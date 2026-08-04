@@ -22,6 +22,7 @@ import { EvolutionCard } from '@/components/settings/evolution-card';
 import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
 import { PlanDefaultsCard } from '@/components/settings/plan-defaults-card';
 import { QueryError } from '@/components/ui/query-state';
+import { AccountSecurityCard } from '@/components/settings/account-security-card';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -218,6 +219,12 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Clinic configuration and team management</p>
       </div>
+
+      {/* First, because it is the only section on this page every role can act on — everything
+          below is clinic-wide configuration that most staff can only read. */}
+      <AccountSecurityCard />
+
+      <Separator />
 
       <ClinicSettingsForm />
 

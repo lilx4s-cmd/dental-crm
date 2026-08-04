@@ -9,6 +9,11 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),
+  // Encrypts secrets that the application must read back but a database leak must not yield —
+  // today, TOTP secrets. Optional: without it the key is derived from JWT_ACCESS_SECRET via HKDF,
+  // which is sound, but couples two unrelated rotations. Rotating the signing secret would then
+  // make every enrolled authenticator undecryptable, and every user would need a recovery code.
+  ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters').optional(),
   // File storage (uploads, PDFs) via Supabase. Optional at boot so a missing bucket doesn't take
   // down the entire API — only the files/pdf endpoints that need it fail, per request.
   //

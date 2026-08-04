@@ -232,6 +232,9 @@ enum AuditAction {
   LOGIN_FAILED
   LOCKOUT
   PASSWORD_RESET
+  PASSWORD_CHANGED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
   LOGOUT
   EXPORT
   OTHER
@@ -316,6 +319,11 @@ model User {
   hireDate         DateTime?
   specialization   String?
   calendarColor    String?
+  // TOTP second factor. The secret is stored encrypted at rest (see TwoFactorService) rather than
+  // in clear: a leaked database read would otherwise hand over the second factor along with the
+  // first, which defeats the point of having one.
+  twoFactorSecret    String?
+  twoFactorEnabledAt DateTime?
   // Failed sign-in tracking. The counter is not reset when the account locks — it keeps climbing
   // so the lock duration can escalate for someone who is clearly guessing, and is cleared only by
   // a successful sign-in. See packages/shared/src/access/lockout.ts.
@@ -347,6 +355,7 @@ model User {
   notifications               Notification[]
   auditLogs                   AuditLog[]
   passwordResetTokens         PasswordResetToken[]
+  twoFactorRecoveryCodes      TwoFactorRecoveryCode[]
   labOrdersCreated            LabOrder[]               @relation("LabOrderCreatedBy")
 
   @@index([role])
@@ -1239,6 +1248,23 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+/// One single-use code for getting back in when the authenticator app is gone.
+///
+/// Hashed, like a password, because possession of one is enough to bypass the second factor. A
+/// phone is lost or wiped often enough that 2FA without a recovery path is 2FA that eventually
+/// locks a clinic out of its own records.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("two_factor_recovery_codes")
 }
 
 model AuditLog {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
   ForbiddenException,
@@ -8,10 +9,13 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import {
   JwtPayload,
   AuthTokens,
+  LoginResult,
+  Role,
   afterFailedAttempt,
   afterSuccessfulLogin,
   isLocked,
@@ -20,6 +24,14 @@ import {
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const BCRYPT_ROUNDS = 10;
+
+/**
+ * Marks a token as proving only the password step of a 2FA sign-in.
+ *
+ * Checked by JwtStrategy as well as here: without that, a challenge token would be a perfectly
+ * valid access token that skipped the second factor entirely, which would make 2FA decorative.
+ */
+export const TWO_FACTOR_PURPOSE = '2fa-challenge';
 
 /**
  * A real bcrypt hash of a string nobody knows, compared against when the email does not exist.
@@ -37,9 +49,10 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private twoFactor: TwoFactorService,
   ) {}
 
-  async login(dto: LoginDto, res: Response, ip?: string, userAgent?: string): Promise<AuthTokens> {
+  async login(dto: LoginDto, res: Response, ip?: string, userAgent?: string): Promise<LoginResult> {
     const now = new Date();
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
 
@@ -71,6 +84,66 @@ export class AuthService {
       await this.prisma.user.update({ where: { id: user.id }, data: afterSuccessfulLogin() });
     }
 
+    // The password was right, but on a 2FA account that is only half the answer. No access token
+    // and no refresh cookie are issued here — the challenge token proves this step passed and
+    // grants nothing else, so an attacker with a stolen password holds something that cannot read
+    // a single patient record.
+    if (user.twoFactorEnabledAt) {
+      return {
+        twoFactorRequired: true,
+        challengeToken: await this.signChallengeToken(user.id),
+      };
+    }
+
+    return this.issueSession(user, res, ip, userAgent);
+  }
+
+  /**
+   * Second step of a 2FA sign-in: the six-digit code, or a recovery code.
+   *
+   * A failed code counts towards the same lockout a failed password does. Without that, 2FA would
+   * be the one part of sign-in an attacker could brute-force freely — a million six-digit guesses
+   * against an account whose password they already have.
+   */
+  async completeTwoFactorLogin(
+    challengeToken: string,
+    code: string,
+    res: Response,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<AuthTokens> {
+    const userId = await this.verifyChallengeToken(challengeToken);
+    const now = new Date();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+
+    if (isLocked(user.lockedUntil, now)) {
+      const minutes = minutesUntilUnlock(user.lockedUntil as Date, now);
+      throw new UnauthorizedException(
+        `Too many failed sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+      );
+    }
+
+    if (!(await this.twoFactor.verifyChallenge(user.id, code))) {
+      await this.recordFailedAttempt(user.id, user.failedLoginAttempts, now, ip, userAgent);
+      throw new UnauthorizedException('That code is not right.');
+    }
+
+    if (user.failedLoginAttempts > 0) {
+      await this.prisma.user.update({ where: { id: user.id }, data: afterSuccessfulLogin() });
+    }
+
+    return this.issueSession(user, res, ip, userAgent);
+  }
+
+  /** Everything a completed sign-in does, whichever route it arrived by. */
+  private async issueSession(
+    user: { id: string; email: string; role: Role },
+    res: Response,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<AuthTokens> {
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.signAccessToken(payload);
     const refreshToken = await this.createRefreshToken(user.id, ip, userAgent);
@@ -82,6 +155,123 @@ export class AuthService {
     });
 
     return { accessToken };
+  }
+
+  /**
+   * A token that says only "this person's password checked out, a moment ago".
+   *
+   * Five minutes, and signed with a `purpose` claim so it can never be presented as an access
+   * token — the JWT strategy rejects anything carrying it. Long enough to fetch a code from a
+   * phone; short enough that one intercepted on a shared machine is dead before it is useful.
+   */
+  private async signChallengeToken(userId: string): Promise<string> {
+    return this.jwtService.signAsync(
+      { sub: userId, purpose: TWO_FACTOR_PURPOSE },
+      { secret: this.config.get<string>('jwt.accessSecret'), expiresIn: '5m' },
+    );
+  }
+
+  private async verifyChallengeToken(token: string): Promise<string> {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(token, {
+        secret: this.config.get<string>('jwt.accessSecret'),
+      });
+      if (payload.purpose !== TWO_FACTOR_PURPOSE) throw new Error('wrong purpose');
+      return payload.sub;
+    } catch {
+      throw new UnauthorizedException('This sign-in attempt has expired. Start again.');
+    }
+  }
+
+  /**
+   * Changes your own password.
+   *
+   * Until now only an administrator could rotate a password, so someone who suspected their
+   * account was compromised had to find one and explain why — at exactly the moment speed matters.
+   *
+   * The current password is required. A logged-in session is not enough on its own: an unattended
+   * screen is a realistic way to be holding someone else's session, and it should not be enough to
+   * take over their account.
+   */
+  async changeOwnPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('That is not your current password.');
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException('Choose a password you have not been using.');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    const now = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      // Every session goes. Someone changing their password because they think it leaked needs
+      // any session that leak created to stop working, and cannot be expected to work out which
+      // of the rows in the list is the attacker's.
+      this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'PASSWORD_CHANGED',
+          entityType: 'User',
+          entityId: userId,
+          ipAddress: ip,
+          userAgent,
+        },
+      }),
+    ]);
+  }
+
+  /**
+   * Your own live sessions, with enough detail to recognise one that is not yours.
+   *
+   * `RefreshToken` has stored `createdByIp` and `userAgent` since it was written and nothing ever
+   * read them — sessions were only ever counted. A count tells you something is wrong; it does not
+   * tell you which one to end.
+   */
+  async ownSessions(userId: string, currentRawToken?: string) {
+    const sessions = await this.prisma.refreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        createdByIp: true,
+        userAgent: true,
+        tokenHash: true,
+      },
+    });
+
+    return Promise.all(
+      sessions.map(async ({ tokenHash, ...session }) => ({
+        ...session,
+        // Marked rather than filtered out, so the list is complete and it is still obvious which
+        // row belongs to the browser doing the asking.
+        current: currentRawToken ? await bcrypt.compare(currentRawToken, tokenHash) : false,
+      })),
+    );
+  }
+
+  /** Ends one of your own sessions. Scoped by userId, so an id from elsewhere matches nothing. */
+  async revokeOwnSession(userId: string, sessionId: string): Promise<void> {
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: { id: sessionId, userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (count === 0) throw new BadRequestException('That session has already ended.');
   }
 
   /**

@@ -23,3 +23,11 @@ treatment-plan-sample.pdf
 *.tmp.pdf
 
 arabic-spike.pdf
+
+# Compiled output belongs in packages/shared/dist, never beside the source. Thirty-six of these
+# were committed inside src/ from a historical tsc run without an outDir, and because the API's
+# jest resolves .js before .ts, every test importing shared code was reading compiled JavaScript
+# from 18 July rather than the source it was meant to describe.
+packages/shared/src/**/*.js
+packages/shared/src/**/*.d.ts
+packages/shared/src/**/*.map

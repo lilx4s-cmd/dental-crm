@@ -4,12 +4,19 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 import { useRouter, usePathname } from 'next/navigation';
 import { apiRequest } from '@/lib/api-client';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
-import { JwtPayload, AuthTokens, landingRoute } from '@dental-crm/shared';
+import {
+  JwtPayload,
+  AuthTokens,
+  landingRoute,
+  isTwoFactorChallenge,
+  type LoginResult,
+} from '@dental-crm/shared';
 
 interface AuthContextValue {
   user: JwtPayload | null;
   accessToken: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  completeTwoFactor: (challengeToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   setAuth: (user: JwtPayload, token: string) => void;
 }
@@ -87,11 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(token);
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { accessToken: token } = await apiRequest<AuthTokens>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
+  /** Everything that happens once a sign-in is genuinely finished, by either route. */
+  const establishSession = useCallback(async (token: string) => {
     const me = await apiRequest<JwtPayload>('/api/auth/me', {}, token);
     setUser(me);
     setAccessToken(token);
@@ -100,6 +104,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // they are not allowed to load. Each role lands on the first page it can actually use.
     router.push(landingRoute(me.role));
   }, [router]);
+
+  /**
+   * Returns a challenge instead of signing in when the account has 2FA on.
+   *
+   * The caller has to handle that branch — `isTwoFactorChallenge` makes ignoring it a type error
+   * rather than a silent half-login.
+   */
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+    const result = await apiRequest<LoginResult>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (isTwoFactorChallenge(result)) return result;
+    await establishSession(result.accessToken);
+    return result;
+  }, [establishSession]);
+
+  const completeTwoFactor = useCallback(async (challengeToken: string, code: string) => {
+    const { accessToken: token } = await apiRequest<AuthTokens>('/api/auth/login/2fa', {
+      method: 'POST',
+      body: JSON.stringify({ challengeToken, code }),
+    });
+    await establishSession(token);
+  }, [establishSession]);
 
   const logout = useCallback(async () => {
     await apiRequest('/api/auth/logout', { method: 'POST' }, accessToken ?? undefined).catch(() => {});
@@ -110,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, router]);
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, logout, setAuth }}>
+    <AuthContext.Provider value={{ user, accessToken, login, completeTwoFactor, logout, setAuth }}>
       {children}
     </AuthContext.Provider>
   );
