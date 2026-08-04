@@ -8,7 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSRF_COOKIE } from '../common/guards/csrf.guard';
 import { TwoFactorService } from './two-factor.service';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -148,13 +150,13 @@ export class AuthService {
     const accessToken = await this.signAccessToken(payload);
     const refreshToken = await this.createRefreshToken(user.id, ip, userAgent);
 
-    this.setRefreshCookie(res, refreshToken);
+    const csrfToken = this.setRefreshCookie(res, refreshToken);
 
     await this.prisma.auditLog.create({
       data: { userId: user.id, action: 'LOGIN', entityType: 'User', entityId: user.id, ipAddress: ip, userAgent },
     });
 
-    return { accessToken };
+    return { accessToken, csrfToken };
   }
 
   /**
@@ -347,8 +349,10 @@ export class AuthService {
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.signAccessToken(payload);
 
-    this.setRefreshCookie(res, newRawToken);
-    return { accessToken };
+    // Rotated with the refresh token, so the client always holds the pair that matches the
+    // cookies it now has.
+    const csrfToken = this.setRefreshCookie(res, newRawToken);
+    return { accessToken, csrfToken };
   }
 
   async logout(userId: string, rawToken: string, res: Response): Promise<void> {
@@ -367,7 +371,7 @@ export class AuthService {
       }
     }
 
-    res.clearCookie(REFRESH_TOKEN_COOKIE, this.cookieOptions());
+    this.clearAuthCookies(res);
 
     await this.prisma.auditLog.create({
       data: { userId, action: 'LOGOUT', entityType: 'User', entityId: userId },
@@ -408,8 +412,26 @@ export class AuthService {
     });
   }
 
-  private setRefreshCookie(res: Response, token: string): void {
+  /**
+   * Sets the refresh cookie and its CSRF partner, and returns the raw CSRF token.
+   *
+   * The two are issued and rotated together, so a live refresh cookie always has a matching CSRF
+   * cookie and neither can outlive the other. The raw value goes back in the response body because
+   * the web app cannot read a cookie set on the API's domain — see CsrfGuard.
+   */
+  private setRefreshCookie(res: Response, token: string): string {
     res.cookie(REFRESH_TOKEN_COOKIE, token, this.cookieOptions());
+
+    const csrfToken = randomBytes(32).toString('base64url');
+    // httpOnly, because nothing needs to read this one: the server compares it against the header,
+    // and the client gets its copy from the response body instead.
+    res.cookie(CSRF_COOKIE, csrfToken, this.cookieOptions());
+    return csrfToken;
+  }
+
+  private clearAuthCookies(res: Response): void {
+    res.clearCookie(REFRESH_TOKEN_COOKIE, this.cookieOptions());
+    res.clearCookie(CSRF_COOKIE, this.cookieOptions());
   }
 
   /**

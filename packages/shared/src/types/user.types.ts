@@ -10,6 +10,14 @@ export interface JwtPayload {
 
 export interface AuthTokens {
   accessToken: string;
+  /**
+   * The CSRF token to send as `X-CSRF-Token` on `/auth/refresh`.
+   *
+   * Delivered in the body rather than read from a cookie because the app and the API are on
+   * different registrable domains, so the app cannot read a cookie the API set. CORS is what stops
+   * an attacker reading this response and therefore forging the header.
+   */
+  csrfToken?: string;
 }
 
 /**

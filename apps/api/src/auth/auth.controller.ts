@@ -15,6 +15,7 @@ import { TwoFactorService } from './two-factor.service';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtRefreshGuard } from '../common/guards/jwt-refresh.guard';
+import { CsrfGuard } from '../common/guards/csrf.guard';
 import { JwtPayload } from '@dental-crm/shared';
 
 @ApiTags('Auth')
@@ -62,8 +63,11 @@ export class AuthController {
     await this.passwordReset.reset(dto.token, dto.newPassword, req.ip, req.headers['user-agent']);
   }
 
+  // The only cookie-authenticated route in the API, and therefore the only one a browser will
+  // authenticate on a forged request. CsrfGuard runs first so an untrusted origin is refused
+  // before the refresh token is even looked at.
   @Public()
-  @UseGuards(JwtRefreshGuard)
+  @UseGuards(CsrfGuard, JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth()

@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from './api-client';
+import { ApiError, apiRequest, clearCsrfToken, setCsrfToken } from './api-client';
 
 /**
  * The transport every screen depends on.
@@ -41,6 +41,9 @@ async function rejection(promise: Promise<unknown>): Promise<ApiError> {
 beforeEach(() => {
   fetchMock = jest.fn() as FetchMock;
   global.fetch = fetchMock as unknown as typeof fetch;
+  // The token is module-level state and persists between tests, exactly as it does between
+  // requests in the browser. Clearing it keeps each test's starting point explicit.
+  clearCsrfToken();
 });
 
 describe('apiRequest', () => {
@@ -202,6 +205,47 @@ describe('apiRequest — expired access token', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(401);
     expect(err.message).toMatch(/sign in again/i);
+  });
+
+  it('presents the CSRF token on the refresh, and keeps the rotated one', async () => {
+    // The API holds the matching value in an httpOnly cookie on its own domain, which this app
+    // cannot read — so the token arrives in the sign-in body and has to be sent back by hand.
+    // Without this header the refresh is refused and the user is signed out every 15 minutes.
+    setCsrfToken('csrf-abc');
+    fetchMock
+      .mockResolvedValueOnce(res(401, { message: 'jwt expired' }))
+      .mockResolvedValueOnce(res(200, { accessToken: 'fresh', csrfToken: 'csrf-rotated' }))
+      .mockResolvedValueOnce(res(200, { id: 'p1' }));
+
+    await apiRequest('/api/patients/p1', {}, 'stale');
+
+    const refreshHeaders = fetchMock.mock.calls[1][1]?.headers as Record<string, string>;
+    expect(refreshHeaders['X-CSRF-Token']).toBe('csrf-abc');
+
+    // Rotated alongside the refresh token, so the next refresh presents the pair matching the
+    // cookies the browser now holds.
+    fetchMock
+      .mockResolvedValueOnce(res(401, { message: 'jwt expired' }))
+      .mockResolvedValueOnce(res(200, { accessToken: 'fresher' }))
+      .mockResolvedValueOnce(res(200, { id: 'p2' }));
+
+    await apiRequest('/api/patients/p2', {}, 'stale');
+
+    const secondRefresh = fetchMock.mock.calls[4][1]?.headers as Record<string, string>;
+    expect(secondRefresh['X-CSRF-Token']).toBe('csrf-rotated');
+  });
+
+  it('still attempts the refresh when no CSRF token is known', async () => {
+    // A session that predates the guard has no token. The server decides whether to allow it —
+    // the client refusing to try would sign the user out with no chance of recovery.
+    clearCsrfToken();
+    fetchMock
+      .mockResolvedValueOnce(res(401, { message: 'jwt expired' }))
+      .mockResolvedValueOnce(res(200, { accessToken: 'fresh' }))
+      .mockResolvedValueOnce(res(200, { id: 'p1' }));
+
+    await expect(apiRequest('/api/patients/p1', {}, 'stale')).resolves.toEqual({ id: 'p1' });
+    expect(fetchMock.mock.calls[1][1]?.headers).toBeUndefined();
   });
 
   it('does not attempt a refresh for an unauthenticated request', async () => {

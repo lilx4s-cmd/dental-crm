@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { apiRequest } from '@/lib/api-client';
+import { apiRequest, clearCsrfToken, setCsrfToken } from '@/lib/api-client';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 import {
   JwtPayload,
@@ -117,16 +117,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     if (isTwoFactorChallenge(result)) return result;
+    // Paired with the httpOnly cookie the API just set; /auth/refresh needs both.
+    setCsrfToken(result.csrfToken);
     await establishSession(result.accessToken);
     return result;
   }, [establishSession]);
 
   const completeTwoFactor = useCallback(async (challengeToken: string, code: string) => {
-    const { accessToken: token } = await apiRequest<AuthTokens>('/api/auth/login/2fa', {
+    const result = await apiRequest<AuthTokens>('/api/auth/login/2fa', {
       method: 'POST',
       body: JSON.stringify({ challengeToken, code }),
     });
-    await establishSession(token);
+    setCsrfToken(result.csrfToken);
+    await establishSession(result.accessToken);
   }, [establishSession]);
 
   const logout = useCallback(async () => {
@@ -134,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setAccessToken(null);
     document.cookie = 'access_token=; path=/; max-age=0';
+    clearCsrfToken();
     router.push('/login');
   }, [accessToken, router]);
 

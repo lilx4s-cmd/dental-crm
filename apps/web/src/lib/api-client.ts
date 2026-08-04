@@ -70,14 +70,56 @@ function processQueue(token: string | null) {
   refreshQueue = [];
 }
 
+/**
+ * The CSRF token for `/auth/refresh`, kept where this app can actually read it.
+ *
+ * The API holds the matching value in an httpOnly cookie on its own domain. This app is served
+ * from a different registrable domain, so it cannot read that cookie — the token arrives in the
+ * sign-in response body instead, and lives here plus in a same-site cookie so it survives a page
+ * reload. An attacker on another origin can cause the API's cookie to be sent but cannot read this
+ * value, which is the whole mechanism.
+ */
+const CSRF_STORAGE_KEY = 'csrf_token';
+let csrfToken: string | null = null;
+
+export function setCsrfToken(token: string | undefined | null): void {
+  if (!token) return;
+  csrfToken = token;
+  if (typeof document !== 'undefined') {
+    // Strict, because this cookie is only ever read by this app on its own origin — unlike the
+    // API's refresh cookie, which has to be None to cross domains at all.
+    document.cookie = `${CSRF_STORAGE_KEY}=${token}; path=/; SameSite=Strict; max-age=${7 * 24 * 60 * 60}`;
+  }
+}
+
+export function clearCsrfToken(): void {
+  csrfToken = null;
+  if (typeof document !== 'undefined') {
+    document.cookie = `${CSRF_STORAGE_KEY}=; path=/; max-age=0`;
+  }
+}
+
+function readCsrfToken(): string | null {
+  if (csrfToken) return csrfToken;
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_STORAGE_KEY}=([^;]*)`));
+  csrfToken = match ? decodeURIComponent(match[1]) : null;
+  return csrfToken;
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   try {
+    const token = readCsrfToken();
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
+      headers: token ? { 'X-CSRF-Token': token } : undefined,
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { accessToken: string };
+    const data = (await res.json()) as { accessToken: string; csrfToken?: string };
+    // Rotated with the refresh token, so the next refresh presents the pair that matches the
+    // cookies the browser now holds.
+    setCsrfToken(data.csrfToken);
     return data.accessToken;
   } catch {
     return null;
