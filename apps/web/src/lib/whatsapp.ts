@@ -1,24 +1,23 @@
-// Shared WhatsApp deep-link helpers. Used by both the pipeline card and the
-// lead detail sheet so phone normalization and the greeting format only
-// live in one place.
+// Shared WhatsApp deep-link helpers. Used by the pipeline card, the lead detail sheet, My Day and
+// the treatment-plan tab, so phone normalisation and the greeting format live in one place.
+
+import { toE164Digits } from '@dental-crm/shared';
 
 /**
  * Normalizes a raw phone number into the digits-only format wa.me expects.
- * Most of the clinic's numbers are Turkish and stored in local format
- * (leading "0", e.g. "0555 123 45 67"), which needs Turkey's country code
- * ("90") substituted in for wa.me to resolve it. Numbers that already carry
- * a country code (start with anything other than "0" after stripping
- * formatting, e.g. "+90...", "+1...") are left as-is.
+ *
+ * Delegates to the shared country-aware normaliser. It used to assume any number with a leading
+ * zero was Turkish, which is wrong for a clinic that advertises across the Gulf: a Saudi patient's
+ * `055 512 3456` — written the way they write it at home — became `+90 555 123 456`, a real
+ * Turkish number belonging to somebody else. A trunk zero means nothing without a country, which
+ * is why `country` is now carried on the lead and passed in here.
+ *
+ * With no country, a local-format number is returned without a dialling code rather than being
+ * guessed at. `buildWhatsAppLink` refuses to build a link from that — an unopenable link is
+ * better than one that opens a chat with a stranger.
  */
-export function normalizePhoneForWhatsApp(rawPhone: string): string {
-  const digits = rawPhone.replace(/\D/g, '');
-  // "00" is the international dialling prefix, not a local trunk zero. A Gulf patient who writes
-  // their number as 00966… was previously read as a Turkish local number and turned into
-  // 900966…, which opens a chat with nobody. The CSV importer already strips it
-  // (`normalisePhone` in packages/shared/src/import/csv.ts); this path did not.
-  if (digits.startsWith('00')) return digits.slice(2);
-  if (digits.startsWith('0')) return `90${digits.slice(1)}`;
-  return digits;
+export function normalizePhoneForWhatsApp(rawPhone: string, countryCode?: string | null): string {
+  return toE164Digits(rawPhone, countryCode) ?? '';
 }
 
 /** The "Hello {name}, this is {clinic}." greeting used to prefill new WhatsApp chats. */
@@ -27,17 +26,17 @@ export function buildWhatsAppGreeting(patientName: string, clinicName: string): 
 }
 
 /**
- * Builds a wa.me deep link pre-filled with a greeting. Returns null when
- * there's no usable phone number so callers can hide/disable the button
- * instead of linking to a broken chat.
+ * Builds a wa.me deep link pre-filled with a greeting. Returns null when there's no usable phone
+ * number so callers can hide or disable the button instead of linking to a broken chat.
  */
 export function buildWhatsAppLink(
   rawPhone: string | null | undefined,
   patientName: string,
   clinicName: string,
+  countryCode?: string | null,
 ): string | null {
   if (!rawPhone) return null;
-  const phone = normalizePhoneForWhatsApp(rawPhone);
+  const phone = normalizePhoneForWhatsApp(rawPhone, countryCode);
   if (!phone) return null;
   const text = encodeURIComponent(buildWhatsAppGreeting(patientName, clinicName));
   return `https://wa.me/${phone}?text=${text}`;

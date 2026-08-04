@@ -17,6 +17,7 @@ exports.DEFAULT_DIAL_COUNTRY = exports.DIAL_COUNTRIES = void 0;
 exports.dialInfo = dialInfo;
 exports.normalisePhoneNumber = normalisePhoneNumber;
 exports.toE164Digits = toE164Digits;
+exports.phoneMatchKey = phoneMatchKey;
 /**
  * The countries this clinic actually treats patients from, most common first.
  *
@@ -102,6 +103,34 @@ function normalisePhoneNumber(raw, countryCode) {
 /** Just the dialable digits, for callers that do not need the rest. */
 function toE164Digits(raw, countryCode) {
     return normalisePhoneNumber(raw, countryCode)?.e164 ?? null;
+}
+/**
+ * How many trailing digits identify a subscriber, regardless of how the number was written.
+ *
+ * Nine covers every country in `DIAL_COUNTRIES` — the longest national number here is ten (Turkey,
+ * Egypt, Iraq, the UK, the US), so nine is the largest suffix that is present whatever prefix was
+ * or was not typed. Shorter would start colliding between real people.
+ */
+const MATCH_DIGITS = 9;
+/**
+ * A key for deciding whether two numbers are the same person.
+ *
+ * Storage cannot be relied on to be canonical, and never has been: the previous normaliser
+ * returned `905551112233` for `+90 555 111 22 33` and `05551112233` for the same phone written
+ * `0555 111 22 33`, so the duplicate check that claimed to compare like with like was comparing
+ * two different strings and finding no match. Every lead entered once with a country code and once
+ * without has been sitting in the pipeline as two deals.
+ *
+ * Comparing the trailing digits sidesteps the whole question. It is deliberately lenient: two
+ * different countries could in principle share a nine-digit tail, but a false "these might be the
+ * same person" shown to staff for review costs a glance, and a missed duplicate costs a patient
+ * being called twice by two salespeople.
+ */
+function phoneMatchKey(raw, countryCode) {
+    const digits = normalisePhoneNumber(raw, countryCode)?.e164;
+    if (!digits)
+        return null;
+    return digits.length <= MATCH_DIGITS ? digits : digits.slice(-MATCH_DIGITS);
 }
 function countryOf(e164) {
     // Longest dialling code first, so 971 is not mistaken for 9 and 962 is not mistaken for 9.

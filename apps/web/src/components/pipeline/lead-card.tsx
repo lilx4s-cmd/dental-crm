@@ -52,6 +52,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
     lead.whatsappNumber || lead.phone,
     fullName,
     clinicSettings?.clinicName ?? 'the clinic',
+    lead.country,
   );
 
   const style = {

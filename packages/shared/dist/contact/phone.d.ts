@@ -55,4 +55,19 @@ export interface NormalisedPhone {
 export declare function normalisePhoneNumber(raw: string | null | undefined, countryCode?: string | null): NormalisedPhone | null;
 /** Just the dialable digits, for callers that do not need the rest. */
 export declare function toE164Digits(raw: string | null | undefined, countryCode?: string | null): string | null;
+/**
+ * A key for deciding whether two numbers are the same person.
+ *
+ * Storage cannot be relied on to be canonical, and never has been: the previous normaliser
+ * returned `905551112233` for `+90 555 111 22 33` and `05551112233` for the same phone written
+ * `0555 111 22 33`, so the duplicate check that claimed to compare like with like was comparing
+ * two different strings and finding no match. Every lead entered once with a country code and once
+ * without has been sitting in the pipeline as two deals.
+ *
+ * Comparing the trailing digits sidesteps the whole question. It is deliberately lenient: two
+ * different countries could in principle share a nine-digit tail, but a false "these might be the
+ * same person" shown to staff for review costs a glance, and a missed duplicate costs a patient
+ * being called twice by two salespeople.
+ */
+export declare function phoneMatchKey(raw: string | null | undefined, countryCode?: string | null): string | null;
 //# sourceMappingURL=phone.d.ts.map

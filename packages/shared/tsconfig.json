@@ -4,5 +4,10 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests must never reach dist/. The API's jest resolves .js before .ts, so a compiled spec
+  // sitting next to its source is picked up in preference to the source — which is how nine
+  // modules ended up being tested against a build from 18 July. dist/ is committed and consumed
+  // by both apps; it should contain the library and nothing else.
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

@@ -19,6 +19,8 @@ export interface LeadIntakeSubmission {
   gender: string | null;
   nationality: string | null;
   countryOfResidence: string | null;
+  /** ISO 3166-1 alpha-2. Needed to read a local-format phone number — see lib/whatsapp.ts. */
+  country: string | null;
   preferredLanguage: string | null;
   treatmentInterest: string[];
   chiefComplaint: string | null;

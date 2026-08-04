@@ -33,7 +33,7 @@ function WorkRow({
   const draft = useDraftWhatsAppMessage();
   const [drafting, setDrafting] = useState(false);
 
-  const phone = normalizePhoneForWhatsApp(lead.whatsappNumber || lead.phone || '');
+  const phone = normalizePhoneForWhatsApp(lead.whatsappNumber || lead.phone || '', lead.country);
 
   // The rules decide who needs a message; the model only writes it. Sending the recycle angle as
   // context matters — "just following up" three months later reads as a form letter.

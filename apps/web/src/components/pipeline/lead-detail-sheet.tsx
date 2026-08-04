@@ -162,6 +162,8 @@ export function LeadDetailSheet({
     lead?.whatsappNumber || lead?.phone,
     `${lead?.firstName ?? ''} ${lead?.lastName ?? ''}`.trim(),
     clinicSettings?.clinicName ?? 'the clinic',
+    // Without this a local-format Gulf number opens a chat with a Turkish stranger.
+    lead?.country,
   );
 
   /**

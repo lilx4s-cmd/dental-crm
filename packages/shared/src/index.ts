@@ -21,6 +21,7 @@ export * from './schemas/lead.schema';
 export * from './schemas/lead-import.schema';
 export * from './schemas/intake.schema';
 export * from './import/csv';
+export * from './contact/phone';
 export * from './types/user.types';
 export * from './types/api-response.types';
 export * from './types/pagination.types';
