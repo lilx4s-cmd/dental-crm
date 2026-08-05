@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
 import { VirtualCardList } from '@/components/pipeline/virtual-card-list';
+import { BulkActionBar } from '@/components/pipeline/bulk-action-bar';
+import { useBoardSelection, type BoardSelection } from '@/components/pipeline/use-board-selection';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
 import { ImportLeadsDialog } from '@/components/pipeline/import-leads-dialog';
 import { DuplicatesDialog } from '@/components/pipeline/duplicates-dialog';
@@ -63,12 +65,14 @@ function DroppableColumn({
   stage,
   leads,
   activeId,
+  selection,
   onLeadClick,
 }: {
   stage: (typeof STAGES)[0];
   leads: Lead[];
   /** Threaded down so the dragged card is never recycled out of the DOM mid-drag. */
   activeId: string | null;
+  selection: BoardSelection;
   onLeadClick: (lead: Lead) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -119,7 +123,12 @@ function DroppableColumn({
           isOver && 'bg-bx-link/5 ring-1 ring-inset ring-bx-link/30',
         )}
       >
-        <VirtualCardList leads={leads} activeId={activeId} onLeadClick={onLeadClick} />
+        <VirtualCardList
+          leads={leads}
+          activeId={activeId}
+          selection={selection}
+          onLeadClick={onLeadClick}
+        />
       </div>
     </div>
   );
@@ -144,12 +153,32 @@ export default function PipelinePage() {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
+  const selection = useBoardSelection();
 
   useEffect(() => {
     if (groups) setLocalGroups(groups);
   }, [groups]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Escape clears, Ctrl/Cmd+A selects the board. Both are what these keys already do everywhere
+  // else, so nothing here has to be learned. Ignored while focus is in a field, or the filter bar
+  // would lose its own select-all.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = !!target?.closest('input, textarea, [contenteditable="true"]');
+      if (typing) return;
+
+      if (e.key === 'Escape') selection.clear();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selection.selectAll(localGroups.flatMap((g) => g.leads as Lead[]));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selection, localGroups]);
 
   const allLeads = localGroups.flatMap((g) => g.leads as Lead[]);
   const boardTotals = columnTotals(allLeads);
@@ -296,6 +325,7 @@ export default function PipelinePage() {
                   stage={stage}
                   leads={(group?.leads as Lead[]) ?? []}
                   activeId={activeLead?.id ?? null}
+                  selection={selection}
                   onLeadClick={setDetailLead}
                 />
               );
@@ -321,6 +351,15 @@ export default function PipelinePage() {
           if (lead) await commitMove(lead, 'LOST', { lostReason: reason, note });
         }}
       />
+      <BulkActionBar
+        selectedLeads={selection.resolve(allLeads)}
+        onClear={selection.clear}
+        // Clears afterwards on purpose: the deals have moved owner, so the set on screen is no
+        // longer the set that was chosen, and leaving it selected invites a second action on a
+        // stale idea of what is highlighted.
+        onDone={selection.clear}
+      />
+
       <LeadDetailSheet
         lead={detailLead}
         open={!!detailLead}

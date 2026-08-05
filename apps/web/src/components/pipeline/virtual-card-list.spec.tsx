@@ -59,11 +59,27 @@ function leadsFixture(count: number): Lead[] {
   })) as unknown as Lead[];
 }
 
+/** Nothing selected. These tests are about how many cards mount, not about selection. */
+const noSelection = {
+  selected: new Set<string>(),
+  count: 0,
+  isSelected: () => false,
+  handleCardClick: () => false,
+  selectAll: () => undefined,
+  clear: () => undefined,
+  resolve: () => [],
+};
+
 /** dnd-kit's sortable hooks need a DndContext above them. */
 function renderList(leads: Lead[], activeId: string | null = null) {
   return render(
     <DndContext>
-      <VirtualCardList leads={leads} activeId={activeId} onLeadClick={() => undefined} />
+      <VirtualCardList
+        leads={leads}
+        activeId={activeId}
+        selection={noSelection}
+        onLeadClick={() => undefined}
+      />
     </DndContext>,
   );
 }

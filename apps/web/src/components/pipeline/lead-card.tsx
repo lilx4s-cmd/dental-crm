@@ -38,7 +38,17 @@ function daysSince(iso: string): number {
  * then the quiet contact lines. The order is the point — on a fourteen-column board the two things
  * anyone scans for are who it is and what it is worth, so nothing sits between them.
  */
-export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
+export function LeadCard({
+  lead,
+  onClick,
+}: {
+  lead: Lead;
+  /**
+   * Receives the event so the caller can read Ctrl/Cmd and Shift. The board uses those to select
+   * rather than open, and the modifier state is only available here.
+   */
+  onClick: (event: React.MouseEvent) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id });
   const updateTask = useUpdateLeadTask();
   // Tasks arrive soonest-due first, so the first open one is the next thing to do.
@@ -70,7 +80,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
         )}
         onClick={(e) => {
           e.stopPropagation();
-          onClick();
+          onClick(e);
         }}
       >
         <div className="flex items-start justify-between gap-1.5">

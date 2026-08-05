@@ -5,7 +5,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 import { LeadCard } from './lead-card';
+import type { BoardSelection } from './use-board-selection';
 import type { Lead } from '@/hooks/use-leads';
+import { cn } from '@/lib/utils';
 
 /**
  * A pipeline column's cards, rendering only the ones on screen.
@@ -32,11 +34,13 @@ import type { Lead } from '@/hooks/use-leads';
 export function VirtualCardList({
   leads,
   activeId,
+  selection,
   onLeadClick,
 }: {
   leads: Lead[];
   /** The card currently being dragged, if any. Kept mounted regardless of scroll position. */
   activeId: string | null;
+  selection: BoardSelection;
   onLeadClick: (lead: Lead) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -77,8 +81,24 @@ export function VirtualCardList({
               {/* The gap the old `space-y-1.5` provided. Inside the measured element so the
                   virtualizer accounts for it — spacing applied outside would make every row
                   report 6px short and the scrollbar drift by a whole screen over 811 cards. */}
-              <div className="pb-1.5">
-                <LeadCard lead={leads[item.index]} onClick={() => onLeadClick(leads[item.index])} />
+              <div
+                className={cn(
+                  'rounded-[3px] pb-1.5',
+                  // A ring rather than a background: the card's own colour carries meaning
+                  // (stage, staleness) that a selection tint would sit on top of and confuse.
+                  selection.isSelected(leads[item.index].id) &&
+                    'ring-2 ring-inset ring-bx-link ring-offset-0',
+                )}
+              >
+                <LeadCard
+                  lead={leads[item.index]}
+                  onClick={(event) => {
+                    // Ctrl/Cmd and Shift are selection gestures; a plain click still opens the
+                    // deal, which is what the card has always done.
+                    if (selection.handleCardClick(leads[item.index], leads, event)) return;
+                    onLeadClick(leads[item.index]);
+                  }}
+                />
               </div>
             </div>
           ))}
