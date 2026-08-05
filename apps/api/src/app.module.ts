@@ -33,6 +33,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { CacheControlInterceptor } from './common/interceptors/cache-control.interceptor';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { MailModule } from './mail/mail.module';
+import { SearchModule } from './search/search.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -66,6 +67,7 @@ import { HealthController } from './health/health.controller';
     IntakeModule,
     AiModule,
     MailModule,
+    SearchModule,
   ],
   controllers: [HealthController],
   providers: [

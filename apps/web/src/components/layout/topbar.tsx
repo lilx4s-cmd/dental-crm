@@ -1,7 +1,8 @@
 'use client';
 
-import { LogOut, User } from 'lucide-react';
+import { LogOut, Search, User } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
+import { CommandPalette } from './command-palette';
 import { ThemeToggle } from './theme-toggle';
 import { Button } from '@/components/ui/button';
 
@@ -18,7 +19,23 @@ export function Topbar() {
 
   return (
     <header className="flex items-center justify-between h-16 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div />
+      {/* A visible trigger as well as the shortcut. A keyboard-only feature is one most of the
+          clinic never discovers, and the people who most need to find a patient quickly are the
+          least likely to have read about Cmd+K. */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+        className="hidden items-center gap-2 rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:flex"
+      >
+        <Search className="h-4 w-4" />
+        <span>Search…</span>
+        <kbd className="ml-2 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+          {'⌘'}K
+        </kbd>
+      </button>
+      <div className="sm:hidden" />
+
+      <CommandPalette />
       <div className="flex items-center gap-3">
         <ThemeToggle />
         {user && (
