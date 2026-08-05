@@ -94,11 +94,15 @@ been written. Medical-tourism patients fly in for these appointments; a missed o
 flight and often a lost case. Delivery over WhatsApp (already built, three transports) and email
 (C-1), with SMS once you answer question 3.
 
-### B3 · Meta Lead Ads · ~0.5 week
+### B3 · ~~Meta Lead Ads~~ · **DONE 2026-08-04**
 
-The webhook receives `leadgen_id` and never calls the Graph API to fetch it, so **every paid lead
-currently arrives as "Unknown"**. Small fix, immediate revenue impact — you are paying for traffic
-that lands unusable.
+Shipped. And the description here was wrong: leads did not "arrive as Unknown" — they did not
+arrive at all. The handler read `entry.leadgen_id` off the entry, where Meta does not put it, so
+every delivery was skipped silently. Verified against production: zero leads carried a leadgen_id.
+
+**Still inert until you set `FACEBOOK_PAGE_ACCESS_TOKEN` on Render.** Without it a lead lands on
+the board as a placeholder carrying the identifiers to look it up in Meta by hand — deliberate, and
+better than the silent drop, but not the point.
 
 ### B4 · Reporting suite · ~3 weeks
 
@@ -113,7 +117,10 @@ A bell and an unread count, so B2 has somewhere to land in-app rather than only 
 
 ## Recommended order
 
-1. **You:** answer questions 1–5, run the C-4 restore drill, set `ENCRYPTION_KEY` and SMTP.
-2. **Me:** B1 → B3 (half a week, immediate revenue) → B2 → B4 → B5.
+1. **You:** answer questions 1–3 and 5, run the backup restore drill, and set the four
+   environment variables — `ENCRYPTION_KEY`, SMTP, `FACEBOOK_PAGE_ACCESS_TOKEN`, plus the eighth
+   staff password. Until those exist, 2FA, password reset and Meta lead capture are all built and
+   doing nothing.
+2. **Me:** B1 → B2 → B4 → B5.
 
-B3 before B2 because it is smaller and the money is already being spent.
+Also open and gating anything with a new table: **one clinic, or a SaaS you sell?**
