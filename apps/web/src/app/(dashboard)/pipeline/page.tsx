@@ -11,12 +11,12 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { Link2, Merge, Plus, Upload, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
+import { VirtualCardList } from '@/components/pipeline/virtual-card-list';
 import { NewLeadDialog } from '@/components/pipeline/new-lead-dialog';
 import { ImportLeadsDialog } from '@/components/pipeline/import-leads-dialog';
 import { DuplicatesDialog } from '@/components/pipeline/duplicates-dialog';
@@ -62,10 +62,13 @@ function totalsLabel(totals: Array<[string, number]>): string {
 function DroppableColumn({
   stage,
   leads,
+  activeId,
   onLeadClick,
 }: {
   stage: (typeof STAGES)[0];
   leads: Lead[];
+  /** Threaded down so the dragged card is never recycled out of the DOM mid-drag. */
+  activeId: string | null;
   onLeadClick: (lead: Lead) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -104,23 +107,19 @@ function DroppableColumn({
         </div>
       </div>
 
+      {/* The droppable and the scroll container are deliberately separate elements now. They used
+          to be one, which cannot work with virtualization: the virtualizer needs to own the
+          scrolling element to read its height and scroll offset, and dnd-kit needs a stable node
+          for the drop target. Nesting them keeps the whole column area droppable — including the
+          empty space below the last card, which is where people actually aim. */}
       <div
         ref={setNodeRef}
         className={cn(
-          'mt-1.5 min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-[3px] p-1 transition-colors',
+          'mt-1.5 min-h-0 flex-1 overflow-hidden rounded-[3px] transition-colors',
           isOver && 'bg-bx-link/5 ring-1 ring-inset ring-bx-link/30',
         )}
       >
-        <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-          {leads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} onClick={() => onLeadClick(lead)} />
-          ))}
-        </SortableContext>
-        {leads.length === 0 && (
-          <div className="rounded-[3px] border border-dashed border-bx-line px-2 py-6 text-center text-[11px] text-bx-muted">
-            Drag deals here
-          </div>
-        )}
+        <VirtualCardList leads={leads} activeId={activeId} onLeadClick={onLeadClick} />
       </div>
     </div>
   );
@@ -296,6 +295,7 @@ export default function PipelinePage() {
                   key={stage.id}
                   stage={stage}
                   leads={(group?.leads as Lead[]) ?? []}
+                  activeId={activeLead?.id ?? null}
                   onLeadClick={setDetailLead}
                 />
               );
