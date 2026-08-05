@@ -36,6 +36,20 @@ import { DentalChartPdf } from './dental-chart-pdf';
 const ARABIC_FONT = 'Amiri';
 let arabicFontReady = false;
 
+/**
+ * Arabic dossiers are off.
+ *
+ * The font, the language plumbing and the translated headings all work — but the *mirroring* does
+ * not: `directionStyles` is written and tested and applied to none of the nine pages. So a plan
+ * marked `ar` would render Arabic glyphs in a left-to-right layout with English headings, which is
+ * worse than English throughout, because it looks finished.
+ *
+ * A patient-facing document is the wrong place to ship something half-turned. Flip this to true in
+ * the same change that mirrors the pages, not before — and re-run scripts/verify-arabic-pdf.ts,
+ * whose mirroring check is deliberately failing until then.
+ */
+const ARABIC_DOSSIER_ENABLED = false;
+
 function ensureArabicFont(): boolean {
   if (arabicFontReady) return true;
   try {
@@ -455,7 +469,9 @@ function CoverHeadlines(plan: PlanDocumentInput) {
  * The verification script caught this — nothing threw, and the font simply was not there.
  */
 function pageStyle(plan: PlanDocumentInput, base: Style = s.page): Style | Style[] {
-  return isRightToLeft(plan.language) && arabicFontReady ? [base, { fontFamily: ARABIC_FONT }] : base;
+  return ARABIC_DOSSIER_ENABLED && isRightToLeft(plan.language) && arabicFontReady
+    ? [base, { fontFamily: ARABIC_FONT }]
+    : base;
 }
 
 function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
@@ -1087,7 +1103,7 @@ export function TreatmentPlanDocument(
   // fail (a missing or unreadable file). A dossier in the wrong font is legible; one that failed
   // to render is not — so a failure falls back to English rather than throwing.
   // Must run before any page is constructed — pageStyle() reads whether registration succeeded.
-  if (isRightToLeft(plan.language)) ensureArabicFont();
+  if (ARABIC_DOSSIER_ENABLED && isRightToLeft(plan.language)) ensureArabicFont();
 
   const pages: React.ReactElement[] = [CoverPage(plan, branding), PatientPage(plan, branding)];
   if ((plan.diagnoses ?? []).length > 0) pages.push(DiagnosesPage(plan, branding));

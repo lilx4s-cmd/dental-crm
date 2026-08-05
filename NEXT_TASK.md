@@ -49,7 +49,22 @@ say, and whether a patient can demand erasure of a clinical record.
 **I also need the clinic's actual consent text.** I will not draft medico-legal wording; that has
 to come from you or your lawyer.
 
-### 6 · Arabic dossier — still waiting on you
+### 6 · Arabic dossier — ~~waiting on you~~ **PAUSED at your request, 2026-08-04**
+
+English only for now. The work already committed is **gated off**:
+`ARABIC_DOSSIER_ENABLED = false` in `treatment-plan-document.ts`, so a plan marked `ar` renders as
+English rather than as a half-turned document.
+
+That gate matters. Without it the committed foundation is a trap — Arabic glyphs in a
+left-to-right layout with English headings, which looks finished and is not. Nothing in the UI can
+set a plan to Arabic today; the API accepts it, which is why the gate is in the renderer rather
+than in a form.
+
+To resume: mirror the nine pages using `directionStyles`, flip the flag in the *same* change, and
+run `scripts/verify-arabic-pdf.ts` — its checks are deliberately failing until then. ~3 days, plus
+your review of the clinical copy before any of it reaches a patient.
+
+<details><summary>Original note</summary>
 
 `H:\dental-crm\arabic-spike.pdf`. I need you to open it and confirm the letters join correctly and
 the layout reads right-to-left properly. I have no renderer and cannot see it. The clinical

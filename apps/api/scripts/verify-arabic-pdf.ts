@@ -16,6 +16,11 @@
  *     stylesheet and then discarded (it maps to `processNoopValue`), so mirroring is done by hand
  *     and is exactly the thing that can regress unnoticed.
  *
+ * **Currently expected to fail.** `ARABIC_DOSSIER_ENABLED` is false in
+ * treatment-plan-document.ts, so an Arabic plan deliberately renders as English — the mirroring is
+ * not done, and a half-turned document is worse than an English one because it looks finished.
+ * Flip that flag in the same change that mirrors the pages, then run this and expect it to pass.
+ *
  * Run: npx ts-node scripts/verify-arabic-pdf.ts
  */
 import { renderToBuffer } from '@react-pdf/renderer';
@@ -74,6 +79,7 @@ async function main() {
 
   const ar = arabic.toString('latin1');
   const checks: Array<[string, boolean]> = [
+    // Both of these fail while ARABIC_DOSSIER_ENABLED is false, which is the correct state today.
     ['Arabic font embedded', ar.includes('Amiri')],
     ['Arabic document differs from the English one', arabic.length !== english.length],
     ['English document does not carry the Arabic font', !english.toString('latin1').includes('Amiri')],
