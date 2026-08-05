@@ -151,7 +151,7 @@ the right shape.
 
 | # | Gap | Days | Why first |
 |---|---|---:|---|
-| 1 | **Meta Lead Ads Graph fetch** | 3 | Every paid lead arrives as "Unknown". You are already paying for this traffic |
+| 1 | ~~**Meta Lead Ads Graph fetch**~~ **DONE** | 3 | Not "arrives as Unknown" — arrived as *nothing*. The webhook shape was misread, so every delivery was skipped silently |
 | 2 | **Appointment reminders** | 8 | Patients fly in. A missed appointment is a wasted flight |
 | 3 | **Global search** | 7 | Largest daily friction at 1,005 leads |
 | 4 | **Kanban virtualization** | 5 | The daily screen degrades as you grow |

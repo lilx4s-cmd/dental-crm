@@ -14,6 +14,13 @@ const envSchema = z.object({
   // which is sound, but couples two unrelated rotations. Rotating the signing secret would then
   // make every enrolled authenticator undecryptable, and every user would need a recovery code.
   ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters').optional(),
+  // Meta Lead Ads. The webhook carries only an identifier — the name, phone and email must be
+  // fetched from the Graph API with a page token. Without it a lead still lands on the board, but
+  // with no contact details and a note saying why.
+  FACEBOOK_APP_SECRET: z.string().optional(),
+  FACEBOOK_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  FACEBOOK_PAGE_ACCESS_TOKEN: z.string().optional(),
+  FACEBOOK_GRAPH_API_VERSION: z.string().optional(),
   // File storage (uploads, PDFs) via Supabase. Optional at boot so a missing bucket doesn't take
   // down the entire API — only the files/pdf endpoints that need it fail, per request.
   //

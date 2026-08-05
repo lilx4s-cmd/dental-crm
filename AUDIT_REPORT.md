@@ -202,8 +202,15 @@ but never *how well anyone did*, which is what a manager opens it for.
 **Purpose:** Ad campaign tracking.
 **Strengths:** Platform, budget, date range, lead counts.
 **Weaknesses:** Thin. No cost-per-lead, no cost-per-sale, no ROI — the three numbers the page
-exists to produce. **Meta Lead Ads receives `leadgen_id` and never calls the Graph API**, so every
-paid lead arrives as "Unknown": you are paying for traffic that lands unusable.
+exists to produce.
+
+**Correction (2026-08-04, after building the fix):** this report first said paid leads "arrive as
+Unknown". They did not arrive at all. The handler read `entry.leadgen_id` and `entry.field_data`
+straight off the entry; Meta nests the identifier under `entry.changes[].value` and never sends
+`field_data` in a webhook at all. So the guard `if (!entry.leadgen_id) continue` skipped every
+delivery and the integration silently created nothing. Verified against production: **zero leads
+carry a leadgen_id and none is named "Unknown"** — the 5 FACEBOOK_ADS leads on file came from the
+Bitrix migration. Fixed in this release.
 **Priority:** **Critical** (the Graph fetch is half a week) · **Complexity:** 6 · **Score: 3/10**
 
 ### 14 · `/intake` (public)
