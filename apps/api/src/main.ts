@@ -26,7 +26,16 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const corsOrigins = config.get<string[]>('cors.origin') ?? ['http://localhost:3000'];
-  app.enableCors({ origin: corsOrigins, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] });
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // The web app and the API are on different origins, so by default JavaScript in the browser
+    // can read only a handful of response headers — everything else is stripped before it reaches
+    // fetch(), silently and with no error. The CSV export needs both of these: the filename it
+    // should save under, and the row count it actually received.
+    exposedHeaders: ['Content-Disposition', 'X-Export-Count'],
+  });
 
   app.use(
     rateLimit({

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DuplicateGroup, MergeDuplicatesResult, TaskDueFilter } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
-import { apiRequest } from '@/lib/api-client';
+import { apiRequest, apiRequestDownload, saveBlob } from '@/lib/api-client';
 
 export interface LeadTask {
   id: string;
@@ -464,6 +464,93 @@ export function useDeleteLeadTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-tasks'] });
+    },
+  });
+}
+
+// ─────────────────────────── BULK ACTIONS ───────────────────────────
+// Everything the board's selection toolbar can do. Each takes explicit ids, never a filter — see
+// BulkLeadIdsDto on the API side for why.
+//
+// All four invalidate ['leads'] because every one of them can change what the board shows:
+// archiving removes cards, a note changes the last-activity line, and a delete removes the row.
+
+export interface BulkResult {
+  /** How many ids the request carried. Compare with the acted-on count to spot a scoped-away id. */
+  requested: number;
+}
+
+export function useBulkArchiveLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<
+    BulkResult & { archived: boolean; changed: number },
+    Error,
+    { leadIds: string[]; archived?: boolean }
+  >({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/bulk/archive', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['sales-activity'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useBulkNoteLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<BulkResult & { noted: number }, Error, { leadIds: string[]; note: string }>({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/bulk/note', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-activities'] });
+      qc.invalidateQueries({ queryKey: ['sales-activity'] });
+    },
+  });
+}
+
+export function useBulkDeleteLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<BulkResult & { deleted: number }, Error, { leadIds: string[] }>({
+    mutationFn: ({ leadIds }) =>
+      apiRequest(
+        '/api/leads/bulk',
+        // `confirm` is set here rather than left to each call site: the flag exists so a malformed
+        // or replayed request cannot delete by omission, and that guarantee is worth nothing if
+        // half the callers forget it.
+        { method: 'DELETE', body: JSON.stringify({ leadIds, confirm: true }) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['sales-activity'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+/**
+ * Downloads the selection as a CSV.
+ *
+ * A mutation rather than a query: it is a POST that changes nothing here but writes an audit row
+ * there, and caching a download by its selection would mean the second export of a changed
+ * pipeline silently returns the first one.
+ */
+export function useExportLeads() {
+  const { accessToken } = useAuth();
+  return useMutation<{ count: number | null }, Error, { leadIds: string[] }>({
+    mutationFn: async (payload) => {
+      const { blob, filename, count } = await apiRequestDownload(
+        '/api/leads/bulk/export',
+        { method: 'POST', body: JSON.stringify(payload) },
+        accessToken ?? undefined,
+      );
+      saveBlob(blob, filename ?? 'deals.csv');
+      return { count };
     },
   });
 }

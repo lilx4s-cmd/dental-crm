@@ -55,6 +55,19 @@ export const AUDIT_RULES: readonly AuditRule[] = [
     action: 'UPDATE',
   },
   { path: /^leads\/duplicates\/merge$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
+  /**
+   * Bulk actions carry no `:id` — the ids are in the body, which the interceptor already records
+   * as `newValues`. So the row names the act and the selection, which is the question anyone
+   * actually asks of a bulk edit: not "what happened to this deal" but "who archived forty".
+   *
+   * The export rule is the one entry here that exists for a legal reason rather than an
+   * operational one. Downloading names, phone numbers and countries is a disclosure of personal
+   * data under KVKK and GDPR, and both expect the clinic to be able to say who took a copy and
+   * when. EXPORT is a distinct action for exactly that, and was unused until now.
+   */
+  { path: /^leads\/bulk\/export$/, methods: ['POST'], entityType: 'Lead', action: 'EXPORT' },
+  { path: /^leads\/bulk\/(archive|note)$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
+  { path: /^leads\/bulk$/, methods: ['DELETE'], entityType: 'Lead', action: 'DELETE' },
   // A conversion is the moment a lead becomes a patient record — the most consequential single
   // write in the pipeline, and not a creation of the lead it names.
   { path: /^leads\/[^/]+\/convert$/, methods: ['POST'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },

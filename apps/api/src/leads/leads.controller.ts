@@ -1,6 +1,7 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Query,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -16,6 +17,8 @@ import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
 import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
+import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto } from './dto/bulk.dto';
+import { exportFilename } from './lead-csv';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
 const WRITE_ROLES = [...PIPELINE_ROLES, Role.RECEPTION];
@@ -101,6 +104,71 @@ export class LeadsController {
   @ApiOperation({ summary: 'Create many leads from a parsed CSV, skipping ones already on file' })
   importLeads(@Body() dto: ImportLeadsDto, @CurrentUser() user: JwtPayload) {
     return this.leadsService.importLeads(dto, user);
+  }
+
+  /**
+   * Bulk actions on a board selection. All declared before ':id'.
+   *
+   * Grouped under `/bulk` rather than overloaded onto the single-deal routes so the audit registry
+   * can label them for what they are — a bulk archive is not a creation, and an export is not an
+   * update. Each takes explicit ids and none takes a filter; see BulkLeadIdsDto for why.
+   */
+  @Post('bulk/archive')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'Archive or restore many deals at once' })
+  bulkArchive(@Body() dto: BulkArchiveDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.bulkArchive(dto, user);
+  }
+
+  // Reception included: writing a note is the least consequential thing anyone can do to a deal,
+  // and they take the calls that produce them.
+  @Post('bulk/note')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Add the same note to the history of many deals' })
+  bulkNote(@Body() dto: BulkNoteDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.bulkNote(dto, user);
+  }
+
+  /**
+   * Exports the selection as CSV.
+   *
+   * POST for a read, deliberately: a selection can be hundreds of ids, which does not survive a
+   * query string, and putting patient identifiers in a URL writes them into every access log and
+   * proxy cache between here and the browser.
+   */
+  @Post('bulk/export')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'Export the selected deals as CSV' })
+  async bulkExport(
+    @Body() dto: BulkLeadIdsDto,
+    @CurrentUser() user: JwtPayload,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { csv, count } = await this.leadsService.bulkExport(dto, user);
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${exportFilename('deals', new Date())}"`,
+      // The count cannot travel in the body — the body is a CSV — so it goes in a header the UI
+      // reads to report how many rows it actually got. That is how an id scoped away becomes
+      // visible rather than silently missing from a spreadsheet.
+      'X-Export-Count': String(count),
+      // Personal data. Nothing between here and the browser should keep a copy.
+      'Cache-Control': 'no-store',
+    });
+    return csv;
+  }
+
+  /**
+   * Permanent deletion. Super Admin only.
+   *
+   * DELETE with a body rather than a query string, for the same reason as export. Nest and Express
+   * both handle it; HTTP permits it and only leaves the semantics undefined.
+   */
+  @Delete('bulk')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Permanently delete the selected deals' })
+  bulkDelete(@Body() dto: BulkDeleteDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.bulkDelete(dto, user);
   }
 
   @Post()

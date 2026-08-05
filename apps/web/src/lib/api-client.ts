@@ -134,8 +134,23 @@ async function refreshAccessToken(): Promise<string | null> {
  * refreshes — which reads as "the PDF is broken" rather than "you need a new token".
  */
 export async function apiRequestBlob(path: string, accessToken?: string): Promise<Blob> {
+  return (await sendWithRefresh(path, {}, accessToken)).blob();
+}
+
+/** Shared by both download helpers: one request, one retry after a token refresh, then unwrap. */
+async function sendWithRefresh(
+  path: string,
+  init: RequestInit,
+  accessToken?: string,
+): Promise<Response> {
   const request = (token?: string) =>
-    send(path, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    send(path, {
+      ...init,
+      headers: {
+        ...(init.headers as Record<string, string>),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
 
   let res = await request(accessToken);
 
@@ -147,7 +162,55 @@ export async function apiRequestBlob(path: string, accessToken?: string): Promis
 
   if (!res.ok) throw await toApiError(res, path);
 
-  return res.blob();
+  return res;
+}
+
+/**
+ * A download produced by a request with a body — the CSV export, which POSTs a selection.
+ *
+ * Returns the server's filename and its row count alongside the file. Both arrive in headers,
+ * which the browser only exposes cross-origin because the API lists them in `exposedHeaders`; the
+ * count is how the UI can say "40 of the 45 you selected" rather than handing over a spreadsheet
+ * that is quietly short because five deals belonged to somebody else.
+ */
+export async function apiRequestDownload(
+  path: string,
+  init: RequestInit,
+  accessToken?: string,
+): Promise<{ blob: Blob; filename: string | null; count: number | null }> {
+  const res = await sendWithRefresh(
+    path,
+    { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers as Record<string, string>) } },
+    accessToken,
+  );
+
+  const disposition = res.headers.get('Content-Disposition');
+  const countHeader = res.headers.get('X-Export-Count');
+
+  return {
+    blob: await res.blob(),
+    filename: disposition?.match(/filename="([^"]+)"/)?.[1] ?? null,
+    count: countHeader === null ? null : Number(countHeader),
+  };
+}
+
+/**
+ * Hands a blob to the browser as a file.
+ *
+ * The object URL is revoked on the next tick rather than immediately: revoking it in the same
+ * synchronous block as the click races the download in Safari and Firefox, which read the URL
+ * asynchronously and get nothing. Not revoking it at all leaks the whole file for the life of the
+ * tab, and someone exporting a thousand deals repeatedly will notice.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export async function apiRequest<T>(

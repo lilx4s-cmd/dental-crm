@@ -9,6 +9,8 @@ import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
+import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto } from './dto/bulk.dto';
+import { toCsv } from './lead-csv';
 import {
   PipelineStage,
   Role,
@@ -652,12 +654,7 @@ export class LeadsService {
   async updateStage(id: string, dto: UpdateLeadStageDto, currentUser: JwtPayload) {
     const lead = await this.findOne(id, currentUser);
 
-    const newStatus =
-      dto.stage === PipelineStage.DONE
-        ? $Enums.LeadStatus.WON
-        : dto.stage === PipelineStage.LOST
-          ? $Enums.LeadStatus.LOST
-          : $Enums.LeadStatus.ACTIVE;
+    const newStatus = statusForStage(dto.stage as $Enums.PipelineStage);
 
     // Lost reason only ever applies while a lead is actually in the LOST stage:
     // persist it when moving in (falling back to whatever was already there, so
@@ -1133,4 +1130,239 @@ export class LeadsService {
     await this.prisma.leadTask.delete({ where: { id: taskId } });
     return { success: true };
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // Bulk actions on a board selection.
+  //
+  // All four share one rule, enforced in `resolveSelection` rather than in each method: the ids
+  // arrive from a client and are treated as a request, not as permission. A sales consultant who
+  // edits the request body still only reaches their own deals, because the selection is re-read
+  // through the same scope every other pipeline query uses. Ids the caller cannot act on are
+  // dropped silently rather than raising — telling someone *which* of their guessed ids was real
+  // answers the question they were asking.
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The subset of `leadIds` this caller may act on, with the fields every bulk action needs.
+   *
+   * Merged duplicates are excluded. They are off every board, so an id referring to one came from
+   * somewhere other than a selection, and folding a merged row back into a bulk edit would
+   * resurrect the duplicate its merge was meant to retire.
+   */
+  private async resolveSelection(leadIds: string[], currentUser: JwtPayload) {
+    const unique = [...new Set(leadIds)];
+    return this.prisma.lead.findMany({
+      where: {
+        id: { in: unique },
+        mergedIntoId: null,
+        ...(this.canSeeAll(currentUser) ? {} : { assignedToId: currentUser.sub }),
+      },
+      select: { id: true, stage: true, status: true },
+    });
+  }
+
+  /**
+   * Archive or restore a selection.
+   *
+   * Archiving sets `status` to ARCHIVED, which is what takes a deal off the board — the default
+   * where-clause filters to ACTIVE. Restoring cannot simply write ACTIVE back, because `status`
+   * carries the outcome as well as the visibility: a won deal that was archived at the end of the
+   * season would come back as an open one, quietly removing it from every conversion figure. So a
+   * restore re-derives the outcome from the stage, the same rule `updateStage` applies.
+   */
+  async bulkArchive(dto: BulkArchiveDto, currentUser: JwtPayload) {
+    const archiving = dto.archived !== false;
+    const leads = await this.resolveSelection(dto.leadIds, currentUser);
+    // Deals already in the requested state are skipped, so repeating the action does not fill the
+    // history with entries recording that nothing happened.
+    const changing = leads.filter((l) =>
+      archiving ? l.status !== $Enums.LeadStatus.ARCHIVED : l.status === $Enums.LeadStatus.ARCHIVED,
+    );
+    if (changing.length === 0) {
+      return { archived: archiving, changed: 0, requested: dto.leadIds.length };
+    }
+
+    const note = archiving ? 'Archived' : 'Restored from the archive';
+
+    // Archiving is one statement; restoring is one per outcome, because the status each deal
+    // returns to depends on where it sits. Empty groups are dropped rather than issued as
+    // updateMany calls that match nothing.
+    const restores = [$Enums.LeadStatus.WON, $Enums.LeadStatus.LOST, $Enums.LeadStatus.ACTIVE]
+      .map((status) => ({
+        status,
+        ids: changing.filter((l) => statusForStage(l.stage) === status).map((l) => l.id),
+      }))
+      .filter((group) => group.ids.length > 0)
+      .map((group) =>
+        this.prisma.lead.updateMany({ where: { id: { in: group.ids } }, data: { status: group.status } }),
+      );
+
+    await this.prisma.$transaction([
+      ...(archiving
+        ? [
+            this.prisma.lead.updateMany({
+              where: { id: { in: changing.map((l) => l.id) } },
+              data: { status: $Enums.LeadStatus.ARCHIVED },
+            }),
+          ]
+        : restores),
+      this.prisma.leadActivity.createMany({
+        data: changing.map((l) => ({
+          leadId: l.id,
+          userId: currentUser.sub,
+          fromStage: l.stage,
+          toStage: l.stage,
+          note,
+        })),
+      }),
+    ]);
+
+    return { archived: archiving, changed: changing.length, requested: dto.leadIds.length };
+  }
+
+  /**
+   * Write the same note against every deal in a selection.
+   *
+   * Stored as a LeadActivity rather than appended to `Lead.notes`: the note is something a person
+   * did at a time, and the history is where anyone looks for that. Appending to the free-text field
+   * would also mean forty read-modify-writes racing each other against whatever someone is typing.
+   *
+   * `fromStage` and `toStage` are set to the deal's current stage, matching the reassignment
+   * entries — the columns are non-null on a stage change and meaningless otherwise, and leaving
+   * them null makes the row read as a stage change to nowhere in the activity feed.
+   */
+  async bulkNote(dto: BulkNoteDto, currentUser: JwtPayload) {
+    const note = dto.note.trim();
+    if (!note) throw new BadRequestException('Write something before adding it to the deals.');
+
+    const leads = await this.resolveSelection(dto.leadIds, currentUser);
+    if (leads.length === 0) return { noted: 0, requested: dto.leadIds.length };
+
+    await this.prisma.leadActivity.createMany({
+      data: leads.map((l) => ({
+        leadId: l.id,
+        userId: currentUser.sub,
+        fromStage: l.stage,
+        toStage: l.stage,
+        note,
+      })),
+    });
+
+    return { noted: leads.length, requested: dto.leadIds.length };
+  }
+
+  /**
+   * A selection as a spreadsheet.
+   *
+   * Built here rather than in the browser for two reasons. The board holds a trimmed projection of
+   * each deal, so a client-side export would silently omit the columns nobody put on a card — the
+   * ones a spreadsheet is opened for. And an export of names, phone numbers and countries is a
+   * disclosure of personal data under KVKK and GDPR; done on the server it lands in the audit trail
+   * with a name against it, which is the difference between a record and an assumption.
+   */
+  async bulkExport(dto: BulkLeadIdsDto, currentUser: JwtPayload) {
+    const leads = await this.prisma.lead.findMany({
+      where: {
+        id: { in: [...new Set(dto.leadIds)] },
+        mergedIntoId: null,
+        ...(this.canSeeAll(currentUser) ? {} : { assignedToId: currentUser.sub }),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        firstName: true, lastName: true, phone: true, whatsappNumber: true, email: true,
+        country: true, source: true, stage: true, status: true, estimatedValue: true,
+        currency: true, lostReason: true, notes: true, stageChangedAt: true, createdAt: true,
+        utmSource: true, utmMedium: true, utmCampaign: true,
+        campaign: { select: { name: true } },
+        assignedTo: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    const csv = toCsv(
+      [
+        'First name', 'Last name', 'Phone', 'WhatsApp', 'Email', 'Country', 'Source', 'Campaign',
+        'UTM source', 'UTM medium', 'UTM campaign', 'Stage', 'Status', 'Estimated value',
+        'Currency', 'Owner', 'Lost reason', 'Notes', 'Stage changed', 'Created',
+      ],
+      leads.map((l) => [
+        l.firstName, l.lastName, l.phone, l.whatsappNumber, l.email, l.country, l.source,
+        l.campaign?.name, l.utmSource, l.utmMedium, l.utmCampaign,
+        // The label people read on the board, not the enum they never see.
+        STAGE_LABELS[l.stage] ?? l.stage,
+        l.status,
+        // String(), not Number(): a Prisma Decimal converts exactly to a string and only
+        // approximately to a float, and this column is money.
+        l.estimatedValue?.toString(), l.currency,
+        l.assignedTo ? `${l.assignedTo.firstName} ${l.assignedTo.lastName ?? ''}`.trim() : null,
+        l.lostReason, l.notes, l.stageChangedAt, l.createdAt,
+      ]),
+    );
+
+    return { csv, count: leads.length };
+  }
+
+  /**
+   * Delete a selection outright.
+   *
+   * Super Admin only, and the only bulk action here that cannot be undone.
+   *
+   * Deals that became patients are refused rather than skipped. `Patient.leadId` is nullable with
+   * SetNull, so the delete would succeed and take the link with it — the patient record survives
+   * while the enquiry that produced it, and the attribution and marketing spend behind it, does
+   * not. That is the kind of loss nobody notices until the quarter is being reported. Archiving is
+   * the answer for a converted deal, and the error says so.
+   */
+  async bulkDelete(dto: BulkDeleteDto, currentUser: JwtPayload) {
+    if (!dto.confirm) throw new BadRequestException('Deletion must be confirmed.');
+
+    const leads = await this.prisma.lead.findMany({
+      where: { id: { in: [...new Set(dto.leadIds)] } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        patient: { select: { id: true } },
+        mergedFrom: { select: { id: true } },
+      },
+    });
+    if (leads.length === 0) return { deleted: 0, requested: dto.leadIds.length };
+
+    const converted = leads.filter((l) => l.patient);
+    if (converted.length > 0) {
+      const names = converted.slice(0, 3).map((l) => `${l.firstName} ${l.lastName ?? ''}`.trim());
+      throw new BadRequestException(
+        `${converted.length === 1 ? 'This deal has' : `${converted.length} of these deals have`} ` +
+          `become a patient (${names.join(', ')}${converted.length > 3 ? '…' : ''}). ` +
+          'Archive them instead — deleting would cut the patient record off from where it came from.',
+      );
+    }
+
+    // A deal others were merged into is the survivor of a cleanup; deleting it strips the pointer
+    // from every duplicate folded into it, and their history stops leading anywhere.
+    const survivors = leads.filter((l) => l.mergedFrom.length > 0);
+    if (survivors.length > 0) {
+      throw new BadRequestException(
+        `${survivors.length === 1 ? 'One deal is' : `${survivors.length} deals are`} the surviving ` +
+          'record of a duplicate merge. Deleting them would orphan the deals folded into them.',
+      );
+    }
+
+    // Activities and tasks cascade; conversations and call logs detach by SetNull, so the message
+    // history survives without a deal attached. Intake submissions likewise — a declaration
+    // someone made about their own health is not ours to destroy along with a sales record.
+    const { count } = await this.prisma.lead.deleteMany({
+      where: { id: { in: leads.map((l) => l.id) } },
+    });
+    return { deleted: count, requested: dto.leadIds.length };
+  }
+}
+
+/**
+ * The outcome a deal's stage implies. Shared by restoring from the archive and by `updateStage`, so
+ * the two cannot come to disagree about what a deal sitting in DONE is.
+ */
+function statusForStage(stage: $Enums.PipelineStage): $Enums.LeadStatus {
+  if (stage === $Enums.PipelineStage.DONE) return $Enums.LeadStatus.WON;
+  if (stage === $Enums.PipelineStage.LOST) return $Enums.LeadStatus.LOST;
+  return $Enums.LeadStatus.ACTIVE;
 }
