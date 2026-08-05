@@ -23,6 +23,7 @@ export * from './schemas/intake.schema';
 export * from './import/csv';
 export * from './contact/phone';
 export * from './files/upload-policy';
+export * from './i18n/dossier-copy';
 export * from './types/user.types';
 export * from './types/api-response.types';
 export * from './types/pagination.types';

@@ -31,3 +31,6 @@ arabic-spike.pdf
 packages/shared/src/**/*.js
 packages/shared/src/**/*.d.ts
 packages/shared/src/**/*.map
+
+# Render artefacts from the Arabic verification script
+arabic-proof.pdf

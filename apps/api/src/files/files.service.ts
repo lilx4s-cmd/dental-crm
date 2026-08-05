@@ -10,7 +10,6 @@ import {
   canAccessFilesFor,
   isOwnedStorageKey,
   rejectUpload,
-  uploadRuleFor,
   type JwtPayload,
 } from '@dental-crm/shared';
 

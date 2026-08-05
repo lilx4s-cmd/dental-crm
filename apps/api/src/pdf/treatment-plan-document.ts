@@ -1,4 +1,5 @@
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
+import type { Style } from '@react-pdf/types';
 import React from 'react';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,10 +15,42 @@ import {
   packageInclusionDef,
   parseToothNumbers,
   valuePropsFor,
+  isRightToLeft,
   type ToothCondition,
 } from '@dental-crm/shared';
 
 import { DentalChartPdf } from './dental-chart-pdf';
+
+/**
+ * Arabic needs a font with Arabic glyphs; Helvetica has none, and react-pdf renders a missing
+ * glyph as nothing at all rather than as a visible box — so an unregistered font produces a page
+ * that looks like a layout bug rather than a font problem.
+ *
+ * Amiri is a static face, chosen after Noto Naskh Arabic turned out to be a *variable* font, which
+ * fontkit cannot load: it fails with `Cannot read properties of undefined (reading 'id')` from
+ * deep inside the renderer, which reads as a corrupt file rather than an unsupported one.
+ *
+ * Registered once at module load. Registering per render leaks: react-pdf keeps a font registry
+ * keyed by family name, so repeated registration of the same family grows it without bound.
+ */
+const ARABIC_FONT = 'Amiri';
+let arabicFontReady = false;
+
+function ensureArabicFont(): boolean {
+  if (arabicFontReady) return true;
+  try {
+    Font.register({
+      family: ARABIC_FONT,
+      src: path.join(__dirname, 'assets', 'fonts', 'Amiri-Regular.ttf'),
+    });
+    arabicFontReady = true;
+  } catch {
+    // A dossier in the wrong font is legible; a dossier that failed to render is not. English is
+    // the fallback because every plan already has English content — see PlanDocumentInput.language.
+    arabicFontReady = false;
+  }
+  return arabicFontReady;
+}
 
 
 /**
@@ -183,6 +216,11 @@ const num = (v: Numeric | null | undefined): number => (v == null ? 0 : Number(v
 export interface PlanDocumentInput {
   title: string;
   currency: string;
+  /**
+   * Which language this dossier is issued in. Selected from the database since the column was
+   * added and, until now, never carried this far — so `language: 'ar'` produced an English PDF.
+   */
+  language?: string | null;
   doctorRecommendation?: string | null;
   diagnosisSnapshot?: string | null;
   aiSummary?: string | null;
@@ -408,11 +446,23 @@ function CoverHeadlines(plan: PlanDocumentInput) {
   );
 }
 
+/**
+ * The page style, with the Arabic font layered on when the plan is Arabic.
+ *
+ * Applied per page rather than on the Document, which is where it was first put and did nothing:
+ * react-pdf cascades style from Page downward, and `Document` is not a styled node. Worse, every
+ * page's own style names `fontFamily: 'Helvetica'`, so even a cascading value would have lost.
+ * The verification script caught this — nothing threw, and the font simply was not there.
+ */
+function pageStyle(plan: PlanDocumentInput, base: Style = s.page): Style | Style[] {
+  return isRightToLeft(plan.language) && arabicFontReady ? [base, { fontFamily: ARABIC_FONT }] : base;
+}
+
 function CoverPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const location = [branding.address, branding.city, branding.country].filter(Boolean).join(', ');
   return el(
     Page,
-    { size: 'A4', style: s.coverPage, key: 'cover' },
+    { size: 'A4', style: pageStyle(plan, s.coverPage), key: 'cover' },
     coverPhoto ? el(Image, { src: coverPhoto, style: s.coverPhoto }) : null,
     // The title sits on white under the photograph rather than on a filled band. The band made the
     // cover read as a form header; a photograph and then quiet type reads as the front of something
@@ -470,7 +520,7 @@ function PatientPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const allergies = p.allergies?.trim();
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'patient' },
+    { size: 'A4', style: pageStyle(plan), key: 'patient' },
     el(Text, { style: s.h1 }, 'Patient Information'),
     el(Text, { style: s.h2 }, `${p.firstName} ${p.lastName}`),
     el(
@@ -523,7 +573,7 @@ function DiagnosesPage(plan: PlanDocumentInput, branding: ClinicBranding) {
   const diagnoses = plan.diagnoses ?? [];
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'diagnoses' },
+    { size: 'A4', style: pageStyle(plan), key: 'diagnoses' },
     el(Text, { style: s.h1 }, 'Diagnoses'),
     el(Text, { style: s.h2 }, 'Current dental status'),
     el(View, { style: s.chartWrap }, el(DentalChartPdf, { conditions: diagnosisConditions(plan), mode: 'diagnosis', width: CONTENT_WIDTH })),
@@ -628,7 +678,7 @@ function TreatmentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
 
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'treatment' },
+    { size: 'A4', style: pageStyle(plan), key: 'treatment' },
     el(Text, { style: s.h1 }, 'Treatment Plan'),
     el(Text, { style: s.h2 }, 'The proposed result'),
     plan.items.length === 0
@@ -713,7 +763,7 @@ function ValuePage(plan: PlanDocumentInput, branding: ClinicBranding) {
 
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'value' },
+    { size: 'A4', style: pageStyle(plan), key: 'value' },
     el(Text, { style: s.h1 }, 'What Your Treatment Includes'),
     el(Text, { style: s.h2 }, 'Why each part of this plan is what we recommend'),
     ...props.map((prop, i) => {
@@ -748,7 +798,7 @@ function PackagePage(plan: PlanDocumentInput, branding: ClinicBranding) {
 
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'package' },
+    { size: 'A4', style: pageStyle(plan), key: 'package' },
     el(Text, { style: s.h1 }, "What's Included"),
     el(Text, { style: s.h2 }, 'Covered by the price quoted — not billed separately'),
     ...included.map((item, i) =>
@@ -808,7 +858,7 @@ function PaymentPage(plan: PlanDocumentInput, branding: ClinicBranding) {
 
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'payment' },
+    { size: 'A4', style: pageStyle(plan), key: 'payment' },
     el(Text, { style: s.h1 }, 'Payment'),
     el(Text, { style: s.h2 }, 'What is due, and what each method costs'),
 
@@ -893,7 +943,7 @@ function StayPage(plan: PlanDocumentInput, branding: ClinicBranding) {
 
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'stay' },
+    { size: 'A4', style: pageStyle(plan), key: 'stay' },
     el(Text, { style: s.h1 }, 'Your Visit'),
     el(Text, { style: s.h2 }, 'Travel, accommodation, transfers and what happens each day'),
     el(
@@ -989,13 +1039,14 @@ function ScheduleBlock(plan: PlanDocumentInput) {
  * its instructions overleaf, leaving a half-empty sheet and a section split down the middle.
  */
 function AftercarePage(
+  plan: PlanDocumentInput,
   sections: typeof AFTERCARE_SECTIONS,
   branding: ClinicBranding,
   trailing?: React.ReactElement | null,
 ) {
   return el(
     Page,
-    { size: 'A4', style: s.page, key: 'aftercare' },
+    { size: 'A4', style: pageStyle(plan), key: 'aftercare' },
     el(Text, { style: s.h1 }, 'Your Treatment, Explained'),
     el(Text, { style: s.h2 }, 'What to expect, and how to look after yourself afterwards'),
     ...sections.map((section, i) =>
@@ -1032,6 +1083,12 @@ export function TreatmentPlanDocument(
   qrDataUrl?: string,
   portalUrl?: string,
 ) {
+  // Arabic needs its font registered before any page is constructed, and the registration can
+  // fail (a missing or unreadable file). A dossier in the wrong font is legible; one that failed
+  // to render is not — so a failure falls back to English rather than throwing.
+  // Must run before any page is constructed — pageStyle() reads whether registration succeeded.
+  if (isRightToLeft(plan.language)) ensureArabicFont();
+
   const pages: React.ReactElement[] = [CoverPage(plan, branding), PatientPage(plan, branding)];
   if ((plan.diagnoses ?? []).length > 0) pages.push(DiagnosesPage(plan, branding));
   // Always print the treatment page, even with nothing on it. Silently dropping it produced a
@@ -1069,14 +1126,14 @@ export function TreatmentPlanDocument(
 
   if (sections.length > 0) {
     // The QR rides at the foot of the last page instead of claiming an A4 sheet to itself.
-    pages.push(AftercarePage(sections, branding, portal));
+    pages.push(AftercarePage(plan, sections, branding, portal));
   } else if (portal) {
     // No aftercare to print — a crown-only plan, say — so the code needs a home of its own. Given
     // a heading and a sentence rather than left floating on an otherwise blank sheet.
     pages.push(
       el(
         Page,
-        { size: 'A4', style: s.page, key: 'portal' },
+        { size: 'A4', style: pageStyle(plan), key: 'portal' },
         el(Text, { style: s.h1 }, 'Your Plan Online'),
         el(Text, { style: s.h2 }, 'Kept up to date, and open to your questions'),
         el(
@@ -1090,5 +1147,8 @@ export function TreatmentPlanDocument(
     );
   }
 
+  // Applied at the Document level so every page inherits it. react-pdf resolves fontFamily down
+  // the tree, so this is the one place it needs setting — and setting it here means a page added
+  // later cannot forget.
   return el(Document, {}, ...pages);
 }
