@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Archive, Send, Phone, User, AlertTriangle, RotateCw, Check } from 'lucide-react';
@@ -19,6 +19,7 @@ import {
   useArchiveConversation,
   useRetryMessage,
   useSendingStatus,
+  useMarkConversationRead,
 } from '@/hooks/use-conversations';
 import type { ConversationSummary, Message } from '@/hooks/use-conversations';
 import { QueryError } from '@/components/ui/query-state';
@@ -65,13 +66,25 @@ function ConversationRow({
             <User className="h-4 w-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">
+            <p className={cn('truncate text-sm', conv.unreadCount > 0 ? 'font-semibold' : 'font-medium')}>
               {contact ? `${contact.firstName} ${contact.lastName}` : conv.externalThreadId ?? 'Unknown'}
             </p>
-            <p className="text-xs text-muted-foreground truncate">{lastMsg?.content ?? 'No messages yet'}</p>
+            {/* An unread thread's preview stays full-strength; a read one recedes. The weight
+                difference is what lets someone scan forty rows for the ones needing an answer. */}
+            <p className={cn('truncate text-xs', conv.unreadCount > 0 ? 'text-foreground' : 'text-muted-foreground')}>
+              {lastMsg?.content ?? 'No messages yet'}
+            </p>
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
+          {conv.unreadCount > 0 && (
+            <span
+              className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-foreground"
+              aria-label={`${conv.unreadCount} unread`}
+            >
+              {conv.unreadCount}
+            </span>
+          )}
           <Badge variant={CHANNEL_COLORS[conv.channel] ?? 'default'} className="text-xs">
             {CHANNEL_LABELS[conv.channel] ?? conv.channel}
           </Badge>
@@ -146,6 +159,20 @@ function MessageBubble({ msg, onRetry, retrying }: { msg: Message; onRetry: () =
 
 function MessageThread({ conversationId }: { conversationId: string }) {
   const threadQuery = useConversation(conversationId);
+  const markRead = useMarkConversationRead();
+  // Which thread has already been marked, so a re-render does not send the same PATCH again. A ref
+  // rather than an exhaustive-deps suppression: the mutation object changes identity on every
+  // render, so listing it as a dependency would fire the effect in a loop.
+  const markedRef = useRef<string | null>(null);
+
+  // Opening a thread is what "read" means here — deliberately not a side effect of the GET, so two
+  // people with the inbox open do not have one clearing the other's badge just by the list
+  // refreshing.
+  useEffect(() => {
+    if (!conversationId || markedRef.current === conversationId) return;
+    markedRef.current = conversationId;
+    markRead.mutate(conversationId);
+  }, [conversationId, markRead]);
   const { data: conv, isLoading } = threadQuery;
   const sendMessage = useSendMessage(conversationId);
   const retryMessage = useRetryMessage(conversationId);

@@ -3,6 +3,8 @@ import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
 export interface ConversationSummary {
+  /** Inbound messages since staff last opened this thread. */
+  unreadCount: number;
   id: string;
   channel: string;
   externalThreadId: string | null;
@@ -115,6 +117,39 @@ export function useStartConversation() {
         accessToken ?? undefined,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+  });
+}
+
+/**
+ * Threads waiting on a reply, for the navigation badge.
+ *
+ * Polled rather than pushed: there is no websocket in this app, and a badge that is up to a minute
+ * stale is still the difference between knowing six people are waiting and not knowing at all.
+ * `refetchOnWindowFocus` covers the common case — coming back to the tab shows the current number
+ * immediately rather than up to a minute later.
+ */
+export function useUnreadSummary() {
+  const { accessToken } = useAuth();
+  return useQuery<{ conversations: number; messages: number }>({
+    queryKey: ['conversations', 'unread'],
+    queryFn: () => apiRequest('/api/conversations/unread', {}, accessToken ?? undefined),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    // A badge is not worth an error state; absent is the right failure.
+    retry: false,
+  });
+}
+
+/** Marks a thread read when it is opened, and refreshes the badge. */
+export function useMarkConversationRead() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest(`/api/conversations/${id}/read`, { method: 'PATCH' }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
   });
 }
 

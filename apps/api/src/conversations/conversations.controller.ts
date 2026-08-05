@@ -24,6 +24,13 @@ export class ConversationsController {
    * Declared before ':id' — Nest matches routes in order, so a later literal path would be
    * swallowed by the parameter route and arrive as a lookup for a conversation called "sending".
    */
+  /** Threads needing an answer, for the navigation badge. Declared before ':id'. */
+  @Get('unread')
+  @Roles(...PATIENT_FACING)
+  unreadSummary() {
+    return this.conversationsService.unreadSummary();
+  }
+
   @Get('sending-status')
   @Roles(...PATIENT_FACING)
   sendingStatus() {
@@ -56,6 +63,19 @@ export class ConversationsController {
   @Roles(...PATIENT_FACING)
   retry(@Param('id') id: string, @Param('messageId') messageId: string) {
     return this.conversationsService.retryMessage(id, messageId);
+  }
+
+  /**
+   * Marks a thread read, as of the server's clock.
+   *
+   * A PATCH rather than a side effect of GET :id, because a read is a change to shared state — two
+   * people opening the same inbox should not have one of them silently clearing the other's badge
+   * just by looking.
+   */
+  @Patch(':id/read')
+  @Roles(...PATIENT_FACING)
+  markRead(@Param('id') id: string) {
+    return this.conversationsService.markRead(id);
   }
 
   @Patch(':id/archive')

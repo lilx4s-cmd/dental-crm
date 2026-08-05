@@ -37,6 +37,7 @@ const CONVERSATION_SELECT = {
   externalThreadId: true,
   isArchived: true,
   lastMessageAt: true,
+  lastReadAt: true,
   createdAt: true,
   patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
   lead: { select: { id: true, firstName: true, lastName: true, phone: true, stage: true } },
@@ -65,11 +66,77 @@ export class ConversationsService {
     if (query.assignedToId) where.assignedToId = query.assignedToId;
     where.isArchived = query.isArchived ?? false;
 
-    return this.prisma.conversation.findMany({
+    const conversations = await this.prisma.conversation.findMany({
       where,
       select: CONVERSATION_SELECT,
       orderBy: { lastMessageAt: 'desc' },
     });
+
+    return this.withUnreadCounts(conversations);
+  }
+
+  /**
+   * How many inbound messages have arrived since staff last opened each thread.
+   *
+   * One grouped query for the whole list rather than a count per conversation: an inbox of forty
+   * threads would otherwise be forty round-trips, and the inbox is the screen people leave open.
+   *
+   * A thread nobody has ever opened counts everything inbound, which is the honest reading of
+   * `lastReadAt` being null — not "zero unread", but "none of it has been looked at".
+   */
+  private async withUnreadCounts<T extends { id: string; lastReadAt: Date | null }>(conversations: T[]) {
+    if (conversations.length === 0) return conversations.map((c) => ({ ...c, unreadCount: 0 }));
+
+    const counts = await this.prisma.message.groupBy({
+      by: ['conversationId'],
+      where: {
+        direction: $Enums.MessageDirection.INBOUND,
+        OR: conversations.map((c) => ({
+          conversationId: c.id,
+          ...(c.lastReadAt ? { createdAt: { gt: c.lastReadAt } } : {}),
+        })),
+      },
+      _count: { _all: true },
+    });
+
+    const byId = new Map(counts.map((row) => [row.conversationId, row._count._all]));
+    return conversations.map((c) => ({ ...c, unreadCount: byId.get(c.id) ?? 0 }));
+  }
+
+  /**
+   * The number the navigation badge shows.
+   *
+   * Deliberately counts threads, not messages: "6" meaning six conversations needing an answer is
+   * actionable, where "137" meaning message lines is only alarming.
+   */
+  async unreadSummary() {
+    const conversations = await this.prisma.conversation.findMany({
+      where: { isArchived: false },
+      select: { id: true, lastReadAt: true },
+    });
+
+    const withCounts = await this.withUnreadCounts(conversations);
+    const threads = withCounts.filter((c) => c.unreadCount > 0);
+
+    return {
+      conversations: threads.length,
+      messages: threads.reduce((sum, c) => sum + c.unreadCount, 0),
+    };
+  }
+
+  /**
+   * Marks a thread read, as of now.
+   *
+   * Called when the thread is opened. Uses the server's clock rather than a timestamp from the
+   * client, so a device with a skewed clock cannot mark future messages read before they arrive.
+   */
+  async markRead(id: string) {
+    await this.prisma.conversation.update({
+      where: { id },
+      data: { lastReadAt: new Date() },
+      select: { id: true },
+    });
+    return { ok: true };
   }
 
   async findOne(id: string) {

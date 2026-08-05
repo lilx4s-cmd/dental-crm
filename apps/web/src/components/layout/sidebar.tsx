@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { canAccessRoute } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
+import { useUnreadSummary } from '@/hooks/use-conversations';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -27,6 +28,9 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  // Threads, not messages: "6" meaning six people waiting is actionable, where "137" meaning
+  // message lines is only alarming.
+  const { data: unread } = useUnreadSummary();
 
   // Offered only if it can actually be opened. The same policy decides the API's answer, so the
   // nav cannot advertise a page that greets the person with a 403 — which is how a product tells
@@ -55,7 +59,18 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span>{label}</span>
+              <span className="flex-1">{label}</span>
+              {href === '/inbox' && !!unread?.conversations && (
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                    active ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary text-primary-foreground',
+                  )}
+                  aria-label={`${unread.conversations} conversations need a reply`}
+                >
+                  {unread.conversations}
+                </span>
+              )}
             </Link>
           );
         })}
