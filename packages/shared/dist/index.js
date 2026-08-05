@@ -38,6 +38,7 @@ __exportStar(require("./schemas/lead-import.schema"), exports);
 __exportStar(require("./schemas/intake.schema"), exports);
 __exportStar(require("./import/csv"), exports);
 __exportStar(require("./contact/phone"), exports);
+__exportStar(require("./files/upload-policy"), exports);
 __exportStar(require("./types/user.types"), exports);
 __exportStar(require("./types/api-response.types"), exports);
 __exportStar(require("./types/pagination.types"), exports);

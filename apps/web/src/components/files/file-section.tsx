@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Download, FileText, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { rejectUpload, uploadRuleFor } from '@dental-crm/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -24,15 +25,22 @@ export interface FileCategoryOption {
   multiple?: boolean;
 }
 
-/** The clinical categories a patient record collects. */
+/**
+ * The clinical categories a patient record collects.
+ *
+ * `accept` comes from the shared upload policy rather than being written here, so the picker
+ * offers exactly what the API will store. These used to say `image/*`, which offered SVG — an
+ * image to a person and a script container to a browser, and the reason the server-side allowlist
+ * names exact types instead of wildcards.
+ */
 export const CLINICAL_FILE_CATEGORIES: FileCategoryOption[] = [
-  { category: 'XRAY', label: 'X-ray', accept: 'image/*,application/pdf', multiple: true },
-  { category: 'CT_SCAN', label: 'CT scan', accept: 'image/*,application/pdf,.dcm', multiple: true },
-  { category: 'PHOTO', label: 'Clinical photo', accept: 'image/*', multiple: true },
-  { category: 'BEFORE_PHOTO', label: 'Before', accept: 'image/*', multiple: true },
-  { category: 'AFTER_PHOTO', label: 'After', accept: 'image/*', multiple: true },
-  { category: 'PASSPORT', label: 'Passport', accept: 'image/*,application/pdf' },
-  { category: 'DOCUMENT', label: 'Other document', accept: 'image/*,application/pdf', multiple: true },
+  { category: 'XRAY', label: 'X-ray', accept: uploadRuleFor('XRAY').accept, multiple: true },
+  { category: 'CT_SCAN', label: 'CT scan', accept: uploadRuleFor('CT_SCAN').accept, multiple: true },
+  { category: 'PHOTO', label: 'Clinical photo', accept: uploadRuleFor('PHOTO').accept, multiple: true },
+  { category: 'BEFORE_PHOTO', label: 'Before', accept: uploadRuleFor('BEFORE_PHOTO').accept, multiple: true },
+  { category: 'AFTER_PHOTO', label: 'After', accept: uploadRuleFor('AFTER_PHOTO').accept, multiple: true },
+  { category: 'PASSPORT', label: 'Passport', accept: uploadRuleFor('PASSPORT').accept },
+  { category: 'DOCUMENT', label: 'Other document', accept: uploadRuleFor('DOCUMENT').accept, multiple: true },
 ];
 
 /**
@@ -75,6 +83,14 @@ export function FileSection({
       // firing ten at once against Supabase gains nothing but makes a partial failure harder to
       // report on.
       for (const file of chosen) {
+        // Checked here as well as on the server, against the same rules. `accept` on a file input
+        // is a suggestion the operating system is free to ignore, and a 25 MB limit discovered
+        // after a slow upload on clinic wifi is a worse experience than one caught immediately.
+        const rejection = rejectUpload(option.category, file.type, file.size);
+        if (rejection) {
+          toast.error(`${file.name}: ${rejection.message}`);
+          continue;
+        }
         await upload.mutateAsync({ ownerType, ownerId, category: option.category, file });
       }
       toast.success(chosen.length === 1 ? `${option.label} uploaded` : `${chosen.length} files uploaded`);

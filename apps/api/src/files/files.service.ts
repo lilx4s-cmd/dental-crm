@@ -6,7 +6,13 @@ import { $Enums } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { ConfirmFileDto } from './dto/confirm-file.dto';
-import { canAccessFilesFor, type JwtPayload } from '@dental-crm/shared';
+import {
+  canAccessFilesFor,
+  isOwnedStorageKey,
+  rejectUpload,
+  uploadRuleFor,
+  type JwtPayload,
+} from '@dental-crm/shared';
 
 @Injectable()
 export class FilesService {
@@ -138,8 +144,25 @@ export class FilesService {
   }
 
   private async signUpload(dto: CreateUploadUrlDto) {
+    // Refused here as well as on confirm. This check is advisory — a determined client can upload
+    // anything to a signed URL regardless — but it turns the common case, someone picking the
+    // wrong file, into an immediate message rather than an upload that succeeds and is then
+    // rejected. The check that actually protects the bucket is the one in confirm(), against what
+    // storage says is there.
+    const claimed = rejectUpload(dto.category, dto.mimeType, 0);
+    if (claimed?.reason === 'type') throw new BadRequestException(claimed.message);
+
     const client = this.getClient();
-    const path = `${dto.ownerType}/${dto.ownerId}/${randomUUID()}-${dto.fileName}`;
+    // The filename is attacker-controlled: it arrives from a browser and ends up in a storage key.
+    // Separators are stripped so an upload cannot climb out of its owner's folder, which is what
+    // isOwnedStorageKey later relies on.
+    //
+    // `..` is collapsed as well, and not for traversal — with the separators gone it cannot
+    // traverse anything. It is because isOwnedStorageKey refuses any key containing `..`, so a
+    // file innocently named "before..after.jpg" would upload successfully and then be impossible
+    // to confirm, forever. A test caught that; it would have looked like a broken upload button.
+    const safeName = dto.fileName.replace(/[/\\]/g, '_').replace(/\.{2,}/g, '.').slice(-120);
+    const path = `${dto.ownerType}/${dto.ownerId}/${randomUUID()}-${safeName}`;
     const { data, error } = await client.storage.from(this.bucket).createSignedUploadUrl(path);
     if (error || !data) {
       throw new BadRequestException(error?.message ?? 'Failed to create signed upload URL');
@@ -152,21 +175,80 @@ export class FilesService {
     };
   }
 
+  /**
+   * Records an upload, after checking that it is what the client says it is.
+   *
+   * Everything in the request body is a claim. `mimeType` and `sizeBytes` were written straight to
+   * the row, so a caller could declare a 100-byte JPEG and store anything at all; and `s3Key` was
+   * taken verbatim, so a `File` row could be pointed at *any* object in the bucket — including one
+   * belonging to a different patient — and then read back through the signed-URL endpoint.
+   *
+   * So: the key must be one this API would have issued for this owner, the object must actually
+   * exist, and the type and size are read from storage and checked against the category's rule.
+   */
   async confirm(dto: ConfirmFileDto, uploadedById: string, user: JwtPayload) {
     this.assertOwnerAccess(dto.ownerType, user);
+
+    if (!isOwnedStorageKey(dto.s3Key, dto.ownerType, dto.ownerId)) {
+      throw new ForbiddenException('That storage key does not belong to this record.');
+    }
+
+    const stored = await this.statObject(dto.s3Key);
+    if (!stored) {
+      throw new BadRequestException('No uploaded file was found at that location.');
+    }
+
+    // The observed values, never the claimed ones.
+    const rejection = rejectUpload(dto.category, stored.mimeType, stored.sizeBytes);
+    if (rejection) {
+      // Remove it rather than leaving an unreferenced object in the bucket — otherwise a refused
+      // upload is still a stored upload, and the allowlist protects the database row but not the
+      // storage it points at.
+      await this.deleteObject(dto.s3Key);
+      throw new BadRequestException(rejection.message);
+    }
+
     return this.prisma.file.create({
       data: {
         ownerType: dto.ownerType as $Enums.AttachableType,
         ownerId: dto.ownerId,
         category: (dto.category as $Enums.FileCategory) ?? 'OTHER',
         fileName: dto.fileName,
-        mimeType: dto.mimeType,
-        sizeBytes: dto.sizeBytes,
+        mimeType: stored.mimeType,
+        sizeBytes: stored.sizeBytes,
         s3Bucket: this.bucket,
         s3Key: dto.s3Key,
         uploadedById,
       },
     });
+  }
+
+  /** What storage says is actually at this key, or null if nothing is. */
+  private async statObject(s3Key: string): Promise<{ mimeType: string; sizeBytes: number } | null> {
+    const client = this.getClient();
+    const lastSlash = s3Key.lastIndexOf('/');
+    const folder = s3Key.slice(0, lastSlash);
+    const name = s3Key.slice(lastSlash + 1);
+
+    const { data, error } = await client.storage.from(this.bucket).list(folder, { search: name });
+    if (error || !data?.length) return null;
+
+    const match = data.find((item) => item.name === name);
+    if (!match) return null;
+
+    return {
+      mimeType: (match.metadata?.mimetype as string | undefined) ?? 'application/octet-stream',
+      sizeBytes: Number(match.metadata?.size ?? 0),
+    };
+  }
+
+  private async deleteObject(s3Key: string): Promise<void> {
+    try {
+      await this.getClient().storage.from(this.bucket).remove([s3Key]);
+    } catch {
+      // Best effort. A refused upload that could not be cleaned up is a stray object, not a
+      // security hole — the File row it would need is exactly what was just refused.
+    }
   }
 
   async findByOwner(ownerType: string, ownerId: string, user: JwtPayload) {
@@ -185,7 +267,11 @@ export class FilesService {
     const client = this.getClient();
     const { data, error } = await client.storage
       .from(file.s3Bucket)
-      .createSignedUrl(file.s3Key, 300);
+      // Forces a download rather than letting the browser render the object on the storage origin.
+      // Belt to the allowlist's braces: if anything scriptable ever does reach the bucket — an
+      // object stored before this check existed, or one uploaded straight to a signed URL — this
+      // is what stops it executing.
+      .createSignedUrl(file.s3Key, 300, { download: file.fileName });
     if (error || !data) {
       throw new BadRequestException(error?.message ?? 'Failed to create signed download URL');
     }

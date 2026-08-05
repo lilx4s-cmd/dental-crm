@@ -32,7 +32,7 @@ more specific than what was there a week ago.
 
 ## Open findings
 
-### F-1 · File uploads accept any type and any size · **High**
+### F-1 · ~~File uploads accept any type and any size~~ · **FIXED 2026-08-04**
 
 `ConfirmFileDto` and `CreateUploadUrlDto` take `mimeType: string` and `sizeBytes: @Min(0)`. There is
 no allowlist and no ceiling.
@@ -44,19 +44,32 @@ Two consequences:
   on that origin. Radiographs and passport scans live in the same bucket.
 - **Unbounded storage.** Any authenticated user can upload any volume.
 
-**Fix:** an allowlist (`image/jpeg`, `image/png`, `application/pdf`, `application/dicom`), a size
-cap per category, and `Content-Disposition: attachment` on download so nothing renders inline. ~2 days.
+**Fixed.** Exact MIME types per category — never wildcards, since `image/*` admits
+`image/svg+xml` — plus a size cap per category and `Content-Disposition: attachment` on every
+download. SVG is refused everywhere. Rules live in `packages/shared/src/files/upload-policy.ts`, so
+the file picker offers exactly what the server accepts.
 
-### F-2 · `mimeType`, `sizeBytes` and `s3Key` are client claims, never verified · **High**
+### F-2 · ~~`mimeType`, `sizeBytes` and `s3Key` are client claims, never verified~~ · **FIXED 2026-08-04**
 
 `confirm()` writes whatever the client sends. A caller can claim a 100-byte JPEG and store a 2 GB
 executable, and — because `s3Key` is also client-supplied — can create a `File` row pointing at
 **any object in the bucket**, including one belonging to another patient.
 
-**Fix:** verify the object with a HEAD against storage before writing the row, and require the
-`s3Key` to match a path this API issued for this owner. ~2 days.
+**Fixed.** `confirm()` now reads the real type and size from storage and validates *those*; a file
+that fails is deleted from the bucket rather than merely refused a row. The key must match a path
+this API issued for this owner.
 
-### F-3 · File access is authorised by owner *type*, not owner *record* · **High**
+A test caught a bug introduced by the fix itself: separators were stripped from filenames but `..`
+was not, so a file named `before..after.jpg` uploaded successfully and was then permanently
+unconfirmable — a broken upload button with no explicable error. `confirm()` had no tests at all
+before this, which is why the request body went untrusted for so long.
+
+### F-3 · File access is authorised by owner *type*, not owner *record* · **High** · *still open*
+
+**Partially addressed.** F-2's key check closes the *forgery* route — a row can no longer be
+pointed at another record's object. What remains is the read path below, which needs your policy
+decision rather than code.
+
 
 `assertOwnerAccess(ownerType, user)` checks whether the role may see `PATIENT` files at all. It
 never checks *which* patient. Any role with patient-file access can enumerate `ownerId` and read
@@ -132,7 +145,7 @@ Stated so the absence is known rather than assumed:
 | | Finding | Days | Blocked? |
 |---|---|---|---|
 | 1 | F-8 backup restore drill | 0.5 | **you** |
-| 2 | F-1 + F-2 upload validation and verification | 4 | no |
+| ~~2~~ | ~~F-1 + F-2 upload validation and verification~~ **DONE** | 4 | — |
 | 3 | F-4 share-link expiry | 2 | no |
 | 4 | F-6 set `ENCRYPTION_KEY`, then rotation runbook | 1 | **you** (env var) |
 | 5 | F-7 audit viewer | 3 | no |

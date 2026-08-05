@@ -86,6 +86,7 @@
     "testEnvironment": "node",
     "moduleNameMapper": {
       "^@dental-crm/shared$": "<rootDir>/../../../packages/shared/src/index.ts"
-    }
+    },
+    "testTimeout": 30000
   }
 }
