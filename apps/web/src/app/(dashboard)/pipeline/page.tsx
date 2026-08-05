@@ -202,6 +202,14 @@ export default function PipelinePage() {
     );
     try {
       await updateStage.mutateAsync({ id: lead.id, stage: toStage, ...extra });
+      // Offered on single drags as well as bulk moves. A card dropped one column too far is the
+      // commonest mistake on this board, and the alternative is dragging it back by hand — which
+      // writes a second stage change into the deal's history as though it were a real decision.
+      const stageLabel = STAGES.find((st) => st.id === toStage)?.label ?? toStage;
+      toast.success(`Moved to ${stageLabel}`, {
+        action: { label: 'Undo', onClick: () => void undoMove([{ id: lead.id, fromStage }]) },
+        duration: 6000,
+      });
     } catch (e) {
       // The API's reason is the useful part. A blanket "Failed to move deal" hid the two things
       // that actually go wrong here — the user's role cannot move cards, or the lead belongs to a
@@ -209,6 +217,77 @@ export default function PipelinePage() {
       toast.error(moveErrorMessage(e));
       if (groups) setLocalGroups(groups);
     }
+  }
+
+  /**
+   * Moves a set of deals to one stage.
+   *
+   * There is no bulk stage endpoint, so this is the per-lead one applied across the set. That
+   * makes partial failure the normal case rather than the exception: a role can move its own deals
+   * and not a colleague's, so forty selected cards can produce thirty-seven moves and three
+   * refusals. Reporting "40 moved" there would be a lie the board itself would then contradict.
+   *
+   * Runs sequentially. Forty parallel PATCHes against one row-locking service gains a second and
+   * costs the ability to say which ones failed.
+   */
+  async function moveMany(leads: Lead[], toStage: string) {
+    if (leads.length === 0) return;
+
+    const before = leads.map((l) => ({ id: l.id, fromStage: l.stage }));
+
+    setLocalGroups((prev) =>
+      prev.map((g) => {
+        const ids = new Set(leads.map((l) => l.id));
+        if (g.stage === toStage) {
+          return { ...g, leads: [...(g.leads as Lead[]), ...leads.map((l) => ({ ...l, stage: toStage }))] };
+        }
+        return { ...g, leads: (g.leads as Lead[]).filter((l) => !ids.has(l.id)) };
+      }),
+    );
+
+    const failures: string[] = [];
+    for (const lead of leads) {
+      try {
+        await updateStage.mutateAsync({ id: lead.id, stage: toStage });
+      } catch (e) {
+        failures.push(`${lead.firstName} ${lead.lastName ?? ''}`.trim() || lead.id);
+        void e;
+      }
+    }
+
+    const moved = leads.length - failures.length;
+    const stageLabel = STAGES.find((st) => st.id === toStage)?.label ?? toStage;
+
+    if (failures.length === 0) {
+      toast.success(`${moved} ${moved === 1 ? 'deal' : 'deals'} moved to ${stageLabel}`, {
+        // Undo is offered rather than assumed: it reverses by moving each deal back to the stage
+        // it actually came from, which is not necessarily one stage for the whole set.
+        action: { label: 'Undo', onClick: () => void undoMove(before) },
+        duration: 8000,
+      });
+    } else {
+      // Named, not counted. "3 failed" leaves someone re-checking forty cards to find which.
+      toast.warning(
+        `${moved} moved to ${stageLabel}. ${failures.length} could not be moved: ${failures.slice(0, 3).join(', ')}${
+          failures.length > 3 ? ` and ${failures.length - 3} more` : ''
+        }`,
+        { duration: 10000 },
+      );
+      if (groups) setLocalGroups(groups);
+    }
+  }
+
+  /** Puts each deal back where it was. Best effort — a deal that refused to move may refuse again. */
+  async function undoMove(before: Array<{ id: string; fromStage: string }>) {
+    for (const entry of before) {
+      try {
+        await updateStage.mutateAsync({ id: entry.id, stage: entry.fromStage });
+      } catch {
+        // Reported once below rather than per deal; a failed undo is usually the same permission
+        // that would have failed the move.
+      }
+    }
+    toast.success('Move undone');
   }
 
   async function onDragEnd(event: DragEndEvent) {
@@ -358,6 +437,10 @@ export default function PipelinePage() {
         // longer the set that was chosen, and leaving it selected invites a second action on a
         // stale idea of what is highlighted.
         onDone={selection.clear}
+        onMoveToStage={(leads, stage) => {
+          void moveMany(leads, stage);
+          selection.clear();
+        }}
       />
 
       <LeadDetailSheet

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, UserCheck, X } from 'lucide-react';
+import { ArrowRightLeft, Loader2, UserCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { PIPELINE_STAGES } from '@dental-crm/shared';
 import { useUsers } from '@/hooks/use-users';
 import { useTransferLeads, type Lead } from '@/hooks/use-leads';
 import { cn } from '@/lib/utils';
@@ -34,10 +41,12 @@ export function BulkActionBar({
   selectedLeads,
   onClear,
   onDone,
+  onMoveToStage,
 }: {
   selectedLeads: Lead[];
   onClear: () => void;
   onDone: () => void;
+  onMoveToStage: (leads: Lead[], stage: string) => void;
 }) {
   const [reassigning, setReassigning] = useState(false);
 
@@ -59,6 +68,33 @@ export function BulkActionBar({
             <UserCheck className="mr-1.5 h-3.5 w-3.5" />
             Change responsible
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="h-8">
+                <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
+                Move to stage
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="max-h-72 overflow-y-auto">
+              {PIPELINE_STAGES.map((stage) => (
+                <DropdownMenuItem
+                  key={stage.id}
+                  onSelect={() => onMoveToStage(selectedLeads, stage.id)}
+                  // Lost needs a reason per deal, and this menu collects none. Excluded rather
+                  // than silently recording forty deals as lost with no explanation — the
+                  // drag-and-drop path still asks properly, one at a time.
+                  disabled={stage.terminal === 'lost'}
+                >
+                  <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                  {stage.label}
+                  {stage.terminal === 'lost' && (
+                    <span className="ml-2 text-xs text-muted-foreground">needs a reason</span>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             size="sm"
