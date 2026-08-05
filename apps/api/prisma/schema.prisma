@@ -1143,6 +1143,15 @@ model Conversation {
   assignedToId     String?
   assignedTo       User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
   lastMessageAt    DateTime?
+  // When a member of staff last opened this thread.
+  //
+  // Distinct from Message.readAt, which is WhatsApp's delivery receipt — the *patient* reading
+  // us. Nothing recorded us reading them, so an inbox of 40 threads gave no clue which ones
+  // needed an answer, which is the single question anyone opens it to ask.
+  //
+  // On the conversation rather than per message: staff read a thread, not individual lines, and a
+  // per-message read table would grow without bound to answer a question nobody asks.
+  lastReadAt       DateTime?
   isArchived       Boolean             @default(false)
   createdAt        DateTime            @default(now())
 
@@ -1173,6 +1182,9 @@ model Message {
   createdAt         DateTime         @default(now())
 
   @@index([conversationId])
+  // Unread counting filters a conversation's messages by direction and time. Without this it is a
+  // scan per conversation, on every inbox load.
+  @@index([conversationId, direction, createdAt])
   @@map("messages")
 }
 
