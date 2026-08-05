@@ -19,6 +19,8 @@ import {
   nextAction,
   coerceLeadSource,
   normalisePhone,
+  phoneMatchKey,
+  toE164Digits,
   stageDef,
   stageProgress,
   RECYCLE_ANGLE,
@@ -198,12 +200,24 @@ export class LeadsService {
     const candidates = numbers.filter((n): n is string => !!n && n.length >= 7);
     if (candidates.length === 0) return null;
 
+    // Matched on the trailing digits rather than the whole string. Stored numbers are not
+    // canonical and never were — the old normaliser kept the trunk zero on "0555 111 22 33" and
+    // dropped it on "+90 555 111 22 33", so an exact `in` comparison missed the same person
+    // entered both ways. `endsWith` is the one comparison that works across both formats without
+    // rewriting a thousand rows first.
+    const suffixes = candidates
+      .map((n) => phoneMatchKey(n))
+      .filter((n): n is string => !!n);
+
     return this.prisma.lead.findFirst({
       where: {
         id: excludeLeadId ? { not: excludeLeadId } : undefined,
         status: $Enums.LeadStatus.ACTIVE,
         mergedIntoId: null,
-        OR: [{ phone: { in: candidates } }, { whatsappNumber: { in: candidates } }],
+        OR: suffixes.flatMap((suffix) => [
+          { phone: { endsWith: suffix } },
+          { whatsappNumber: { endsWith: suffix } },
+        ]),
       },
       select: {
         id: true,
@@ -234,8 +248,13 @@ export class LeadsService {
     // Normalised on the way in, so the stored value matches how inbound WhatsApp arrives and so
     // the duplicate check above compares like with like. Without this "+90 555 111 22 33" and
     // "905551112233" are two different strings and no check can see they are one patient.
-    const phone = dto.phone ? normalisePhone(dto.phone) : undefined;
-    const whatsappNumber = dto.whatsappNumber ? normalisePhone(dto.whatsappNumber) : undefined;
+    // Stored in E.164 against the lead's own country, so a Gulf number is not silently filed as
+    // a Turkish one. Falls back to digits-only when no country is given, which is the honest
+    // result for a local-format number nobody has told us the origin of.
+    const phone = dto.phone ? (toE164Digits(dto.phone, dto.country) ?? undefined) : undefined;
+    const whatsappNumber = dto.whatsappNumber
+      ? (toE164Digits(dto.whatsappNumber, dto.country) ?? undefined)
+      : undefined;
 
     const existing = await this.openDealOnNumber([phone, whatsappNumber]);
     if (existing) throw this.duplicateNumberError(existing);
@@ -247,6 +266,7 @@ export class LeadsService {
         email: dto.email,
         phone,
         whatsappNumber,
+        country: dto.country?.trim().toUpperCase(),
         source: dto.source as $Enums.LeadSource,
         campaignId: dto.campaignId,
         estimatedValue: dto.estimatedValue,
@@ -365,6 +385,8 @@ export class LeadsService {
         lastName: true,
         phone: true,
         whatsappNumber: true,
+        // Needed to key a stored local-format number correctly — see phoneMatchKey.
+        country: true,
         email: true,
         stage: true,
         status: true,
@@ -386,7 +408,7 @@ export class LeadsService {
       // and WhatsApp are the same number does not look like a duplicate of itself.
       const numbers = new Set(
         [lead.phone, lead.whatsappNumber]
-          .map((n) => (n ? normalisePhone(n) : ''))
+          .map((n) => (n ? (phoneMatchKey(n, lead.country) ?? '') : ''))
           // Under seven digits is an extension or a typo, not a number that identifies anyone.
           .filter((n) => n.length >= 7),
       );
@@ -591,9 +613,17 @@ export class LeadsService {
     // Editing a number is the other way a duplicate appears — someone corrects a typo and lands on
     // a number already in the pipeline. Same normalisation and same check as create, minus this
     // deal itself, which would otherwise always be its own clash.
-    const phone = dto.phone !== undefined ? (dto.phone ? normalisePhone(dto.phone) : null) : undefined;
+    const country = dto.country ?? (await this.prisma.lead.findUnique({
+      where: { id },
+      select: { country: true },
+    }))?.country;
+
+    const phone =
+      dto.phone !== undefined ? (dto.phone ? (toE164Digits(dto.phone, country) ?? null) : null) : undefined;
     const whatsappNumber =
-      dto.whatsappNumber !== undefined ? (dto.whatsappNumber ? normalisePhone(dto.whatsappNumber) : null) : undefined;
+      dto.whatsappNumber !== undefined
+        ? (dto.whatsappNumber ? (toE164Digits(dto.whatsappNumber, country) ?? null) : null)
+        : undefined;
 
     if (phone || whatsappNumber) {
       const existing = await this.openDealOnNumber([phone ?? undefined, whatsappNumber ?? undefined], id);

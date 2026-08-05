@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { DIAL_COUNTRIES, DEFAULT_DIAL_COUNTRY } from '@dental-crm/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -35,6 +36,7 @@ const schema = z.object({
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   whatsappNumber: z.string().optional(),
+  country: z.string().optional(),
   estimatedValue: z.coerce.number().optional(),
   notes: z.string().optional(),
   assignedToId: z.string().optional(),
@@ -91,6 +93,7 @@ export function NewLeadDialog({
         phone: data.phone || undefined,
         email: data.email || undefined,
         whatsappNumber: data.whatsappNumber || undefined,
+        country: data.country || undefined,
         estimatedValue: data.estimatedValue || undefined,
         notes: data.notes || undefined,
         assignedToId: data.assignedToId || undefined,
@@ -170,14 +173,36 @@ export function NewLeadDialog({
               </SelectContent>
             </Select>
           </div>
+          {/* Country sits above the numbers because it changes how they are read: a leading zero
+              is a national trunk prefix, so 055 512 3456 is a different phone in Riyadh than in
+              Istanbul. Defaulted to the clinic's own country, which is the common case, and
+              changed in one click when it is not. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-country">Country</Label>
+            <Select
+              defaultValue={DEFAULT_DIAL_COUNTRY}
+              onValueChange={(v) => setValue('country', v)}
+            >
+              <SelectTrigger id="lead-country">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DIAL_COUNTRIES.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.name} (+{c.dial})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Phone</Label>
-              <Input {...register('phone')} />
+              <Label htmlFor="lead-phone">Phone</Label>
+              <Input id="lead-phone" {...register('phone')} placeholder="055 512 3456" />
             </div>
             <div className="space-y-1.5">
-              <Label>WhatsApp</Label>
-              <Input {...register('whatsappNumber')} />
+              <Label htmlFor="lead-whatsapp">WhatsApp</Label>
+              <Input id="lead-whatsapp" {...register('whatsappNumber')} />
             </div>
           </div>
           <div className="space-y-1.5">

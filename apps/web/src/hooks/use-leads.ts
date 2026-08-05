@@ -19,8 +19,6 @@ export interface LeadIntakeSubmission {
   gender: string | null;
   nationality: string | null;
   countryOfResidence: string | null;
-  /** ISO 3166-1 alpha-2. Needed to read a local-format phone number — see lib/whatsapp.ts. */
-  country: string | null;
   preferredLanguage: string | null;
   treatmentInterest: string[];
   chiefComplaint: string | null;
@@ -48,6 +46,11 @@ export interface Lead {
   email: string | null;
   phone: string | null;
   whatsappNumber: string | null;
+  /**
+   * ISO 3166-1 alpha-2. Not merely descriptive: a leading zero on a phone number is a national
+   * trunk prefix, so this decides whether 055 512 3456 dials Riyadh or Istanbul.
+   */
+  country: string | null;
   source: string;
   stage: string;
   status: string;
@@ -147,6 +150,8 @@ export interface CreateLeadPayload {
   email?: string;
   phone?: string;
   whatsappNumber?: string;
+  /** ISO 3166-1 alpha-2 — decides how a local-format phone number is read. */
+  country?: string;
   source: string;
   campaignId?: string;
   estimatedValue?: number;

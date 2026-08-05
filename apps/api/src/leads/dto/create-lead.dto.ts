@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEmail, IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MinLength, Length } from 'class-validator';
 import { LeadSource } from '@dental-crm/shared';
 
 export class CreateLeadDto {
@@ -28,6 +28,17 @@ export class CreateLeadDto {
   @IsString()
   @IsOptional()
   whatsappNumber?: string;
+
+  /**
+   * ISO 3166-1 alpha-2. Not merely descriptive: a leading zero on a phone number is a national
+   * trunk prefix and cannot be resolved without it, so this decides whether 055 512 3456 is read
+   * as Saudi or Turkish.
+   */
+  @ApiPropertyOptional({ example: 'SA', description: 'ISO 3166-1 alpha-2 country code' })
+  @IsString()
+  @Length(2, 2)
+  @IsOptional()
+  country?: string;
 
   @ApiProperty({ enum: LeadSource })
   @IsEnum(LeadSource)
