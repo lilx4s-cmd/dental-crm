@@ -70,4 +70,12 @@ export declare function toE164Digits(raw: string | null | undefined, countryCode
  * being called twice by two salespeople.
  */
 export declare function phoneMatchKey(raw: string | null | undefined, countryCode?: string | null): string | null;
+/**
+ * Turns whatever somebody typed into an ISO 3166-1 alpha-2 code, or null.
+ *
+ * Null rather than a guess: `Lead.country` decides whether a leading zero on a phone number means
+ * Turkey or Saudi Arabia, so a wrong answer here dials a real number belonging to somebody else.
+ * Not knowing is safe — `toE164Digits` falls back to digits-only when the country is unknown.
+ */
+export declare function resolveCountryCode(raw: string | null | undefined): string | null;
 //# sourceMappingURL=phone.d.ts.map

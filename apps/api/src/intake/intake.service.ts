@@ -12,6 +12,7 @@ import {
   INTAKE_CONSENT_TEXT,
   INTAKE_MAX_FILES,
   INTAKE_MAX_FILE_BYTES,
+  resolveCountryCode,
 } from '@dental-crm/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -67,6 +68,14 @@ export class IntakeService {
           source: $Enums.LeadSource.WEBSITE,
           stage: $Enums.PipelineStage.NEW_DEAL,
           status: $Enums.LeadStatus.ACTIVE,
+          // The form asks for this and it was landing only on the submission, never on the lead —
+          // beside the UTM fields that were being copied. `Lead.country` is what decides whether a
+          // leading zero on a phone number means Turkey or Saudi Arabia, so every enquiry from the
+          // public form had its number parsed as Turkish regardless of what the patient wrote.
+          //
+          // Free text in, ISO code out. Unrecognised resolves to null rather than to a guess: not
+          // knowing is safe, and a wrong country dials a real number belonging to somebody else.
+          country: resolveCountryCode(dto.countryOfResidence),
           utmSource: dto.utmSource,
           utmMedium: dto.utmMedium,
           utmCampaign: dto.utmCampaign,

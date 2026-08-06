@@ -182,3 +182,67 @@ function formatDisplay(e164: string, country: CountryDialInfo | undefined): stri
   const groups = national.match(/.{1,3}/g) ?? [national];
   return `+${country.dial} ${groups.join(' ')}`.trim();
 }
+
+/**
+ * Alternative spellings people type for the countries this clinic treats.
+ *
+ * The public enquiry form asks "country of residence" as free text, because a dropdown on a form
+ * a patient fills in on a phone is worse than a box. What arrives is therefore "Saudi Arabia",
+ * "saudi", "KSA", "السعودية" or "Suudi Arabistan" — and `Lead.country` needs `SA`.
+ *
+ * Only the countries in `DIAL_COUNTRIES` are here, for the same reason that list is short: this is
+ * about parsing a phone number correctly, and a country the clinic has no patients in contributes
+ * nothing. Anything unrecognised resolves to null, which is what the field already means when
+ * nobody has said.
+ */
+const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
+  turkey: 'TR', turkiye: 'TR', türkiye: 'TR', turkiye_: 'TR', tr: 'TR', 'türkiye cumhuriyeti': 'TR',
+  'saudi arabia': 'SA', saudi: 'SA', ksa: 'SA', 'suudi arabistan': 'SA', السعودية: 'SA', sa: 'SA',
+  uae: 'AE', 'united arab emirates': 'AE', emirates: 'AE', dubai: 'AE', 'abu dhabi': 'AE',
+  الامارات: 'AE', 'الإمارات': 'AE', ae: 'AE',
+  kuwait: 'KW', الكويت: 'KW', kw: 'KW',
+  qatar: 'QA', قطر: 'QA', doha: 'QA', qa: 'QA',
+  bahrain: 'BH', البحرين: 'BH', bh: 'BH',
+  oman: 'OM', عمان: 'OM', muscat: 'OM', om: 'OM',
+  iraq: 'IQ', العراق: 'IQ', baghdad: 'IQ', erbil: 'IQ', iq: 'IQ',
+  jordan: 'JO', الاردن: 'JO', 'الأردن': 'JO', amman: 'JO', jo: 'JO',
+  lebanon: 'LB', لبنان: 'LB', beirut: 'LB', lb: 'LB',
+  egypt: 'EG', مصر: 'EG', cairo: 'EG', eg: 'EG',
+  libya: 'LY', ليبيا: 'LY', ly: 'LY',
+  algeria: 'DZ', الجزائر: 'DZ', dz: 'DZ',
+  morocco: 'MA', المغرب: 'MA', maroc: 'MA', ma: 'MA',
+  tunisia: 'TN', تونس: 'TN', tunisie: 'TN', tn: 'TN',
+  'united kingdom': 'GB', uk: 'GB', britain: 'GB', england: 'GB', london: 'GB', gb: 'GB',
+  germany: 'DE', deutschland: 'DE', almanya: 'DE', de: 'DE',
+  netherlands: 'NL', holland: 'NL', nl: 'NL',
+  france: 'FR', fr: 'FR',
+  belgium: 'BE', belgique: 'BE', be: 'BE',
+  sweden: 'SE', sverige: 'SE', se: 'SE',
+  russia: 'RU', россия: 'RU', ru: 'RU',
+  'united states': 'US', usa: 'US', america: 'US', us: 'US',
+};
+
+/**
+ * Turns whatever somebody typed into an ISO 3166-1 alpha-2 code, or null.
+ *
+ * Null rather than a guess: `Lead.country` decides whether a leading zero on a phone number means
+ * Turkey or Saudi Arabia, so a wrong answer here dials a real number belonging to somebody else.
+ * Not knowing is safe — `toE164Digits` falls back to digits-only when the country is unknown.
+ */
+export function resolveCountryCode(raw: string | null | undefined): string | null {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+
+  // An exact two-letter code first, so "SA" is never matched as a city name.
+  if (/^[a-z]{2}$/.test(value)) {
+    const direct = DIAL_COUNTRIES.find((c) => c.code.toLowerCase() === value);
+    if (direct) return direct.code;
+  }
+
+  if (COUNTRY_ALIASES[value]) return COUNTRY_ALIASES[value];
+
+  // Finally the canonical names, so a list that grows in DIAL_COUNTRIES works without also being
+  // added above.
+  const byName = DIAL_COUNTRIES.find((c) => c.name.toLowerCase() === value);
+  return byName?.code ?? null;
+}
