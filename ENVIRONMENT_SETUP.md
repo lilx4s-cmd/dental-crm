@@ -85,8 +85,32 @@ token must not stop someone seeing a patient.
 | `FACEBOOK_WEBHOOK_VERIFY_TOKEN` | Meta's handshake for lead ads | The webhook cannot be registered. |
 | `XAI_API_KEY` | AI assistant, plan summaries, WhatsApp drafts | Those four features report that AI is not configured. Everything else is unaffected. |
 | `XAI_MODEL`, `XAI_BASE_URL` | Override the model or endpoint | Defaults to `grok-4.5` on x.ai. |
+| `REMINDERS_ENABLED` | Appointment reminders | Off unless `true`. See below — this one is off by design, not by oversight. |
 | `MALWARE_SCAN_URL` | Scans every upload before it becomes a file | Uploads are recorded `SKIPPED`, never `CLEAN` — see below. |
 | `MALWARE_SCAN_TIMEOUT_MS` | How long to wait for the scanner | Defaults to 10000. A slow scanner leaves files `PENDING` rather than blocking the upload. |
+
+---
+
+## `REMINDERS_ENABLED` — **appointment reminders are off until you set this**
+
+| | |
+|---|---|
+| **Purpose** | Turns on the sweep that emails patients a day before their appointment. |
+| **Required?** | To send reminders at all. |
+| **Example** | `REMINDERS_ENABLED=true` |
+| **Where** | Render only. Do **not** set it locally. |
+| **What breaks** | Nothing breaks — nothing sends. The API logs "Appointment reminders are off" at start-up so it is visible rather than silent. |
+| **Watch out** | Off by default on purpose. Development runs against the production database on this project, so a developer with the API running over lunch would email real patients. The switch is what stops that. |
+
+Also needs SMTP configured — see the email section above. With `REMINDERS_ENABLED=true` and no
+SMTP, every reminder fails, is released, and is retried on the next sweep, which is visible in the
+logs and sends nothing.
+
+**The scheduler runs inside the API process.** On a host that sleeps when idle, it does not run
+while nobody is using the app. `POST /api/reminders/run` (Super Admin) forces a sweep, which is
+also how you confirm reminders work without waiting for the next ten-minute tick. It is safe to
+press twice — each appointment is claimed with an atomic update, so a second run finds nothing
+left to send.
 
 ---
 

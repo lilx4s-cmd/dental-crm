@@ -26,6 +26,11 @@ export default () => ({
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_STORAGE_BUCKET,
   },
+  // Off unless explicitly turned on. A developer running the API against the production database —
+  // which is how this project works — must not email real patients because the server was left up.
+  reminders: {
+    enabled: process.env.REMINDERS_ENABLED,
+  },
   // Optional. Unset means uploads are recorded as SKIPPED rather than CLEAN — see MalwareScanService.
   malwareScan: {
     url: process.env.MALWARE_SCAN_URL,

@@ -1,5 +1,67 @@
 # Changelog
 
+## Appointment reminders (2026-08-06)
+
+The first thing in this system that runs without somebody clicking.
+
+`Appointment.reminderSentAt` was a column no code read or wrote, and `Notification` had zero
+references anywhere. "Your appointment is on Thursday" was never sent — to patients who board a
+plane for it.
+
+### A cron over a column, not a queue
+
+A queue would need a broker this deployment does not have. A sweep over a column is less
+sophisticated and has the property that matters more: it is self-healing. Miss an hour to a
+restart and the next sweep picks up everything still outstanding, because the query asks the
+database what is unsent rather than replaying a log of what was scheduled.
+
+### Sending twice is the failure worth designing against
+
+Each appointment is claimed with an `updateMany` on `reminderSentAt: null`. The count it returns
+is how many rows *this* process won, and Postgres will not let a second process win the same one —
+so two instances, or one restarted mid-send, cannot produce two messages.
+
+The claim happens **before** the send. A crash between the two loses a reminder rather than
+duplicating one, which is the right way round: reception can call somebody who was not reminded,
+and nobody can unsend a second message that arrived at 3am. A send that fails releases the claim,
+and the window is an hour wide so the released row is still inside it on the next sweep.
+
+### Quiet hours, read from the clinic's clock
+
+Held between 21:00 and 08:00 — held, not skipped, so the next sweep after the quiet period sends
+it. The hour is read from `ClinicSettings.timezone`, not the server's: Render runs UTC, and a
+21:00 cut-off in UTC is midnight in Istanbul, which would send at exactly the hour this exists to
+protect. An unrecognised timezone falls back to the clinic's own default rather than to UTC, which
+would be three hours out.
+
+The message names the timezone, because the patient is usually in a different one — "14:00" with
+no zone is read in Riyadh as local, and they arrive two hours out.
+
+### Off by default
+
+`REMINDERS_ENABLED` is unset everywhere until somebody sets it on Render. Development on this
+project runs against the production database, so a developer with the API up over lunch would
+email real patients. The API logs that reminders are off at start-up, so it is visible rather than
+silent.
+
+`POST /api/reminders/run` (Super Admin) forces a sweep — the scheduler lives inside the API
+process, so on a host that sleeps it does not run while nobody is using the app. Safe to press
+twice.
+
+### Email only, and why
+
+WhatsApp is the channel these patients actually read, but sending outside the 24-hour window needs
+a Meta-approved message template and this clinic has none registered. Building against an approval
+that does not exist would produce a send that fails in production and passes every test here. SMS
+is blocked on which provider you want — both are in NEXT_TASK.md.
+
+### One thing the tests caught
+
+`sweep()` reads the real clock while `run(now)` takes the time as a parameter — correct, since the
+cron must use real time, but it made one test pass or fail depending on the hour it ran at. The
+clock is now pinned in that test.
+
+
 ## Attachments in the Communication Center (2026-08-06)
 
 Patients could not send the clinic a file, and the clinic could not send them one. `Message.mediaUrl`

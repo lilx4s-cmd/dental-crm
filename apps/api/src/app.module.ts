@@ -6,7 +6,9 @@ import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TagsModule } from './tags/tags.module';
+import { RemindersModule } from './reminders/reminders.module';
 import { MessageTemplatesModule } from './message-templates/message-templates.module';
 import { PatientsModule } from './patients/patients.module';
 import { LeadsModule } from './leads/leads.module';
@@ -47,7 +49,10 @@ import { HealthController } from './health/health.controller';
     PrismaModule,
     AuthModule,
     UsersModule,
+    // Registered once for the whole app. Per-module registration starts a second scheduler.
+    ScheduleModule.forRoot(),
     TagsModule,
+    RemindersModule,
     MessageTemplatesModule,
     PatientsModule,
     LeadsModule,
