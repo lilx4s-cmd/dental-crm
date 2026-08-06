@@ -36,6 +36,8 @@ const CONVERSATION_SELECT = {
   channel: true,
   externalThreadId: true,
   isArchived: true,
+  isPinned: true,
+  pinnedAt: true,
   lastMessageAt: true,
   lastReadAt: true,
   createdAt: true,
@@ -64,15 +66,65 @@ export class ConversationsService {
     const where: Prisma.ConversationWhereInput = {};
     if (query.channel) where.channel = query.channel as $Enums.ConversationChannel;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
+    if (query.unassignedOnly) where.assignedToId = null;
     where.isArchived = query.isArchived ?? false;
+
+    const search = query.search?.trim();
+    if (search) {
+      const digits = search.replace(/\D/g, '');
+      where.OR = [
+        { lead: { firstName: { contains: search, mode: 'insensitive' } } },
+        { lead: { lastName: { contains: search, mode: 'insensitive' } } },
+        { patient: { firstName: { contains: search, mode: 'insensitive' } } },
+        { patient: { lastName: { contains: search, mode: 'insensitive' } } },
+        // What was said in the thread. Last, because it is the widest of the conditions and the
+        // planner will take a cheaper one first when it can.
+        { messages: { some: { content: { contains: search, mode: 'insensitive' } } } },
+        // A typed number is matched against the stored digits, not the formatted string: staff
+        // type "+90 555" and the record holds 905551234567. Four digits minimum, or "0" matches
+        // half the inbox and proves it with a full scan.
+        ...(digits.length >= 4
+          ? [
+              { lead: { phone: { contains: digits } } },
+              { lead: { whatsappNumber: { contains: digits } } },
+              { patient: { phone: { contains: digits } } },
+              { externalThreadId: { contains: digits } },
+            ]
+          : []),
+      ];
+    }
 
     const conversations = await this.prisma.conversation.findMany({
       where,
       select: CONVERSATION_SELECT,
-      orderBy: { lastMessageAt: 'desc' },
+      // Pinned first, then most recently spoken. A pin that did not float the thread to the top
+      // would be a flag, not a pin.
+      orderBy: [{ isPinned: 'desc' }, { lastMessageAt: 'desc' }],
     });
 
-    return this.withUnreadCounts(conversations);
+    const withCounts = await this.withUnreadCounts(conversations);
+
+    // Filtered after counting rather than in SQL: "unread" is derived from lastReadAt against each
+    // thread's messages, which is the grouped query below and not a column anything can filter on.
+    return query.unreadOnly ? withCounts.filter((c) => c.unreadCount > 0) : withCounts;
+  }
+
+  /**
+   * Pins or unpins a thread.
+   *
+   * Clinic-wide, not per person — see the schema. `pinnedAt` is recorded so a future ordering can
+   * put the most recently pinned first; today they sort by last message like everything else,
+   * because a clinic with three pinned threads does not need them ranked among themselves.
+   */
+  async setPinned(id: string, isPinned: boolean) {
+    const existing = await this.prisma.conversation.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Conversation not found');
+
+    return this.prisma.conversation.update({
+      where: { id },
+      data: { isPinned, pinnedAt: isPinned ? new Date() : null },
+      select: CONVERSATION_SELECT,
+    });
   }
 
   /**

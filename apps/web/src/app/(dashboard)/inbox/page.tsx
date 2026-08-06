@@ -3,7 +3,18 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageSquare, Archive, Send, Phone, User, AlertTriangle, RotateCw, Check } from 'lucide-react';
+import {
+  MessageSquare,
+  Archive,
+  Send,
+  Phone,
+  User,
+  AlertTriangle,
+  RotateCw,
+  Check,
+  Pin,
+  Search,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,9 +31,11 @@ import {
   useRetryMessage,
   useSendingStatus,
   useMarkConversationRead,
+  usePinConversation,
 } from '@/hooks/use-conversations';
 import type { ConversationSummary, Message } from '@/hooks/use-conversations';
 import { QueryError } from '@/components/ui/query-state';
+import { TemplatePicker } from '@/components/inbox/template-picker';
 
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp',
@@ -51,15 +64,49 @@ function ConversationRow({
 }) {
   const contact = conv.patient ?? conv.lead;
   const lastMsg = conv.messages[0];
+  const pin = usePinConversation();
 
   return (
-    <button
+    // A div rather than a button, because the pin control sits inside it and a button inside a
+    // button is invalid markup that browsers resolve by dropping one of them.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={cn(
-        'w-full text-left px-4 py-3 border-b transition-colors hover:bg-muted/40',
+        'group relative w-full cursor-pointer border-b px-4 py-3 text-left transition-colors hover:bg-muted/40',
         selected && 'bg-muted/60',
       )}
     >
+      {/* Appears on hover, stays visible once pinned — a pinned thread has to advertise why it is
+          sitting at the top out of date order. */}
+      <button
+        type="button"
+        aria-label={conv.isPinned ? 'Unpin this conversation' : 'Pin to the top of the inbox'}
+        title={conv.isPinned ? 'Unpin' : 'Pin to the top'}
+        onClick={(e) => {
+          e.stopPropagation();
+          pin.mutate(
+            { id: conv.id, pinned: !conv.isPinned },
+            { onError: () => toast.error('Could not change the pin') },
+          );
+        }}
+        className={cn(
+          'absolute right-2 top-2 rounded p-1 transition-opacity',
+          conv.isPinned
+            ? 'text-primary opacity-100'
+            : 'text-muted-foreground opacity-0 focus:opacity-100 group-hover:opacity-100',
+          'hover:bg-muted',
+        )}
+      >
+        <Pin className={cn('h-3.5 w-3.5', conv.isPinned && 'fill-current')} />
+      </button>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -76,7 +123,7 @@ function ConversationRow({
             </p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        <div className="flex shrink-0 flex-col items-end gap-1 pr-5">
           {conv.unreadCount > 0 && (
             <span
               className="rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-foreground"
@@ -95,7 +142,7 @@ function ConversationRow({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -260,6 +307,15 @@ function MessageThread({ conversationId }: { conversationId: string }) {
           </p>
         )}
         <div className="flex gap-2">
+          <TemplatePicker
+            recipient={contact}
+            disabled={sendMessage.isPending}
+            // Appended rather than replacing: someone who has already typed "Hi, following up —"
+            // and then reaches for the price list meant both.
+            onInsert={(body) => setText((current) => (current.trim() ? `${current.trimEnd()}
+
+${body}` : body))}
+          />
           <Input
             placeholder={conv.channel === 'WHATSAPP' ? 'Type a message…' : `Sending on ${conv.channel} is not connected yet`}
             value={text}
@@ -280,9 +336,27 @@ function InboxView() {
   // from a lead, instead of dropping them at an inbox they then have to search.
   const params = useSearchParams();
   const [channel, setChannel] = useState<string | undefined>(undefined);
-  const listQuery = useConversations(channel);
+  const [search, setSearch] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+
+  // Debounced, because the inbox polls every ten seconds and every keystroke would otherwise start
+  // a search across message bodies.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const listQuery = useConversations({
+    channel,
+    search: debouncedSearch,
+    unreadOnly,
+    unassignedOnly,
+  });
   const { data: conversations, isLoading } = listQuery;
   const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
+  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly;
 
   return (
     <div className="space-y-4 h-full">
@@ -301,18 +375,76 @@ function InboxView() {
 
         <TabsContent value={channel ?? 'ALL'} className="mt-0">
           <Card className="flex h-[calc(100vh-260px)] overflow-hidden">
-            <div className="w-72 border-r overflow-y-auto shrink-0">
+            <div className="flex w-72 shrink-0 flex-col border-r">
+              <div className="space-y-2 border-b p-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Name, number, or a word they said…"
+                    aria-label="Search conversations"
+                    className="h-8 pl-7 text-sm"
+                  />
+                </div>
+                <div className="flex gap-1">
+                  {/* Two filters, not a panel. These are the only two questions an inbox shared by
+                      four people gets asked: what needs an answer, and what has nobody taken. */}
+                  <Button
+                    size="sm"
+                    variant={unreadOnly ? 'default' : 'outline'}
+                    className="h-7 flex-1 text-xs"
+                    onClick={() => setUnreadOnly((v) => !v)}
+                    aria-pressed={unreadOnly}
+                  >
+                    Unread
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={unassignedOnly ? 'default' : 'outline'}
+                    className="h-7 flex-1 text-xs"
+                    onClick={() => setUnassignedOnly((v) => !v)}
+                    aria-pressed={unassignedOnly}
+                  >
+                    Unassigned
+                  </Button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
               {isLoading
                 ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 m-2 rounded-lg" />)
                 : listQuery.isError
                 ? <QueryError error={listQuery.error} onRetry={listQuery.refetch} className="px-4 py-16" />
                 : conversations?.length === 0
                 ? (
-                  <div className="py-16 text-center text-muted-foreground text-sm px-4">
-                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    No conversations yet.
-                    <br />
-                    Messages from WhatsApp and Facebook will appear here automatically.
+                  <div className="px-4 py-16 text-center text-sm text-muted-foreground">
+                    <MessageSquare className="mx-auto mb-2 h-8 w-8 opacity-40" />
+                    {/* "No conversations yet" under an active filter is a lie, and the kind that
+                        sends someone to check whether WhatsApp is broken. */}
+                    {filtering ? (
+                      <>
+                        Nothing matches those filters.
+                        <br />
+                        <button
+                          type="button"
+                          className="mt-2 text-primary hover:underline"
+                          onClick={() => {
+                            setSearch('');
+                            setUnreadOnly(false);
+                            setUnassignedOnly(false);
+                          }}
+                        >
+                          Clear them
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        No conversations yet.
+                        <br />
+                        Messages from WhatsApp and Facebook will appear here automatically.
+                      </>
+                    )}
                   </div>
                 )
                 : conversations?.map((conv) => (
@@ -323,6 +455,7 @@ function InboxView() {
                       onClick={() => setSelectedId(conv.id)}
                     />
                   ))}
+              </div>
             </div>
 
             <div className="flex-1 min-w-0">

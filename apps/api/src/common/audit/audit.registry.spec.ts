@@ -1,5 +1,32 @@
 import { AUDIT_RULES, actionFor, redact, ruleFor } from './audit.registry';
 
+/**
+ * Saved replies are audited on edit but not on use.
+ *
+ * There is no exclusion mechanism in the registry — a rule that matches *is* the instruction to
+ * audit — so `render` is kept out by anchoring the pattern rather than by listing it. That is easy
+ * to undo by accident with one loosened regex, which is what these pin down.
+ */
+describe('message templates', () => {
+  it('audits creating one', () => {
+    expect(ruleFor('message-templates', 'POST')?.entityType).toBe('MessageTemplate');
+  });
+
+  it('audits editing one', () => {
+    expect(ruleFor('message-templates/abc', 'PATCH')?.entityType).toBe('MessageTemplate');
+  });
+
+  it('audits retiring one', () => {
+    expect(ruleFor('message-templates/abc', 'DELETE')?.entityType).toBe('MessageTemplate');
+  });
+
+  it('does not audit filling one in', () => {
+    // Fires every time somebody opens the picker. Auditing it would bury the handful of real
+    // edits under thousands of uses.
+    expect(ruleFor('message-templates/abc/render', 'POST')).toBeUndefined();
+  });
+});
+
 describe('ruleFor', () => {
   it('covers the clinical record', () => {
     expect(ruleFor('patients/:id', 'PATCH')?.entityType).toBe('Patient');

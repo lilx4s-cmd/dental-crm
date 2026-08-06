@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TagsModule } from './tags/tags.module';
+import { MessageTemplatesModule } from './message-templates/message-templates.module';
 import { PatientsModule } from './patients/patients.module';
 import { LeadsModule } from './leads/leads.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -47,6 +48,7 @@ import { HealthController } from './health/health.controller';
     AuthModule,
     UsersModule,
     TagsModule,
+    MessageTemplatesModule,
     PatientsModule,
     LeadsModule,
     DashboardModule,

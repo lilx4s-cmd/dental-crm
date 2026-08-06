@@ -78,6 +78,20 @@ export class ConversationsController {
     return this.conversationsService.markRead(id);
   }
 
+  // Pinning is clinic-wide, so it is deliberately not restricted to whoever is assigned: the
+  // point of a pin is that the person covering can find the thread too.
+  @Patch(':id/pin')
+  @Roles(...PATIENT_FACING)
+  pin(@Param('id') id: string) {
+    return this.conversationsService.setPinned(id, true);
+  }
+
+  @Patch(':id/unpin')
+  @Roles(...PATIENT_FACING)
+  unpin(@Param('id') id: string) {
+    return this.conversationsService.setPinned(id, false);
+  }
+
   @Patch(':id/archive')
   @Roles(...PATIENT_FACING)
   archive(@Param('id') id: string) {

@@ -236,6 +236,20 @@ export class LeadsController {
     return this.leadsService.getActivities(id, user);
   }
 
+  /**
+   * The history and the WhatsApp thread, interleaved.
+   *
+   * Separate from `:id/activities`, which the sales feed still reads and which must keep returning
+   * only stage changes — merging messages into it would change what "activity" means for a screen
+   * built to show who moved what.
+   */
+  @Get(':id/timeline')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'Stage changes, notes, tag changes and messages on one timeline' })
+  getTimeline(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.getTimeline(id, user);
+  }
+
   @Get(':id/tasks')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'List tasks on a lead (open first, then completed)' })

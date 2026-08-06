@@ -105,6 +105,21 @@ export const AUDIT_RULES: readonly AuditRule[] = [
   // The shared vocabulary. Renaming or deleting a tag changes what every card and every saved
   // filter shows, across both the pipeline and the patient list, in one request.
   { path: /^tags/, methods: ['POST', 'PATCH', 'DELETE'], entityType: 'Tag', idParam: ID },
+  /**
+   * Saved replies. A wrong price in one of these goes out repeatedly before anyone notices, which
+   * makes "who changed it and when" the question that follows.
+   *
+   * Anchored to the collection and the item, so `POST message-templates/:id/render` matches
+   * nothing here and is not audited. There is no exclusion mechanism — a rule that matches *is*
+   * the instruction to audit — so leaving the pattern open-ended would have recorded every time
+   * anybody opened a picker, and buried the handful of real edits under thousands of uses.
+   */
+  {
+    path: /^message-templates(\/[^/]+)?$/,
+    methods: ['POST', 'PATCH', 'DELETE'],
+    entityType: 'MessageTemplate',
+    idParam: ID,
+  },
 
   // The pipeline. Lower stakes clinically, but a merge is destructive and a reassignment decides
   // whose commission a case counts towards.

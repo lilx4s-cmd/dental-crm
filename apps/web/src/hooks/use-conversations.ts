@@ -9,6 +9,9 @@ export interface ConversationSummary {
   channel: string;
   externalThreadId: string | null;
   isArchived: boolean;
+  /** Kept at the top of the inbox. Clinic-wide, not per person — see the schema. */
+  isPinned: boolean;
+  pinnedAt: string | null;
   lastMessageAt: string | null;
   createdAt: string;
   patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
@@ -40,15 +43,58 @@ export interface ConversationDetail extends Omit<ConversationSummary, 'messages'
   messages: Message[];
 }
 
-export function useConversations(channel?: string) {
+export interface InboxFilters {
+  channel?: string;
+  /** Name, number, or something said in the thread. */
+  search?: string;
+  unreadOnly?: boolean;
+  unassignedOnly?: boolean;
+  isArchived?: boolean;
+}
+
+export function useConversations(filters: InboxFilters | string = {}) {
   const { accessToken } = useAuth();
+  // A bare string is the old signature — the inbox used to take a channel and nothing else. Kept
+  // working rather than chased through every call site for a rename that changes no behaviour.
+  const f: InboxFilters = typeof filters === 'string' ? { channel: filters } : filters;
+
   const params = new URLSearchParams();
-  if (channel) params.set('channel', channel);
+  if (f.channel) params.set('channel', f.channel);
+  if (f.search?.trim()) params.set('search', f.search.trim());
+  if (f.unreadOnly) params.set('unreadOnly', 'true');
+  if (f.unassignedOnly) params.set('unassignedOnly', 'true');
+  if (f.isArchived) params.set('isArchived', 'true');
+  const qs = params.toString();
 
   return useQuery<ConversationSummary[]>({
-    queryKey: ['conversations', channel],
-    queryFn: () => apiRequest(`/api/conversations?${params}`, {}, accessToken ?? undefined),
+    queryKey: ['conversations', qs],
+    queryFn: () => apiRequest(`/api/conversations${qs ? `?${qs}` : ''}`, {}, accessToken ?? undefined),
+    // The inbox is a screen people leave open, so it polls. Kept even while a search is active:
+    // a reply arriving to a thread that matches the search should still appear.
     refetchInterval: 10_000,
+    // Otherwise the list empties for a moment on every keystroke, which reads as "no results" for
+    // long enough to be believed.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * Pins or unpins a thread.
+ *
+ * Clinic-wide rather than per person: a pin means "everyone should be able to find this" — the
+ * patient flying in on Thursday — not "I am working on it", which assignment already records.
+ */
+export function usePinConversation() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<ConversationSummary, Error, { id: string; pinned: boolean }>({
+    mutationFn: ({ id, pinned }) =>
+      apiRequest(
+        `/api/conversations/${id}/${pinned ? 'pin' : 'unpin'}`,
+        { method: 'PATCH' },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
   });
 }
 

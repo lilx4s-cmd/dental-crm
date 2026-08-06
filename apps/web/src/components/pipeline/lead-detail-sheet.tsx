@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import {
   Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2,
+  Tag as TagIcon,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { DealDocuments } from './deal-documents';
@@ -17,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { CLINICAL, STAGE_LABELS } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
-import { useLead, useLeadActivities, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
+import { useLead, useLeadTimeline, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
 import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
@@ -25,6 +26,7 @@ import { useClinicSettings } from '@/hooks/use-reports';
 import { useStartConversation } from '@/hooks/use-conversations';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { formatMoney } from '@/lib/money';
+import { cn } from '@/lib/utils';
 
 const BITRIX_DOMAIN = process.env.NEXT_PUBLIC_BITRIX_DOMAIN;
 
@@ -149,7 +151,9 @@ export function LeadDetailSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { data: activities, isLoading: activitiesLoading } = useLeadActivities(open ? lead?.id ?? null : null);
+  // The merged history. `useLeadActivities` still exists for the sales feed, which must keep
+  // meaning "stage changes only" — merging messages into that would change what it reports.
+  const { data: timeline, isLoading: timelineLoading } = useLeadTimeline(open ? lead?.id ?? null : null);
   // The board's payload deliberately omits the enquiry questionnaire — it would ship every
   // patient's medical history just to draw the cards — so the sheet fetches the full record.
   const { data: fullLead } = useLead(open && lead ? lead.id : '');
@@ -322,30 +326,72 @@ export function LeadDetailSheet({
             <Separator className="my-4" />
 
             <div>
-              <h3 className="text-sm font-semibold mb-3">Activity History</h3>
-              {activitiesLoading ? (
+              <h3 className="mb-3 text-sm font-semibold">History</h3>
+              {/* Stage changes, notes, tag changes and the WhatsApp thread on one list. These were
+                  two separate screens, and the question people bring to a deal spans both: "we
+                  sent the offer on Tuesday — did they ever reply?" */}
+              {timelineLoading ? (
                 <p className="text-xs text-muted-foreground">Loading…</p>
-              ) : activities && activities.length > 0 ? (
+              ) : timeline && timeline.length > 0 ? (
                 <ul className="space-y-3">
-                  {activities.map((a) => (
-                    <li key={a.id} className="text-xs">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <span>{a.fromStage ? (STAGE_LABELS[a.fromStage] ?? a.fromStage) : '—'}</span>
-                        <ArrowRight className="h-3 w-3" />
-                        <span className="font-medium text-foreground">
-                          {a.toStage ? (STAGE_LABELS[a.toStage] ?? a.toStage) : '—'}
-                        </span>
-                      </div>
-                      {a.note && <p className="mt-0.5 text-muted-foreground">{a.note}</p>}
+                  {timeline.map((e) => (
+                    <li key={e.id} className="text-xs">
+                      {e.kind === 'message' ? (
+                        <>
+                          <div className="flex items-center gap-1.5">
+                            <MessageCircle
+                              className={cn(
+                                'h-3 w-3 shrink-0',
+                                e.direction === 'INBOUND' ? 'text-success' : 'text-muted-foreground',
+                              )}
+                            />
+                            <span className="font-medium">
+                              {e.direction === 'INBOUND' ? 'They wrote' : 'We wrote'}
+                            </span>
+                            {/* A failed send sitting in a thread reads as "the patient has it".
+                                Silence after a treatment quote means something very different
+                                depending on whether the quote arrived. */}
+                            {e.status === 'FAILED' && (
+                              <span className="text-destructive-muted-foreground">· not delivered</span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">
+                            {e.content || (e.hasMedia ? '(attachment)' : '(empty message)')}
+                          </p>
+                        </>
+                      ) : e.kind === 'tag' ? (
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <TagIcon className="h-3 w-3 shrink-0" />
+                          <span>
+                            {e.action === 'ADDED' ? 'Tagged' : 'Untagged'}{' '}
+                            <span className="font-medium text-foreground">{e.tagName}</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Only when the stage actually moved. Notes carry the deal's current
+                              stage on both ends, and "Contacted → Contacted" is noise. */}
+                          {e.toStage && (
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <span>{e.fromStage ? (STAGE_LABELS[e.fromStage] ?? e.fromStage) : '—'}</span>
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="font-medium text-foreground">
+                                {STAGE_LABELS[e.toStage] ?? e.toStage}
+                              </span>
+                            </div>
+                          )}
+                          {e.note && <p className="mt-0.5 text-muted-foreground">{e.note}</p>}
+                        </>
+                      )}
                       <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                        {a.user ? `${a.user.firstName} ${a.user.lastName}` : 'System'} ·{' '}
-                        {new Date(a.createdAt).toLocaleString()}
+                        {e.user ? `${e.user.firstName} ${e.user.lastName}` : e.kind === 'message' ? 'Patient' : 'System'} ·{' '}
+                        {new Date(e.at).toLocaleString()}
                       </p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">No activity yet</p>
+                <p className="text-xs text-muted-foreground">Nothing has happened on this deal yet</p>
               )}
             </div>
 

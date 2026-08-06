@@ -778,6 +778,102 @@ export class LeadsService {
     });
   }
 
+  /**
+   * Everything that has happened on this deal, in one list.
+   *
+   * The history and the WhatsApp thread were two separate screens, and the question people bring
+   * to a deal spans both: "we sent the offer on Tuesday — did they ever reply?" The stage change
+   * is in one place, the reply in another, and nothing put them on the same timeline.
+   *
+   * Merged in memory rather than in SQL. They are different tables with different shapes and no
+   * common key, so a union would mean naming every column twice and casting them into agreement —
+   * and the result is bounded to a page anyway.
+   */
+  async getTimeline(id: string, currentUser: JwtPayload, limit = 60) {
+    await this.findOne(id, currentUser);
+
+    const [activities, messages, tagChanges] = await Promise.all([
+      this.prisma.leadActivity.findMany({
+        where: { leadId: id },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          note: true,
+          fromStage: true,
+          toStage: true,
+          createdAt: true,
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.message.findMany({
+        where: { conversation: { leadId: id } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          direction: true,
+          content: true,
+          mediaUrl: true,
+          status: true,
+          createdAt: true,
+          conversationId: true,
+          senderUser: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.leadTagHistory.findMany({
+        where: { leadId: id },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          tagName: true,
+          action: true,
+          createdAt: true,
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+
+    const entries = [
+      ...activities.map((a) => ({
+        kind: 'activity' as const,
+        id: `activity:${a.id}`,
+        at: a.createdAt,
+        user: a.user,
+        note: a.note,
+        // Only when the stage actually moved. Notes and reassignments carry the deal's current
+        // stage on both ends, and rendering those as "Contacted → Contacted" is noise.
+        fromStage: a.fromStage !== a.toStage ? a.fromStage : null,
+        toStage: a.fromStage !== a.toStage ? a.toStage : null,
+      })),
+      ...messages.map((m) => ({
+        kind: 'message' as const,
+        id: `message:${m.id}`,
+        at: m.createdAt,
+        user: m.senderUser,
+        direction: m.direction,
+        content: m.content,
+        hasMedia: !!m.mediaUrl,
+        status: m.status,
+        conversationId: m.conversationId,
+      })),
+      ...tagChanges.map((t) => ({
+        kind: 'tag' as const,
+        id: `tag:${t.id}`,
+        at: t.createdAt,
+        user: t.user,
+        tagName: t.tagName,
+        action: t.action,
+      })),
+    ];
+
+    // Newest first, then trimmed: each source was capped independently, so a deal with two hundred
+    // messages and three stage changes must not lose the stage changes to the cap.
+    entries.sort((a, b) => b.at.getTime() - a.at.getTime());
+    return entries.slice(0, limit);
+  }
+
   async convertToPatient(id: string, currentUser?: JwtPayload) {
     const lead = await this.findOne(id, currentUser);
 

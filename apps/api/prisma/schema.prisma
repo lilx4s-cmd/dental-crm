@@ -389,6 +389,7 @@ model User {
   twoFactorRecoveryCodes      TwoFactorRecoveryCode[]
   labOrdersCreated            LabOrder[]               @relation("LabOrderCreatedBy")
   tagsCreated                 Tag[]                    @relation("TagCreator")
+  messageTemplatesCreated     MessageTemplate[]        @relation("MessageTemplateCreator")
   leadTagsAssigned            LeadTag[]                @relation("LeadTagAssigner")
   leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
 
@@ -528,8 +529,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tags           Tag[]
-  leadTagHistory LeadTagHistory[]
+  tags             Tag[]
+  leadTagHistory   LeadTagHistory[]
+  messageTemplates MessageTemplate[]
 
   @@map("organizations")
 }
@@ -621,6 +623,42 @@ model LeadTagHistory {
   @@index([leadId, createdAt])
   @@index([organizationId, createdAt])
   @@map("lead_tag_history")
+}
+
+/// A canned reply.
+///
+/// The same six answers are typed forty times a week — the price list, what to bring, where the
+/// hotel is, how long the stay takes. Typed fresh each time they are slower, less consistent, and
+/// occasionally wrong in ways that matter when the subject is a surgical appointment.
+///
+/// Deliberately *not* the same thing as a WhatsApp Business "template". Meta's templates are
+/// pre-approved message formats needed to open a conversation outside the 24-hour window, and
+/// carry an approval workflow this does not model; `Message.templateName` already records when one
+/// of those was used. These are text snippets staff insert into a reply they are about to send,
+/// which is the thing anyone actually asks for.
+model MessageTemplate {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// What staff pick it by in the composer, not what the patient sees.
+  title          String
+  body           String
+  /// Free-text grouping, kept simple on purpose: templates are a short list a clinic curates by
+  /// hand, and a fixed enum would be wrong for the second clinic that uses this.
+  category       String?
+  /// Never deleted outright — a template dropped from the picker should not remove it from the
+  /// history of who used what, and unpicking a mistake should not need it re-typed.
+  isActive       Boolean      @default(true)
+  createdById    String?
+  createdBy      User?        @relation("MessageTemplateCreator", fields: [createdById], references: [id])
+  /// How often it has been inserted. Sorts the picker so the six that get used are the six on top.
+  useCount       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, title])
+  @@index([organizationId, isActive])
+  @@map("message_templates")
 }
 
 model PatientTag {
@@ -1295,6 +1333,14 @@ model Conversation {
   // per-message read table would grow without bound to answer a question nobody asks.
   lastReadAt       DateTime?
   isArchived       Boolean             @default(false)
+  /// Kept at the top of the inbox regardless of when it last spoke.
+  ///
+  /// Clinic-wide rather than per user. A pinned thread here means "everyone should be able to find
+  /// this one" — the patient flying in on Thursday, the complaint being handled — not "I am
+  /// personally working on it", which is what assignment already records. A per-user pin would
+  /// need its own join table and would hide the urgent thread from whoever is covering.
+  isPinned         Boolean             @default(false)
+  pinnedAt         DateTime?
   createdAt        DateTime            @default(now())
 
   messages Message[]
@@ -1304,6 +1350,8 @@ model Conversation {
   // this that is a sequential scan of every conversation, once per card, on a 1005-deal pipeline.
   @@index([leadId, lastMessageAt])
   @@index([patientId, lastMessageAt])
+  // The inbox's own ordering: unarchived, pinned first, then most recently spoken.
+  @@index([isArchived, isPinned, lastMessageAt])
   @@map("conversations")
 }
 

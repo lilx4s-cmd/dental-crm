@@ -603,3 +603,36 @@ export function useBulkTaskLeads() {
     },
   });
 }
+
+/**
+ * Stage changes, notes, tag changes and messages, on one timeline.
+ *
+ * Separate from `useLeadActivities`, which the sales feed still reads and which must keep meaning
+ * "stage changes only". The question people bring to a deal spans both — "we sent the offer on
+ * Tuesday, did they ever reply?" — and until this existed the answer lived on two screens.
+ */
+export interface TimelineEntry {
+  kind: 'activity' | 'message' | 'tag';
+  id: string;
+  at: string;
+  user: { id: string; firstName: string; lastName: string } | null;
+  note?: string | null;
+  fromStage?: string | null;
+  toStage?: string | null;
+  direction?: 'INBOUND' | 'OUTBOUND';
+  content?: string | null;
+  hasMedia?: boolean;
+  status?: string;
+  conversationId?: string;
+  tagName?: string;
+  action?: 'ADDED' | 'REMOVED';
+}
+
+export function useLeadTimeline(leadId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<TimelineEntry[]>({
+    queryKey: ['lead-timeline', leadId],
+    queryFn: () => apiRequest(`/api/leads/${leadId}/timeline`, {}, accessToken ?? undefined),
+    enabled: !!leadId,
+  });
+}
