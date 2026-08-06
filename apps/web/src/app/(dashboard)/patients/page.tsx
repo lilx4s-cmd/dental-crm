@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { NewPatientDialog } from '@/components/patients/new-patient-dialog';
 import { QueryError } from '@/components/ui/query-state';
+import { TagPill } from '@/components/tags/tag-pill';
 import { usePatients } from '@/hooks/use-patients';
 
 export default function PatientsPage() {
@@ -93,9 +94,7 @@ export default function PatientsPage() {
                       <td className="px-4 py-3">
                         <div className="flex gap-1 flex-wrap">
                           {p.tags.map(({ tag }) => (
-                            <Badge key={tag.id} variant="outline" style={{ borderColor: tag.color, color: tag.color }}>
-                              {tag.name}
-                            </Badge>
+                            <TagPill key={tag.id} name={tag.name} color={tag.color} />
                           ))}
                         </div>
                       </td>

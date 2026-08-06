@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { DealDocuments } from './deal-documents';
+import { LeadTagsSection } from '@/components/tags/lead-tags-section';
 import { IntakeAnswers } from './intake-answers';
 import { LeadTasksSection } from './lead-tasks-section';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -298,6 +299,10 @@ export function LeadDetailSheet({
                 )
               )}
             </div>
+
+            <Separator className="my-4" />
+
+            <LeadTagsSection leadId={lead.id} tags={lead.tags ?? []} />
 
             <Separator className="my-4" />
 

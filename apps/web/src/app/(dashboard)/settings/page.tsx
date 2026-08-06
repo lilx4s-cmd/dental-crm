@@ -23,6 +23,7 @@ import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
 import { PlanDefaultsCard } from '@/components/settings/plan-defaults-card';
 import { QueryError } from '@/components/ui/query-state';
 import { AccountSecurityCard } from '@/components/settings/account-security-card';
+import { TagsCard } from '@/components/settings/tags-card';
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'bg-destructive-muted text-destructive-muted-foreground',
@@ -230,6 +231,10 @@ export default function SettingsPage() {
 
       {/* The terms every new treatment plan starts from — set once, copied onto each plan. */}
       <PlanDefaultsCard />
+
+      {/* Above the integrations: tags are used every day by everyone, where the cards below are
+          configured once and then only looked at when something breaks. */}
+      <TagsCard />
 
       <StorageStatusCard />
 

@@ -29,6 +29,7 @@ __exportStar(require("./access/lockout"), exports);
 __exportStar(require("./access/password-policy"), exports);
 __exportStar(require("./access/password-reset"), exports);
 __exportStar(require("./pipeline/next-action"), exports);
+__exportStar(require("./tags/tags"), exports);
 __exportStar(require("./finance/case-economics"), exports);
 __exportStar(require("./schemas/auth.schema"), exports);
 __exportStar(require("./schemas/user.schema"), exports);

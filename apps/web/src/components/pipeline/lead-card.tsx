@@ -11,6 +11,7 @@ import { formatDealValue } from '@/lib/money';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { cn } from '@/lib/utils';
 import { LeadTaskBadge } from './lead-task-badge';
+import { TagPill } from '@/components/tags/tag-pill';
 
 const SOURCE_LABELS: Record<string, string> = {
   WALK_IN: 'Walk-in',
@@ -26,6 +27,21 @@ const SOURCE_LABELS: Record<string, string> = {
 
 function initials(firstName?: string, lastName?: string | null) {
   return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
+}
+
+/**
+ * An ISO country code as its flag emoji.
+ *
+ * Arithmetic on the code points rather than a lookup table of 250 entries: regional indicator
+ * symbols sit at U+1F1E6 in the same order as A–Z, so a two-letter code maps directly. Anything
+ * that is not two letters returns nothing, and the code still prints beside it — the flag is a
+ * scanning aid, not the label.
+ */
+function countryFlag(code: string): string {
+  if (!/^[A-Za-z]{2}$/.test(code)) return '';
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65),
+  );
 }
 
 /** Whole days since the lead last changed stage. */
@@ -136,10 +152,41 @@ export function LeadCard({
               <span className="truncate">{lead.email}</span>
             </div>
           )}
-          {lead.source && (
-            <p className="truncate">{SOURCE_LABELS[lead.source] ?? lead.source}</p>
+          {/* Country and source share a line. Both are a word each, and giving them a line apiece
+              pushes the task badge below the fold on a laptop, which is where the card stops being
+              scannable. Country first: for a medical-tourism coordinator it decides the language,
+              the hour to call, and the price list. */}
+          {(lead.country || lead.source) && (
+            <p className="flex items-center gap-1.5 truncate">
+              {lead.country && (
+                <span className="shrink-0 font-medium" title={lead.country}>
+                  {countryFlag(lead.country)} {lead.country}
+                </span>
+              )}
+              {lead.country && lead.source && <span className="text-bx-line">·</span>}
+              {lead.source && <span className="truncate">{SOURCE_LABELS[lead.source] ?? lead.source}</span>}
+            </p>
           )}
         </div>
+
+        {/* Tags below the contact lines: they are the slowest-changing thing on the card, so they
+            are what the eye can skip once it knows the deal. Capped at three — a card is around
+            260px wide and a fourth pill wraps the row, moving everything under it. */}
+        {lead.tags && lead.tags.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {lead.tags.slice(0, 3).map(({ tag }) => (
+              <TagPill key={tag.id} name={tag.name} color={tag.color} size="xs" />
+            ))}
+            {lead.tags.length > 3 && (
+              <span
+                className="text-[10px] text-bx-muted"
+                title={lead.tags.slice(3).map(({ tag }) => tag.name).join(', ')}
+              >
+                +{lead.tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
 
         {nextTask && (
           <LeadTaskBadge

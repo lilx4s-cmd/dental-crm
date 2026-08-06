@@ -28,6 +28,9 @@ import {
 import { cn } from '@/lib/utils';
 import type { PipelineFilters } from '@/hooks/use-leads';
 import { useUsers } from '@/hooks/use-users';
+import { useTags } from '@/hooks/use-tags';
+import { TagPicker } from '@/components/tags/tag-picker';
+import { TagPill } from '@/components/tags/tag-pill';
 
 const SOURCE_LABELS: Record<string, string> = {
   WALK_IN: 'Walk-in',
@@ -53,11 +56,19 @@ const QUICK_FILTERS: { label: string; filters: PipelineFilters }[] = [
 const EMPTY: PipelineFilters = {};
 
 function isSet(value: unknown) {
+  // An empty array is "no tags chosen", not a filter for deals with no tags — otherwise unticking
+  // the last tag leaves a chip behind that narrows nothing.
+  if (Array.isArray(value)) return value.length > 0;
   return value !== undefined && value !== '' && value !== false;
 }
 
 /** Human-readable summary of one active filter, for the removable chips. */
-function chipLabel(key: PipelineFilterKey, value: unknown, userName: (id: string) => string): string {
+function chipLabel(
+  key: PipelineFilterKey,
+  value: unknown,
+  userName: (id: string) => string,
+  tagName: (id: string) => string,
+): string {
   switch (key) {
     case 'search':
       return `“${value}”`;
@@ -69,6 +80,13 @@ function chipLabel(key: PipelineFilterKey, value: unknown, userName: (id: string
       return SOURCE_LABELS[String(value)] ?? String(value);
     case 'taskDue':
       return TASK_DUE_LABELS[value as TaskDueFilter] ?? String(value);
+    case 'tagIds': {
+      const ids = value as string[];
+      // Named, not counted: "2 tags" tells you the board is narrowed but not by what, which is the
+      // one thing a chip exists to say. The names come from the caller because this is a pure
+      // function and the tag list is fetched.
+      return ids.length === 1 ? tagName(ids[0]) : ids.map(tagName).join(' + ');
+    }
     case 'stuck':
       return 'No movement';
   }
@@ -82,6 +100,7 @@ export function PipelineFilterBar({
   onChange: (next: PipelineFilters) => void;
 }) {
   const { data: users } = useUsers();
+  const { data: tags } = useTags();
   const [open, setOpen] = useState(false);
   const [fieldPickerOpen, setFieldPickerOpen] = useState(false);
   const [fields, setFields] = useState<PipelineFilterKey[]>([...DEFAULT_PIPELINE_FILTER_FIELDS]);
@@ -129,6 +148,8 @@ export function PipelineFilterBar({
     return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
   };
 
+  const tagName = (id: string) => tags?.find((t) => t.id === id)?.name ?? 'Tag';
+
   const activeChips = (Object.keys(filters) as PipelineFilterKey[]).filter((k) => isSet(filters[k]));
 
   const applyDraft = () => {
@@ -175,7 +196,7 @@ export function PipelineFilterBar({
               key={key}
               className="flex items-center gap-1 rounded bg-primary/10 py-0.5 pl-2 pr-1 text-xs font-medium text-primary"
             >
-              {chipLabel(key, filters[key], userName)}
+              {chipLabel(key, filters[key], userName, tagName)}
               <button
                 type="button"
                 aria-label={`Remove ${key} filter`}
@@ -353,11 +374,56 @@ function FilterField({
         asSelect(
           Object.values(TaskDueFilter).map((t) => ({ value: t, label: TASK_DUE_LABELS[t] })),
         )}
+      {fieldKey === 'tagIds' && (
+        <TagFilterField value={(value as string[]) ?? []} onChange={onChange} />
+      )}
       {fieldKey === 'stuck' && (
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={value === true} onCheckedChange={(c) => onChange(c === true || undefined)} />
           No stage change in two weeks
         </label>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tags chosen for the filter, shown as removable pills with a picker beside them.
+ *
+ * Not a Select: several tags can be chosen, and the combination is the point — "Implants" and
+ * "Saudi Arabia" together names a segment neither does alone. The pills make the combination
+ * visible while it is being built, rather than only after Search is pressed.
+ */
+function TagFilterField({ value, onChange }: { value: string[]; onChange: (v: unknown) => void }) {
+  const { data: tags } = useTags();
+  const chosen = value.map((id) => tags?.find((t) => t.id === id)).filter(Boolean) as NonNullable<
+    ReturnType<NonNullable<typeof tags>['find']>
+  >[];
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {chosen.map((tag) => (
+        <TagPill
+          key={tag.id}
+          name={tag.name}
+          color={tag.color}
+          onRemove={() => {
+            const next = value.filter((id) => id !== tag.id);
+            // Undefined rather than an empty array, so the chip and the query parameter both go.
+            onChange(next.length ? next : undefined);
+          }}
+        />
+      ))}
+      <TagPicker
+        triggerLabel={chosen.length ? 'Add' : 'Choose tags'}
+        selectedIds={value}
+        onToggle={(tag, on) => {
+          const next = on ? [...value, tag.id] : value.filter((id) => id !== tag.id);
+          onChange(next.length ? next : undefined);
+        }}
+      />
+      {chosen.length > 1 && (
+        <span className="text-xs text-muted-foreground">deals carrying all of these</span>
       )}
     </div>
   );

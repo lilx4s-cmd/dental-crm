@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DuplicateGroup, MergeDuplicatesResult, TaskDueFilter } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest, apiRequestDownload, saveBlob } from '@/lib/api-client';
+import type { TagRef } from './use-tags';
 
 export interface LeadTask {
   id: string;
@@ -69,6 +70,8 @@ export interface Lead {
   tasks: LeadTask[];
   campaign: { id: string; name: string; platform: string } | null;
   patient: { id: string; firstName: string; lastName: string } | null;
+  /** In the order they were applied. On every card — see LEAD_SELECT. */
+  tags: { tag: TagRef }[];
   /** Only returned by GET /leads/:id — the kanban deliberately omits it. */
   intakeSubmissions?: LeadIntakeSubmission[];
 }
@@ -85,6 +88,8 @@ export interface PipelineFilters {
   source?: string;
   taskDue?: TaskDueFilter;
   stuck?: boolean;
+  /** Deals carrying *all* of these. See LeadsQueryDto for why AND rather than OR. */
+  tagIds?: string[];
 }
 
 export interface LeadsQuery extends PipelineFilters {
@@ -105,7 +110,12 @@ export function useLeadsByStage(filters: PipelineFilters = {}) {
   const params = new URLSearchParams();
   // Empty strings would filter on "" rather than meaning "unset", so only real values go on the URL.
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== '' && value !== false) params.set(key, String(value));
+    if (value === undefined || value === '' || value === false) continue;
+    // Repeated rather than comma-joined: `String(['a','b'])` is "a,b", which the API parses as one
+    // malformed uuid and rejects the whole request. `append` produces `?tagIds=a&tagIds=b`, which
+    // is what its @Transform expects.
+    if (Array.isArray(value)) value.forEach((v) => params.append(key, String(v)));
+    else params.set(key, String(value));
   }
   const qs = params.toString();
   return useQuery<PipelineGroup[]>({

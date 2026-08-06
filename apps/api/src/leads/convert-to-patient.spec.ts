@@ -59,10 +59,20 @@ function leadWith(intakeSubmissions: unknown[]) {
   };
 }
 
+// LeadsService takes TagsService only to resolve which clinic a tag belongs to. Conversion never
+// touches a tag, so a stub that would throw if called is more honest than a working fake.
+function tagsStub() {
+  return {
+    currentOrganizationId: () => {
+      throw new Error('convertToPatient should not need an organization id');
+    },
+  } as unknown as ConstructorParameters<typeof LeadsService>[1];
+}
+
 describe('convertToPatient — medical history carry-over', () => {
   it('copies every clinical answer onto the patient', async () => {
     const recorded: Recorded = {};
-    const service = new LeadsService(makePrisma(leadWith([INTAKE]), recorded));
+    const service = new LeadsService(makePrisma(leadWith([INTAKE]), recorded), tagsStub());
 
     await service.convertToPatient('lead-1');
 
@@ -87,7 +97,7 @@ describe('convertToPatient — medical history carry-over', () => {
     // patient said they take none" are different facts, and only one of them is safe to act on.
     const recorded: Recorded = {};
     const partial = { ...INTAKE, takesBloodThinners: null, isSmoker: null, medications: null };
-    const service = new LeadsService(makePrisma(leadWith([partial]), recorded));
+    const service = new LeadsService(makePrisma(leadWith([partial]), recorded), tagsStub());
 
     await service.convertToPatient('lead-1');
 
@@ -101,7 +111,7 @@ describe('convertToPatient — medical history carry-over', () => {
     const recorded: Recorded = {};
     const newer = { ...INTAKE, medications: 'Apixaban', createdAt: new Date('2026-07-20') };
     const older = { ...INTAKE, medications: 'Warfarin', createdAt: new Date('2026-01-05') };
-    const service = new LeadsService(makePrisma(leadWith([newer, older]), recorded));
+    const service = new LeadsService(makePrisma(leadWith([newer, older]), recorded), tagsStub());
 
     await service.convertToPatient('lead-1');
 
@@ -111,7 +121,7 @@ describe('convertToPatient — medical history carry-over', () => {
   it('still converts a lead that never filled the form in', async () => {
     // Walk-ins and phone enquiries have no submission at all; conversion must not depend on one.
     const recorded: Recorded = {};
-    const service = new LeadsService(makePrisma(leadWith([]), recorded));
+    const service = new LeadsService(makePrisma(leadWith([]), recorded), tagsStub());
 
     await service.convertToPatient('lead-1');
 

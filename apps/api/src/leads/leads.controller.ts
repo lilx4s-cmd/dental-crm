@@ -17,7 +17,7 @@ import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
 import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
-import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto } from './dto/bulk.dto';
+import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto, BulkTagDto } from './dto/bulk.dto';
 import { exportFilename } from './lead-csv';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
@@ -158,6 +158,14 @@ export class LeadsController {
     return csv;
   }
 
+  // Add or remove tags across a selection. One route for both directions — see BulkTagDto.
+  @Post('bulk/tags')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Add tags to, or remove tags from, many deals at once' })
+  bulkTag(@Body() dto: BulkTagDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.bulkTag(dto, user);
+  }
+
   /**
    * Permanent deletion. Super Admin only.
    *
@@ -246,6 +254,31 @@ export class LeadsController {
   @ApiOperation({ summary: 'Delete a task' })
   removeTask(@Param('taskId') taskId: string, @CurrentUser() user: JwtPayload) {
     return this.leadsService.removeTask(taskId, user);
+  }
+
+  // Tags on one deal. WRITE_ROLES, matching notes and stage moves: labelling a deal is part of
+  // working it, and reception takes the call that reveals the label.
+  @Post(':id/tags/:tagId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Put a tag on a deal' })
+  addTag(@Param('id') id: string, @Param('tagId') tagId: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.addTag(id, tagId, user);
+  }
+
+  @Delete(':id/tags/:tagId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Take a tag off a deal' })
+  removeTag(@Param('id') id: string, @Param('tagId') tagId: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.removeTag(id, tagId, user);
+  }
+
+  // Read from LeadTagHistory rather than the join, so removals appear. A tag that came off the day
+  // before a deal was lost is the interesting one, and the join cannot show it.
+  @Get(':id/tags/history')
+  @Roles(...PIPELINE_ROLES)
+  @ApiOperation({ summary: 'When each tag went on this deal, and when it came off' })
+  getTagHistory(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.getTagHistory(id, user);
   }
 
   @Post(':id/convert')

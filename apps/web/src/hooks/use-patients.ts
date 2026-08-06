@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
+import type { TagRef } from './use-tags';
 
 export interface Patient {
   id: string;
@@ -23,7 +24,7 @@ export interface Patient {
   convertedFromLeadId: string | null;
   createdAt: string;
   updatedAt: string;
-  tags: { tag: { id: string; name: string; color: string } }[];
+  tags: { tag: TagRef }[];
 }
 
 export interface PatientsResponse {

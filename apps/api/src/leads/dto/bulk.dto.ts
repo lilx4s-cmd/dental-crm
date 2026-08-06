@@ -41,6 +41,27 @@ export class BulkNoteDto extends BulkLeadIdsDto {
   note!: string;
 }
 
+export class BulkTagDto extends BulkLeadIdsDto {
+  @ApiProperty({ description: 'Tags to add to, or take off, every selected deal', type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(12)
+  @IsUUID('all', { each: true })
+  tagIds!: string[];
+
+  /**
+   * One endpoint for both directions rather than two.
+   *
+   * Adding and removing differ only in which way the pairs are computed, and splitting them would
+   * duplicate the selection scoping, the cap check and the history write — three things that must
+   * behave identically whichever way the tag is moving.
+   */
+  @ApiPropertyOptional({ description: 'true removes the tags instead of adding them', default: false })
+  @IsOptional()
+  @IsBoolean()
+  remove?: boolean;
+}
+
 export class BulkDeleteDto extends BulkLeadIdsDto {
   /**
    * Deliberately not defaulted to true.

@@ -1,9 +1,10 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Role, type JwtPayload } from '@dental-crm/shared';
 
 import { LeadsService } from './leads.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TagsService } from '../tags/tags.service';
 import { toCsv, exportFilename } from './lead-csv';
 
 const mockPrisma = {
@@ -27,7 +28,13 @@ describe('LeadsService — bulk actions', () => {
 
   beforeEach(async () => {
     const moduleRef = await Test.createTestingModule({
-      providers: [LeadsService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        LeadsService,
+        { provide: PrismaService, useValue: mockPrisma },
+        // Bulk archive, note, export and delete never resolve an organisation; tagging does, and
+        // is covered in tags.spec.ts.
+        { provide: TagsService, useValue: { currentOrganizationId: async () => 'org-1' } },
+      ],
     }).compile();
     service = moduleRef.get(LeadsService);
     jest.clearAllMocks();
@@ -210,6 +217,15 @@ describe('LeadsService — bulk actions', () => {
   });
 
   describe('delete', () => {
+    it('refuses a caller who is not a super admin, even if the route let them through', async () => {
+      // The delete query is deliberately unscoped, so the role check has to live in the service
+      // too — a missing scope is the vulnerability, not a gap.
+      await expect(service.bulkDelete({ leadIds: ['a'], confirm: true }, sales)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.lead.findMany).not.toHaveBeenCalled();
+    });
+
     it('refuses without confirmation', async () => {
       await expect(service.bulkDelete({ leadIds: ['a'], confirm: false }, admin)).rejects.toThrow(
         BadRequestException,

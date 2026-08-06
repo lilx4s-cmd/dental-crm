@@ -71,6 +71,37 @@ enum LeadStatus {
   ARCHIVED
 }
 
+// A fixed palette rather than free-text hex. See packages/shared/src/tags/tags.ts for why: a
+// colour picked against the light theme disappears on the dark one, and ten people inventing ten
+// shades of nearly-the-same blue is how a colour stops meaning anything.
+enum TagColor {
+  SLATE
+  RED
+  ORANGE
+  AMBER
+  GREEN
+  TEAL
+  BLUE
+  INDIGO
+  VIOLET
+  PINK
+}
+
+// The axis a tag belongs to. What lets a card show the two tags that matter rather than the eleven
+// that exist — one per axis, instead of truncating an arbitrary list.
+enum TagCategory {
+  TREATMENT
+  ORIGIN
+  HANDLING
+  BLOCKER
+  GENERAL
+}
+
+enum TagAction {
+  ADDED
+  REMOVED
+}
+
 enum ResourceType {
   CHAIR
   ROOM
@@ -357,6 +388,9 @@ model User {
   passwordResetTokens         PasswordResetToken[]
   twoFactorRecoveryCodes      TwoFactorRecoveryCode[]
   labOrdersCreated            LabOrder[]               @relation("LabOrderCreatedBy")
+  tagsCreated                 Tag[]                    @relation("TagCreator")
+  leadTagsAssigned            LeadTag[]                @relation("LeadTagAssigner")
+  leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
 
   @@index([role])
   @@map("users")
@@ -475,15 +509,118 @@ model Patient {
   @@map("patients")
 }
 
-model Tag {
+/// The clinic. One row today; the column that makes a second one possible.
+///
+/// Added alongside tags rather than as a migration of its own, because `organizationId` on a new
+/// table is decoration unless something enforces it. A foreign key to a real row is a boundary the
+/// database checks; a nullable string nobody references is a comment.
+///
+/// The 41 tables that predate this do not carry the column yet. That is a recorded decision rather
+/// than an oversight — see MULTI_TENANCY.md for what a full retrofit involves and why it is a phase
+/// of its own. New tables are built tenant-ready so that retrofit shrinks over time instead of
+/// growing.
+model Organization {
   id        String   @id @default(uuid())
-  name      String   @unique
-  color     String?
+  name      String
+  /// URL-safe handle. Reserved for the eventual per-clinic subdomain or path prefix.
+  slug      String   @unique
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags           Tag[]
+  leadTagHistory LeadTagHistory[]
+
+  @@map("organizations")
+}
+
+/// A label, shared by leads and patients.
+///
+/// One vocabulary rather than two. A clinic that tags a lead "Implants" and a patient "Implants"
+/// means the same thing, and separate tables would mean two lists to curate and a report that
+/// cannot follow a tag across the conversion it was created to survive.
+///
+/// Reshaped rather than extended: this table and `PatientTag` were both empty in production, so
+/// `color` moved from free-text hex to a fixed palette and `name` moved from globally unique to
+/// unique per organisation without a single row needing migration. The hex column existed because
+/// the tags module was written and never given a UI — three endpoints nothing could reach, which is
+/// why nobody ever made a tag.
+model Tag {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  color          TagColor     @default(SLATE)
+  category       TagCategory  @default(GENERAL)
+  createdById    String?
+  createdBy      User?        @relation("TagCreator", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   patients PatientTag[]
+  leads    LeadTag[]
+  history  LeadTagHistory[]
 
+  // Per organisation, not globally: two clinics both wanting a "VIP" tag is the ordinary case, and
+  // a global unique index would make the second one fail with a conflict it cannot resolve.
+  @@unique([organizationId, name])
+  @@index([organizationId, category])
   @@map("tags")
+}
+
+/// A tag on a deal.
+///
+/// Carries who attached it and when. `LeadActivity` records stage changes and notes but has no
+/// shape for "someone labelled this", and the answer to "why is this deal marked VIP" is usually a
+/// person rather than a rule.
+///
+/// No `organizationId` here, deliberately: this row's tenancy is `tag.organizationId`, and a second
+/// copy on the join could disagree with it. A column that can be wrong is worse than one that has
+/// to be looked up. `LeadTagHistory` does carry it, for the opposite reason — see there.
+model LeadTag {
+  leadId       String
+  tagId        String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag          Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedById String?
+  assignedBy   User?    @relation("LeadTagAssigner", fields: [assignedById], references: [id])
+  assignedAt   DateTime @default(now())
+
+  @@id([leadId, tagId])
+  // The composite key serves lookups by lead, being leftmost. Filtering the board by tag runs the
+  // other way — `where.tags = { some: { tagId } }` — and would otherwise scan.
+  @@index([tagId])
+  @@map("lead_tags")
+}
+
+/// Every time a tag was put on a deal or taken off it.
+///
+/// Separate from `LeadTag` because the join holds only the present: removing a tag deletes the row,
+/// and "who took the VIP label off this deal the day before it was lost" then has no answer
+/// anywhere. Tag changes drive who a deal is routed to and how it is priced, so the removals are
+/// worth as much as the additions.
+///
+/// `tagName` is snapshotted alongside `tagId`. A tag can be renamed or deleted, and a history that
+/// reads "added a tag that no longer exists" records nothing. This carries `organizationId`
+/// directly rather than reaching it through the tag, for the same reason — the tag may be gone.
+model LeadTagHistory {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tagId          String?
+  tag            Tag?         @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  /// What the tag was called at the time. Survives a rename or a deletion.
+  tagName        String
+  action         TagAction
+  userId         String?
+  user           User?        @relation("LeadTagHistoryActor", fields: [userId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([leadId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("lead_tag_history")
 }
 
 model PatientTag {
@@ -574,6 +711,8 @@ model Lead {
   conversations Conversation[]
   callLogs      CallLog[]
   tasks         LeadTask[]
+  tags          LeadTag[]
+  tagHistory    LeadTagHistory[]
   intakeSubmissions IntakeSubmission[]
   patient       Patient?       @relation("LeadToPatient")
 

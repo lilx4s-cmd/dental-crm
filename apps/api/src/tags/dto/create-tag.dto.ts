@@ -1,14 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsHexColor, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { TagCategory, TagColor, TAG_NAME_MAX } from '@dental-crm/shared';
 
 export class CreateTagDto {
-  @ApiProperty({ example: 'VIP' })
+  @ApiProperty({ example: 'VIP', maxLength: TAG_NAME_MAX })
   @IsString()
   @MinLength(1)
-  name: string;
+  // Bounded because the name renders as a pill on a card about 260px wide. A tag longer than this
+  // is a note, and there is a field for those.
+  @MaxLength(TAG_NAME_MAX)
+  name!: string;
 
-  @ApiPropertyOptional({ example: '#3B82F6' })
-  @IsHexColor()
+  @ApiPropertyOptional({ enum: TagColor, default: TagColor.SLATE })
   @IsOptional()
-  color?: string;
+  @IsEnum(TagColor)
+  color?: TagColor;
+
+  @ApiPropertyOptional({ enum: TagCategory, default: TagCategory.GENERAL })
+  @IsOptional()
+  @IsEnum(TagCategory)
+  category?: TagCategory;
 }

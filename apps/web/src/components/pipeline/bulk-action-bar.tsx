@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Archive,
   ArrowRightLeft,
@@ -35,6 +35,8 @@ import {
 import { PIPELINE_STAGES } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useUsers } from '@/hooks/use-users';
+import { useBulkTagLeads } from '@/hooks/use-tags';
+import { TagPicker } from '@/components/tags/tag-picker';
 import {
   useBulkArchiveLeads,
   useBulkDeleteLeads,
@@ -71,10 +73,27 @@ export function BulkActionBar({
 
   const archive = useBulkArchiveLeads();
   const exportCsv = useExportLeads();
+  const tagLeads = useBulkTagLeads();
 
   const ids = selectedLeads.map((l) => l.id);
   const count = selectedLeads.length;
   const deals = `${count} ${count === 1 ? 'deal' : 'deals'}`;
+
+  /**
+   * Ticked only when every selected deal carries the tag.
+   *
+   * The alternative — ticking a tag any one of them has — makes the tick mean two different things
+   * and gives untick no sensible behaviour. "On all of them" is the only reading where ticking and
+   * unticking are inverses of each other.
+   */
+  const sharedTagIds = useMemo(() => {
+    if (selectedLeads.length === 0) return [];
+    const counts = new Map<string, number>();
+    for (const lead of selectedLeads) {
+      for (const { tag } of lead.tags ?? []) counts.set(tag.id, (counts.get(tag.id) ?? 0) + 1);
+    }
+    return [...counts.entries()].filter(([, n]) => n === selectedLeads.length).map(([id]) => id);
+  }, [selectedLeads]);
 
   const runArchive = () =>
     archive.mutate(
@@ -172,6 +191,35 @@ export function BulkActionBar({
             <MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
             Add note
           </Button>
+
+          {/* Ticking applies immediately rather than on a confirm, because a tag is the one thing
+              here that is trivially reversible — untick it. A confirmation step would cost more
+              than the mistake it prevents. */}
+          <TagPicker
+            triggerLabel="Tag"
+            align="center"
+            selectedIds={sharedTagIds}
+            disabled={tagLeads.isPending}
+            onToggle={(tag, on) =>
+              tagLeads.mutate(
+                { leadIds: ids, tagIds: [tag.id], remove: !on },
+                {
+                  onSuccess: (r) => {
+                    if (r.changed === 0) {
+                      toast.info(on ? `Already on all ${count}.` : `Not on any of the ${count}.`);
+                      return;
+                    }
+                    toast.success(
+                      on
+                        ? `“${tag.name}” added to ${r.changed} ${r.changed === 1 ? 'deal' : 'deals'}`
+                        : `“${tag.name}” removed from ${r.changed} ${r.changed === 1 ? 'deal' : 'deals'}`,
+                    );
+                  },
+                  onError: (e) => toast.error(e.message || 'Could not change the tags'),
+                },
+              )
+            }
+          />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

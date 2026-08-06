@@ -10,7 +10,7 @@ export declare const TaskDueFilter: {
 export type TaskDueFilter = (typeof TaskDueFilter)[keyof typeof TaskDueFilter];
 export declare const TASK_DUE_LABELS: Record<TaskDueFilter, string>;
 export interface PipelineFilterField {
-    key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'stuck';
+    key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'tagIds' | 'stuck';
     label: string;
     hint?: string;
 }

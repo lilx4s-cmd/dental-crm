@@ -68,6 +68,10 @@ export const AUDIT_RULES: readonly AuditRule[] = [
   { path: /^leads\/bulk\/export$/, methods: ['POST'], entityType: 'Lead', action: 'EXPORT' },
   { path: /^leads\/bulk\/(archive|note)$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
   { path: /^leads\/bulk$/, methods: ['DELETE'], entityType: 'Lead', action: 'DELETE' },
+  // Tagging edits the deal; it does not create or destroy one. Without these the verb-derived
+  // action would file "took the VIP tag off" under DELETE Lead, which reads as a deleted record.
+  { path: /^leads\/bulk\/tags$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
+  { path: /^leads\/[^/]+\/tags\//, methods: ['POST', 'DELETE'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },
   // A conversion is the moment a lead becomes a patient record — the most consequential single
   // write in the pipeline, and not a creation of the lead it names.
   { path: /^leads\/[^/]+\/convert$/, methods: ['POST'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },
@@ -95,6 +99,9 @@ export const AUDIT_RULES: readonly AuditRule[] = [
   // Who can reach any of it. A role change is the single most consequential edit in the system.
   { path: /^users/, methods: ['POST', 'PATCH', 'DELETE'], entityType: 'User', idParam: ID },
   { path: /^settings/, methods: ['POST', 'PATCH'], entityType: 'ClinicSettings' },
+  // The shared vocabulary. Renaming or deleting a tag changes what every card and every saved
+  // filter shows, across both the pipeline and the patient list, in one request.
+  { path: /^tags/, methods: ['POST', 'PATCH', 'DELETE'], entityType: 'Tag', idParam: ID },
 
   // The pipeline. Lower stakes clinically, but a merge is destructive and a reassignment decides
   // whose commission a case counts towards.

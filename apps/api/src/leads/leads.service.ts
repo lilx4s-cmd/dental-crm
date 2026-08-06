@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -9,7 +15,8 @@ import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
-import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto } from './dto/bulk.dto';
+import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto, BulkTagDto } from './dto/bulk.dto';
+import { TagsService } from '../tags/tags.service';
 import { toCsv } from './lead-csv';
 import {
   PipelineStage,
@@ -27,6 +34,7 @@ import {
   stageProgress,
   RECYCLE_ANGLE,
   STAGE_LABELS,
+  MAX_TAGS_PER_RECORD,
   type ImportLeadsResult,
   type DuplicateGroup,
   type MergeDuplicatesResult,
@@ -40,6 +48,10 @@ const LEAD_SELECT = {
   email: true,
   phone: true,
   whatsappNumber: true,
+  // Written since the country migration and used to parse every phone number, but never selected —
+  // so `lead.country` was undefined on every card and in the deal sheet, while the web type
+  // declared it. The flag on a card is the first thing a coordinator reads.
+  country: true,
   source: true,
   stage: true,
   status: true,
@@ -67,6 +79,13 @@ const LEAD_SELECT = {
   },
   campaign: { select: { id: true, name: true, platform: true } },
   patient: { select: { id: true, firstName: true, lastName: true } },
+  // On every card. Tags are the axis the board cannot show any other way — stage is the column,
+  // owner is the avatar, and "wants implants, speaks Arabic, waiting on family" has nowhere else
+  // to live. Ordered by category so a card truncating its tags drops the least useful one.
+  tags: {
+    select: { tag: { select: { id: true, name: true, color: true, category: true } } },
+    orderBy: { assignedAt: 'asc' as const },
+  },
 } as const;
 
 // Only for the single-lead view. The intake questionnaire is a page of answers per lead, and the
@@ -109,7 +128,12 @@ const LEAD_DETAIL_SELECT = {
 
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Only for `currentOrganizationId`. Tagging is the first thing in the pipeline that has to know
+    // which clinic it belongs to, and resolving that in two places is how the two come to disagree.
+    private readonly tags: TagsService,
+  ) {}
 
   // Only Super Admin sees every salesperson's data. Everyone else (Clinic Manager,
   // Sales Consultant, Reception, Dentist) is limited to the leads assigned to them.
@@ -123,7 +147,7 @@ export class LeadsService {
    * to accept no filters at all, which is how they drifted apart in the first place.
    */
   private buildWhere(query: LeadsQueryDto, currentUser: JwtPayload): Prisma.LeadWhereInput {
-    const { search, stage, status, assignedToId, source, taskDue, stuck } = query;
+    const { search, stage, status, assignedToId, source, taskDue, stuck, tagIds } = query;
     const where: Prisma.LeadWhereInput = {};
 
     if (search) {
@@ -148,6 +172,11 @@ export class LeadsService {
     }
 
     if (stuck) where.stageChangedAt = { lt: stuckBefore() };
+
+    // One `some` per tag, so the conditions compose as AND. A single `some: { tagId: { in: [...] } }`
+    // would read as OR — it asks for a deal with any one of these tags — which is a different
+    // question and a much larger answer.
+    if (tagIds?.length) where.AND = tagIds.map((tagId) => ({ tags: { some: { tagId } } }));
 
     // A deal folded into another is off the board. The row survives for its history, but showing
     // it would put the duplicate straight back in front of whoever just merged it away.
@@ -1314,6 +1343,13 @@ export class LeadsService {
    */
   async bulkDelete(dto: BulkDeleteDto, currentUser: JwtPayload) {
     if (!dto.confirm) throw new BadRequestException('Deletion must be confirmed.');
+    // Checked here as well as on the route. The query below is deliberately unscoped, because a
+    // Super Admin deletes across the whole pipeline — so if this method were ever reached from
+    // somewhere without the decorator, that missing scope would be the vulnerability rather than
+    // a gap. Every other bulk action gets this for free from `resolveSelection`.
+    if (!this.canSeeAll(currentUser)) {
+      throw new ForbiddenException('Only a Super Admin can delete deals.');
+    }
 
     const leads = await this.prisma.lead.findMany({
       where: { id: { in: [...new Set(dto.leadIds)] } },
@@ -1354,6 +1390,150 @@ export class LeadsService {
       where: { id: { in: leads.map((l) => l.id) } },
     });
     return { deleted: count, requested: dto.leadIds.length };
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Tags.
+  //
+  // Every change goes through `applyTags`, whether it came from one deal or a selection of forty,
+  // so a single path decides what is written and what is recorded. Tagging is idempotent: adding a
+  // tag a deal already has is a no-op rather than an error, because the caller is a checkbox and
+  // the honest response to "make sure this is on" is "it is".
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Adds or removes tags across a set of deals.
+   *
+   * Writes the join and the history in one transaction. A `LeadTag` row without its history entry
+   * is the failure worth preventing — the tag is visible on the card and nothing says who put it
+   * there, which is precisely the question tags create.
+   */
+  private async applyTags(
+    leadIds: string[],
+    tagIds: string[],
+    action: $Enums.TagAction,
+    currentUser: JwtPayload,
+  ) {
+    const organizationId = await this.tags.currentOrganizationId();
+
+    const [leads, tags] = await Promise.all([
+      this.resolveSelection(leadIds, currentUser),
+      // Scoped to the organisation, so a tag id from anywhere else simply is not found rather than
+      // being attached across a boundary.
+      this.prisma.tag.findMany({
+        where: { id: { in: [...new Set(tagIds)] }, organizationId },
+        select: { id: true, name: true },
+      }),
+    ]);
+    if (leads.length === 0 || tags.length === 0) return { changed: 0, leads: leads.length };
+
+    const leadIdList = leads.map((l) => l.id);
+    const tagIdList = tags.map((t) => t.id);
+
+    // What is already true. Adding only writes the pairs that are missing and removing only the
+    // pairs that exist, so the history records changes rather than clicks.
+    const existing = await this.prisma.leadTag.findMany({
+      where: { leadId: { in: leadIdList }, tagId: { in: tagIdList } },
+      select: { leadId: true, tagId: true },
+    });
+    const has = new Set(existing.map((e) => `${e.leadId}:${e.tagId}`));
+
+    const pairs = leadIdList.flatMap((leadId) =>
+      tags
+        .filter((t) => (action === 'ADDED' ? !has.has(`${leadId}:${t.id}`) : has.has(`${leadId}:${t.id}`)))
+        .map((t) => ({ leadId, tagId: t.id, tagName: t.name })),
+    );
+    if (pairs.length === 0) return { changed: 0, leads: leads.length };
+
+    if (action === 'ADDED') {
+      // The cap is per deal and counts what is already there, so a bulk tag cannot push a deal
+      // past it. A record carrying twenty tags filters into every list, which is the same as
+      // carrying none.
+      const counts = await this.prisma.leadTag.groupBy({
+        by: ['leadId'],
+        where: { leadId: { in: leadIdList } },
+        _count: { _all: true },
+      });
+      const current = new Map(counts.map((c) => [c.leadId, c._count._all]));
+      const over = leadIdList.filter(
+        (id) => (current.get(id) ?? 0) + pairs.filter((p) => p.leadId === id).length > MAX_TAGS_PER_RECORD,
+      );
+      if (over.length > 0) {
+        throw new BadRequestException(
+          `${over.length === 1 ? 'A deal' : `${over.length} deals`} would end up with more than ` +
+            `${MAX_TAGS_PER_RECORD} tags. Remove some first — past that point a tag stops narrowing anything.`,
+        );
+      }
+    }
+
+    await this.prisma.$transaction([
+      action === 'ADDED'
+        ? this.prisma.leadTag.createMany({
+            data: pairs.map((p) => ({ leadId: p.leadId, tagId: p.tagId, assignedById: currentUser.sub })),
+            // Belt and braces against two people tagging the same deal in the same instant: the
+            // pre-read above cannot see a row written after it.
+            skipDuplicates: true,
+          })
+        : this.prisma.leadTag.deleteMany({
+            where: { leadId: { in: leadIdList }, tagId: { in: tagIdList } },
+          }),
+      this.prisma.leadTagHistory.createMany({
+        data: pairs.map((p) => ({
+          organizationId,
+          leadId: p.leadId,
+          tagId: p.tagId,
+          tagName: p.tagName,
+          action,
+          userId: currentUser.sub,
+        })),
+      }),
+    ]);
+
+    return { changed: pairs.length, leads: leads.length };
+  }
+
+  async addTag(leadId: string, tagId: string, currentUser: JwtPayload) {
+    // findOne enforces the same access check the rest of the deal view uses, and 404s rather than
+    // silently doing nothing when the deal is not the caller's.
+    await this.findOne(leadId, currentUser);
+    await this.applyTags([leadId], [tagId], $Enums.TagAction.ADDED, currentUser);
+    return this.findOne(leadId, currentUser);
+  }
+
+  async removeTag(leadId: string, tagId: string, currentUser: JwtPayload) {
+    await this.findOne(leadId, currentUser);
+    await this.applyTags([leadId], [tagId], $Enums.TagAction.REMOVED, currentUser);
+    return this.findOne(leadId, currentUser);
+  }
+
+  async bulkTag(dto: BulkTagDto, currentUser: JwtPayload) {
+    const action = dto.remove ? $Enums.TagAction.REMOVED : $Enums.TagAction.ADDED;
+    const result = await this.applyTags(dto.leadIds, dto.tagIds, action, currentUser);
+    return { ...result, action, requested: dto.leadIds.length };
+  }
+
+  /**
+   * When each tag went on or came off this deal.
+   *
+   * Read from the history rather than the join, so removals appear. A tag that was on a deal for
+   * three weeks and came off the day before it was lost is the interesting one, and the join
+   * cannot show it.
+   */
+  async getTagHistory(leadId: string, currentUser: JwtPayload) {
+    await this.findOne(leadId, currentUser);
+    return this.prisma.leadTagHistory.findMany({
+      where: { leadId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        tagName: true,
+        action: true,
+        createdAt: true,
+        tag: { select: { id: true, color: true, category: true } },
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
   }
 }
 

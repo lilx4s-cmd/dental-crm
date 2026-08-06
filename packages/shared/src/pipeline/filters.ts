@@ -23,7 +23,7 @@ export const TASK_DUE_LABELS: Record<TaskDueFilter, string> = {
 };
 
 export interface PipelineFilterField {
-  key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'stuck';
+  key: 'search' | 'assignedToId' | 'stage' | 'taskDue' | 'source' | 'tagIds' | 'stuck';
   label: string;
   hint?: string;
 }
@@ -35,6 +35,7 @@ export const PIPELINE_FILTER_FIELDS: PipelineFilterField[] = [
   { key: 'stage', label: 'Stage' },
   { key: 'taskDue', label: 'Task due' },
   { key: 'source', label: 'Source' },
+  { key: 'tagIds', label: 'Tags', hint: 'Deals carrying all of the tags you pick' },
   { key: 'stuck', label: 'No movement' },
 ];
 

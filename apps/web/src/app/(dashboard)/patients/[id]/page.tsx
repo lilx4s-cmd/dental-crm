@@ -30,6 +30,7 @@ import { num } from '@/lib/numeric-input';
 import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-tab';
 import { CLINICAL_FILE_CATEGORIES, FileSection } from '@/components/files/file-section';
 import { QueryError } from '@/components/ui/query-state';
+import { TagPill } from '@/components/tags/tag-pill';
 import { formatMoney } from '@/lib/money';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -469,7 +470,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             </Badge>
             {patient.convertedFromLeadId && <Badge variant="info">Converted Lead</Badge>}
             {patient.tags.map(({ tag }) => (
-              <Badge key={tag.id} variant="outline" style={{ borderColor: tag.color, color: tag.color }}>{tag.name}</Badge>
+              <TagPill key={tag.id} name={tag.name} color={tag.color} />
             ))}
           </div>
         </div>
