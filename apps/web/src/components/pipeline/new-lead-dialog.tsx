@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { DIAL_COUNTRIES, DEFAULT_DIAL_COUNTRY } from '@dental-crm/shared';
+import { DIAL_COUNTRIES, DEFAULT_DIAL_COUNTRY, PATIENT_LANGUAGES } from '@dental-crm/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -37,6 +37,7 @@ const schema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   whatsappNumber: z.string().optional(),
   country: z.string().optional(),
+  preferredLanguage: z.string().optional(),
   estimatedValue: z.coerce.number().optional(),
   notes: z.string().optional(),
   assignedToId: z.string().optional(),
@@ -94,6 +95,7 @@ export function NewLeadDialog({
         email: data.email || undefined,
         whatsappNumber: data.whatsappNumber || undefined,
         country: data.country || undefined,
+        preferredLanguage: data.preferredLanguage || undefined,
         estimatedValue: data.estimatedValue || undefined,
         notes: data.notes || undefined,
         assignedToId: data.assignedToId || undefined,
@@ -190,6 +192,24 @@ export function NewLeadDialog({
                 {DIAL_COUNTRIES.map((c) => (
                   <SelectItem key={c.code} value={c.code}>
                     {c.name} (+{c.dial})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Beside country, because the two are asked in the same breath and answered from the
+              same sentence. Deliberately not defaulted: "nobody has said" is a different fact from
+              "Turkish", and a default here sends a Turkish dossier to an Arabic speaker. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-language">Language</Label>
+            <Select onValueChange={(v) => setValue('preferredLanguage', v)}>
+              <SelectTrigger id="lead-language">
+                <SelectValue placeholder="Not known yet" />
+              </SelectTrigger>
+              <SelectContent>
+                {PATIENT_LANGUAGES.map((l) => (
+                  <SelectItem key={l.code} value={l.code}>
+                    {l.name} · {l.endonym}
                   </SelectItem>
                 ))}
               </SelectContent>

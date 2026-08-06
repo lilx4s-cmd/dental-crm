@@ -163,3 +163,37 @@ describe('parseImportedValue', () => {
     expect(parseImportedValue('0')).toBeUndefined();
   });
 });
+
+/**
+ * Country and language were not importable columns at all.
+ *
+ * That mattered more than a missing field usually does: `country` decides whether a leading zero
+ * on a phone number means Turkey or Saudi Arabia, so every imported list filed its 055-numbers as
+ * Turkish. The clinic imports Bitrix exports and ad-platform lead forms, both of which carry a
+ * country column.
+ */
+describe('country and language columns', () => {
+  it('recognises the headers a real export uses', () => {
+    const mapping = guessColumnMapping(['Name', 'Phone', 'Country', 'Language']);
+    expect(mapping.country).toBe(2);
+    expect(mapping.preferredLanguage).toBe(3);
+  });
+
+  it('recognises the Turkish and French spellings the clinic writes', () => {
+    // The clinic's own staff keep spreadsheets in both.
+    expect(guessColumnMapping(['Ad', 'Ülke', 'Dil']).country).toBe(1);
+    expect(guessColumnMapping(['Ad', 'Ülke', 'Dil']).preferredLanguage).toBe(2);
+    expect(guessColumnMapping(['Nom', 'Pays', 'Langue']).country).toBe(1);
+  });
+
+  it('recognises "country of residence", which is what lead forms call it', () => {
+    expect(guessColumnMapping(['Name', 'Country of residence']).country).toBe(1);
+  });
+
+  it('leaves them unmapped when the file has no such column', () => {
+    // An import without a country should stay without one rather than borrowing another column.
+    const mapping = guessColumnMapping(['Name', 'Phone', 'Email']);
+    expect(mapping.country).toBeUndefined();
+    expect(mapping.preferredLanguage).toBeUndefined();
+  });
+});

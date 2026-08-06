@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import {
-  Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2,
+  Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2, Languages,
   Tag as TagIcon,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { CLINICAL, STAGE_LABELS } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useLead, useLeadTimeline, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
+import { languageName } from '@dental-crm/shared';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
 import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
@@ -265,6 +266,16 @@ export function LeadDetailSheet({
               )}
 
               <div className="flex flex-wrap gap-1.5">
+                {/* Language first. It is the one badge here that changes who should be handling
+                    the case rather than merely describing it — 125 of the leads carrying one are
+                    Arabic, in a clinic whose staff and dossiers are English and Turkish. */}
+                {lead.preferredLanguage && (
+                  <Badge variant="secondary" title="Language to use with this patient">
+                    <Languages className="mr-1 h-3 w-3" />
+                    {languageName(lead.preferredLanguage)}
+                  </Badge>
+                )}
+                {lead.country && <Badge variant="outline">{lead.country}</Badge>}
                 {lead.source && <Badge variant="outline">{lead.source}</Badge>}
                 {lead.assignedTo && (
                   <Badge variant="secondary">{lead.assignedTo.firstName} {lead.assignedTo.lastName}</Badge>

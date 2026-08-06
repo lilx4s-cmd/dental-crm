@@ -730,6 +730,15 @@ model Lead {
   // — a Saudi patient's 055 512 3456 became a real Turkish number belonging to someone else.
   // Also makes country a first-class reporting dimension, which the clinic has never had.
   country        String?
+  /// ISO 639-1. What language to talk to this patient in.
+  ///
+  /// Not decorative: 125 of the 152 deals that recorded one in the old CRM were Arabic, in a clinic
+  /// whose staff and dossiers are English and Turkish. It decides which coordinator takes the case,
+  /// whether a translator is booked, and which language the treatment plan is produced in.
+  ///
+  /// Null means nobody has said, which is different from English — defaulting would send an
+  /// English treatment plan to somebody who cannot read it.
+  preferredLanguage String?
   source         LeadSource
   campaignId     String?
   campaign       Campaign?     @relation(fields: [campaignId], references: [id])
@@ -786,6 +795,9 @@ model Lead {
   // Country becomes a reporting dimension the moment it exists — cost per lead by market is the
   // first question anyone asks of it.
   @@index([country])
+  // "Which of my open deals need an Arabic speaker" is the question this answers, and it is asked
+  // against the open pipeline rather than the whole table.
+  @@index([preferredLanguage])
   @@index([createdAt])
   @@index([campaignId])
   @@map("leads")

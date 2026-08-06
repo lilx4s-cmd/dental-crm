@@ -52,6 +52,13 @@ export interface Lead {
    * trunk prefix, so this decides whether 055 512 3456 dials Riyadh or Istanbul.
    */
   country: string | null;
+  /**
+   * ISO 639-1. Which language to talk to this patient in.
+   *
+   * Null means nobody has said, which is not the same as English. 125 of the 152 leads that carry
+   * one are Arabic, in a clinic whose staff and dossiers are English and Turkish.
+   */
+  preferredLanguage: string | null;
   source: string;
   stage: string;
   status: string;
@@ -176,6 +183,8 @@ export interface CreateLeadPayload {
   whatsappNumber?: string;
   /** ISO 3166-1 alpha-2 — decides how a local-format phone number is read. */
   country?: string;
+  /** ISO 639-1. Omitted means nobody has said, which is not the same as English. */
+  preferredLanguage?: string;
   source: string;
   campaignId?: string;
   estimatedValue?: number;

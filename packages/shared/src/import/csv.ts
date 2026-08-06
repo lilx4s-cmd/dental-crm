@@ -118,6 +118,10 @@ export const LEAD_IMPORT_FIELDS = [
   { key: 'whatsappNumber', label: 'WhatsApp', required: false },
   { key: 'email', label: 'Email', required: false },
   { key: 'source', label: 'Source', required: false },
+  // Country decides how a local-format number is read, so an import without it files every
+  // 055-number as Turkish. Language decides who picks the deal up.
+  { key: 'country', label: 'Country', required: false },
+  { key: 'preferredLanguage', label: 'Language', required: false },
   { key: 'estimatedValue', label: 'Estimated value', required: false },
   { key: 'currency', label: 'Currency', required: false },
   { key: 'notes', label: 'Notes', required: false },
@@ -137,6 +141,8 @@ const HEADER_ALIASES: Record<LeadImportField, string[]> = {
   whatsappNumber: ['whatsapp', 'whatsapp number', 'wa', 'wa number', 'whatsapp no'],
   email: ['email', 'e-mail', 'email address', 'mail', 'eposta', 'e-posta', 'courriel'],
   source: ['source', 'lead source', 'channel', 'origin', 'kaynak', 'origine'],
+  country: ['country', 'country of residence', 'nationality', 'residence', 'ülke', 'ulke', 'pays', 'الدولة'],
+  preferredLanguage: ['language', 'preferred language', 'spoken language', 'dil', 'langue', 'اللغة'],
   estimatedValue: ['value', 'estimated value', 'amount', 'budget', 'deal value', 'price', 'tutar', 'montant'],
   currency: ['currency', 'para birimi', 'devise'],
   notes: ['notes', 'note', 'comment', 'comments', 'description', 'message', 'not', 'commentaire'],

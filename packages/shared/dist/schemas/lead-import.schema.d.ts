@@ -16,6 +16,13 @@ export declare const ImportedLeadSchema: z.ZodObject<{
     whatsappNumber: z.ZodOptional<z.ZodString>;
     email: z.ZodOptional<z.ZodString>;
     source: z.ZodDefault<z.ZodString>;
+    /**
+     * Resolved to ISO by the caller before it reaches here, so an unrecognised country is simply
+     * absent rather than a two-letter string that means nothing. Same reasoning as `source` falling
+     * back to OTHER: a column the importer cannot read must not cost the clinic the row.
+     */
+    country: z.ZodOptional<z.ZodString>;
+    preferredLanguage: z.ZodOptional<z.ZodString>;
     estimatedValue: z.ZodOptional<z.ZodNumber>;
     currency: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
@@ -26,9 +33,11 @@ export declare const ImportedLeadSchema: z.ZodObject<{
     lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
+    country?: string | undefined;
     notes?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
+    preferredLanguage?: string | undefined;
 }, {
     firstName: string;
     source?: string | undefined;
@@ -36,9 +45,11 @@ export declare const ImportedLeadSchema: z.ZodObject<{
     lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
+    country?: string | undefined;
     notes?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
+    preferredLanguage?: string | undefined;
 }>;
 export type ImportedLead = z.infer<typeof ImportedLeadSchema>;
 /** The most rows one import may carry. Past this a spreadsheet is a migration, not an import. */
@@ -51,6 +62,13 @@ export declare const ImportLeadsSchema: z.ZodObject<{
         whatsappNumber: z.ZodOptional<z.ZodString>;
         email: z.ZodOptional<z.ZodString>;
         source: z.ZodDefault<z.ZodString>;
+        /**
+         * Resolved to ISO by the caller before it reaches here, so an unrecognised country is simply
+         * absent rather than a two-letter string that means nothing. Same reasoning as `source` falling
+         * back to OTHER: a column the importer cannot read must not cost the clinic the row.
+         */
+        country: z.ZodOptional<z.ZodString>;
+        preferredLanguage: z.ZodOptional<z.ZodString>;
         estimatedValue: z.ZodOptional<z.ZodNumber>;
         currency: z.ZodOptional<z.ZodString>;
         notes: z.ZodOptional<z.ZodString>;
@@ -61,9 +79,11 @@ export declare const ImportLeadsSchema: z.ZodObject<{
         lastName?: string | undefined;
         phone?: string | undefined;
         whatsappNumber?: string | undefined;
+        country?: string | undefined;
         notes?: string | undefined;
         estimatedValue?: number | undefined;
         currency?: string | undefined;
+        preferredLanguage?: string | undefined;
     }, {
         firstName: string;
         source?: string | undefined;
@@ -71,9 +91,11 @@ export declare const ImportLeadsSchema: z.ZodObject<{
         lastName?: string | undefined;
         phone?: string | undefined;
         whatsappNumber?: string | undefined;
+        country?: string | undefined;
         notes?: string | undefined;
         estimatedValue?: number | undefined;
         currency?: string | undefined;
+        preferredLanguage?: string | undefined;
     }>, "many">;
     /** Everyone in the file goes to this person; omitted means the importer owns them. */
     assignedToId: z.ZodOptional<z.ZodString>;
@@ -90,9 +112,11 @@ export declare const ImportLeadsSchema: z.ZodObject<{
         lastName?: string | undefined;
         phone?: string | undefined;
         whatsappNumber?: string | undefined;
+        country?: string | undefined;
         notes?: string | undefined;
         estimatedValue?: number | undefined;
         currency?: string | undefined;
+        preferredLanguage?: string | undefined;
     }[];
     skipDuplicates: boolean;
     assignedToId?: string | undefined;
@@ -104,9 +128,11 @@ export declare const ImportLeadsSchema: z.ZodObject<{
         lastName?: string | undefined;
         phone?: string | undefined;
         whatsappNumber?: string | undefined;
+        country?: string | undefined;
         notes?: string | undefined;
         estimatedValue?: number | undefined;
         currency?: string | undefined;
+        preferredLanguage?: string | undefined;
     }[];
     assignedToId?: string | undefined;
     skipDuplicates?: boolean | undefined;

@@ -40,6 +40,18 @@ export class CreateLeadDto {
   @IsOptional()
   country?: string;
 
+  /**
+   * ISO 639-1. Which language to talk to this patient in.
+   *
+   * Null means nobody has said, which is not the same as English — defaulting would send an
+   * English treatment plan to somebody who cannot read it.
+   */
+  @ApiPropertyOptional({ example: 'ar', description: 'ISO 639-1 language code' })
+  @IsString()
+  @Length(2, 3)
+  @IsOptional()
+  preferredLanguage?: string;
+
   @ApiProperty({ enum: LeadSource })
   @IsEnum(LeadSource)
   source: string;

@@ -4,7 +4,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Clock, History, Mail, MessageCircle, Phone } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { STAGE_LABELS, STUCK_LEAD_DAYS } from '@dental-crm/shared';
+import { STAGE_LABELS, STUCK_LEAD_DAYS, languageName } from '@dental-crm/shared';
 import { useUpdateLeadTask, type Lead } from '@/hooks/use-leads';
 import { useClinicSettings } from '@/hooks/use-reports';
 import { formatDealValue } from '@/lib/money';
@@ -201,14 +201,29 @@ export function LeadCard({
               pushes the task badge below the fold on a laptop, which is where the card stops being
               scannable. Country first: for a medical-tourism coordinator it decides the language,
               the hour to call, and the price list. */}
-          {(lead.country || lead.source) && (
+          {(lead.country || lead.preferredLanguage || lead.source) && (
             <p className="flex items-center gap-1.5 truncate">
               {lead.country && (
                 <span className="shrink-0 font-medium" title={lead.country}>
                   {countryFlag(lead.country)} {lead.country}
                 </span>
               )}
-              {lead.country && lead.source && <span className="text-bx-line">·</span>}
+              {/* Language before source. Which language somebody speaks decides who can pick the
+                  deal up at all; where they came from is background. Shown only when it is not the
+                  clinic's own working language, so the badge means "this one needs somebody
+                  specific" rather than appearing on every card. */}
+              {lead.preferredLanguage && lead.preferredLanguage !== 'tr' && (
+                <>
+                  {lead.country && <span className="text-bx-line">·</span>}
+                  <span
+                    className="shrink-0 rounded bg-bx-board px-1 font-medium uppercase"
+                    title={`Speaks ${languageName(lead.preferredLanguage)}`}
+                  >
+                    {lead.preferredLanguage}
+                  </span>
+                </>
+              )}
+              {(lead.country || lead.preferredLanguage) && lead.source && <span className="text-bx-line">·</span>}
               {lead.source && <span className="truncate">{SOURCE_LABELS[lead.source] ?? lead.source}</span>}
             </p>
           )}

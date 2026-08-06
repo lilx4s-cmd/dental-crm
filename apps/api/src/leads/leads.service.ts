@@ -34,6 +34,8 @@ import {
   stuckBefore,
   nextAction,
   coerceLeadSource,
+  resolveCountryCode,
+  resolveLanguageCode,
   normalisePhone,
   phoneMatchKey,
   toE164Digits,
@@ -59,6 +61,9 @@ const LEAD_SELECT = {
   // so `lead.country` was undefined on every card and in the deal sheet, while the web type
   // declared it. The flag on a card is the first thing a coordinator reads.
   country: true,
+  // Which language to talk to them in. On the card because it changes who picks the deal up —
+  // a coordinator who does not speak Arabic should see that before they open it, not after.
+  preferredLanguage: true,
   source: true,
   stage: true,
   status: true,
@@ -336,6 +341,7 @@ export class LeadsService {
         phone,
         whatsappNumber,
         country: dto.country?.trim().toUpperCase(),
+        preferredLanguage: dto.preferredLanguage?.trim().toLowerCase() || undefined,
         source: dto.source as $Enums.LeadSource,
         campaignId: dto.campaignId,
         estimatedValue: dto.estimatedValue,
@@ -406,6 +412,11 @@ export class LeadsService {
             phone,
             whatsappNumber,
             source: coerceLeadSource(row.source) as $Enums.LeadSource,
+            // Resolved from whatever the spreadsheet wrote — "Saudi Arabia", "KSA", "السعودية".
+            // Unrecognised becomes null rather than a guess, because this decides how the phone
+            // number two lines up was parsed.
+            country: resolveCountryCode(row.country),
+            preferredLanguage: resolveLanguageCode(row.preferredLanguage),
             estimatedValue: row.estimatedValue,
             currency: row.currency?.toUpperCase() || 'USD',
             notes: row.notes?.trim() || null,
@@ -707,6 +718,12 @@ export class LeadsService {
         email: dto.email,
         phone: phone ?? undefined,
         whatsappNumber: whatsappNumber ?? undefined,
+        // Neither of these was editable. Create accepted a country and update silently dropped it,
+        // so a deal entered without one — which is every deal imported from Bitrix — could never
+        // be corrected through the UI, and the field that decides how its phone number is parsed
+        // stayed wrong permanently.
+        country: dto.country?.trim().toUpperCase(),
+        preferredLanguage: dto.preferredLanguage?.trim().toLowerCase() || undefined,
         source: dto.source as $Enums.LeadSource | undefined,
         campaignId: dto.campaignId,
         estimatedValue: dto.estimatedValue,

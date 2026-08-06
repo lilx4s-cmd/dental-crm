@@ -51,6 +51,21 @@ export class ImportedLeadDto {
   @IsOptional()
   email?: string;
 
+  /**
+   * Whatever the spreadsheet wrote — "Saudi Arabia", "KSA", "السعودية". Resolved to ISO in the
+   * service; unrecognised becomes null rather than a guess, because this decides how the phone
+   * number in the same row is parsed.
+   */
+  @ApiPropertyOptional({ example: 'Saudi Arabia' })
+  @IsString()
+  @IsOptional()
+  country?: string;
+
+  @ApiPropertyOptional({ example: 'Arabic' })
+  @IsString()
+  @IsOptional()
+  preferredLanguage?: string;
+
   @ApiPropertyOptional({ description: 'Free text; mapped onto LeadSource, falling back to OTHER' })
   @IsString()
   @IsOptional()

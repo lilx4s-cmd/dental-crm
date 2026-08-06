@@ -52,6 +52,14 @@ export declare const LEAD_IMPORT_FIELDS: readonly [{
     readonly label: "Source";
     readonly required: false;
 }, {
+    readonly key: "country";
+    readonly label: "Country";
+    readonly required: false;
+}, {
+    readonly key: "preferredLanguage";
+    readonly label: "Language";
+    readonly required: false;
+}, {
     readonly key: "estimatedValue";
     readonly label: "Estimated value";
     readonly required: false;

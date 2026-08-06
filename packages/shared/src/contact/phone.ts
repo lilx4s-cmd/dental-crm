@@ -53,6 +53,15 @@ export const DIAL_COUNTRIES: readonly CountryDialInfo[] = [
   { code: 'SE', name: 'Sweden', dial: '46', nationalDigits: [9] },
   { code: 'RU', name: 'Russia', dial: '7', nationalDigits: [10] },
   { code: 'US', name: 'United States', dial: '1', nationalDigits: [10] },
+  // Added from the Bitrix export rather than guessed. The clinic's own history shows a Balkan and
+  // North American cohort the original list assumed away — Canada alone is 16 of the 55 deals that
+  // recorded a country, second only to the United States.
+  { code: 'CA', name: 'Canada', dial: '1', nationalDigits: [10] },
+  { code: 'BA', name: 'Bosnia and Herzegovina', dial: '387', nationalDigits: [8] },
+  { code: 'RS', name: 'Serbia', dial: '381', nationalDigits: [8, 9] },
+  { code: 'ME', name: 'Montenegro', dial: '382', nationalDigits: [8] },
+  { code: 'AT', name: 'Austria', dial: '43', nationalDigits: [10, 11] },
+  { code: 'MT', name: 'Malta', dial: '356', nationalDigits: [8] },
 ];
 
 export const DEFAULT_DIAL_COUNTRY = 'TR';
@@ -220,6 +229,12 @@ const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
   sweden: 'SE', sverige: 'SE', se: 'SE',
   russia: 'RU', россия: 'RU', ru: 'RU',
   'united states': 'US', usa: 'US', america: 'US', us: 'US',
+  canada: 'CA', ca: 'CA',
+  'bosnia and herzegovina': 'BA', bosnia: 'BA', ba: 'BA',
+  serbia: 'RS', srbija: 'RS', rs: 'RS',
+  montenegro: 'ME', 'crna gora': 'ME', me: 'ME',
+  austria: 'AT', österreich: 'AT', osterreich: 'AT', at: 'AT',
+  malta: 'MT', mt: 'MT',
 };
 
 /**
@@ -245,4 +260,83 @@ export function resolveCountryCode(raw: string | null | undefined): string | nul
   // added above.
   const byName = DIAL_COUNTRIES.find((c) => c.name.toLowerCase() === value);
   return byName?.code ?? null;
+}
+
+/**
+ * The languages this clinic's patients are served in.
+ *
+ * Not a decorative field. 125 of the 152 deals that recorded one in the old CRM were Arabic, in a
+ * clinic whose staff and dossiers are English and Turkish — so this decides which coordinator
+ * takes the case, whether a translator is booked, and which language the treatment plan is
+ * produced in.
+ *
+ * Stored as an ISO 639-1 code so it can key the dossier's own locale map, rather than as whatever
+ * word somebody typed.
+ */
+export interface PatientLanguage {
+  readonly code: string;
+  readonly name: string;
+  /** What the patient would call it, for a form they fill in themselves. */
+  readonly endonym: string;
+}
+
+export const PATIENT_LANGUAGES: readonly PatientLanguage[] = [
+  { code: 'ar', name: 'Arabic', endonym: 'العربية' },
+  { code: 'en', name: 'English', endonym: 'English' },
+  { code: 'tr', name: 'Turkish', endonym: 'Türkçe' },
+  { code: 'fr', name: 'French', endonym: 'Français' },
+  { code: 'ru', name: 'Russian', endonym: 'Русский' },
+  { code: 'de', name: 'German', endonym: 'Deutsch' },
+  { code: 'es', name: 'Spanish', endonym: 'Español' },
+  { code: 'fa', name: 'Persian', endonym: 'فارسی' },
+  { code: 'ur', name: 'Urdu', endonym: 'اردو' },
+  { code: 'it', name: 'Italian', endonym: 'Italiano' },
+  { code: 'nl', name: 'Dutch', endonym: 'Nederlands' },
+  { code: 'sq', name: 'Albanian', endonym: 'Shqip' },
+  { code: 'bs', name: 'Bosnian', endonym: 'Bosanski' },
+];
+
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+  arabic: 'ar', العربية: 'ar', arabe: 'ar', arapça: 'ar', arapca: 'ar',
+  english: 'en', ingilizce: 'en', anglais: 'en',
+  turkish: 'tr', türkçe: 'tr', turkce: 'tr', turkish_: 'tr',
+  french: 'fr', français: 'fr', francais: 'fr', fransızca: 'fr',
+  russian: 'ru', русский: 'ru', rusça: 'ru',
+  german: 'de', deutsch: 'de', almanca: 'de',
+  spanish: 'es', español: 'es', espanol: 'es',
+  persian: 'fa', farsi: 'fa', فارسی: 'fa',
+  urdu: 'ur', اردو: 'ur',
+  italian: 'it', italiano: 'it',
+  dutch: 'nl', nederlands: 'nl',
+  albanian: 'sq', shqip: 'sq',
+  bosnian: 'bs', bosanski: 'bs',
+};
+
+/**
+ * Turns whatever somebody wrote into an ISO 639-1 code, or null.
+ *
+ * Null rather than defaulting to English: "we do not know what language this patient speaks" and
+ * "this patient speaks English" are different facts, and the second one sends an English treatment
+ * plan to somebody who cannot read it.
+ */
+export function resolveLanguageCode(raw: string | null | undefined): string | null {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (!value) return null;
+
+  if (/^[a-z]{2}$/.test(value)) {
+    const direct = PATIENT_LANGUAGES.find((l) => l.code === value);
+    if (direct) return direct.code;
+  }
+  if (LANGUAGE_ALIASES[value]) return LANGUAGE_ALIASES[value];
+
+  const byName = PATIENT_LANGUAGES.find(
+    (l) => l.name.toLowerCase() === value || l.endonym.toLowerCase() === value,
+  );
+  return byName?.code ?? null;
+}
+
+/** The display name for a stored code. Falls back to the code so nothing renders blank. */
+export function languageName(code: string | null | undefined): string {
+  if (!code) return '';
+  return PATIENT_LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }

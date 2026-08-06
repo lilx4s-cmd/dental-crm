@@ -85,6 +85,13 @@ export const ImportedLeadSchema = z.object({
   whatsappNumber: z.string().trim().optional(),
   email: z.string().trim().email('Not a valid email').optional(),
   source: z.string().default(LeadSource.OTHER),
+  /**
+   * Resolved to ISO by the caller before it reaches here, so an unrecognised country is simply
+   * absent rather than a two-letter string that means nothing. Same reasoning as `source` falling
+   * back to OTHER: a column the importer cannot read must not cost the clinic the row.
+   */
+  country: z.string().trim().length(2).optional(),
+  preferredLanguage: z.string().trim().min(2).max(3).optional(),
   estimatedValue: z.number().positive().optional(),
   currency: z.string().trim().length(3).optional(),
   notes: z.string().trim().optional(),

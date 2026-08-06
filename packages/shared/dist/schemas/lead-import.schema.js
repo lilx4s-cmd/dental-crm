@@ -88,6 +88,13 @@ exports.ImportedLeadSchema = zod_1.z.object({
     whatsappNumber: zod_1.z.string().trim().optional(),
     email: zod_1.z.string().trim().email('Not a valid email').optional(),
     source: zod_1.z.string().default(enums_1.LeadSource.OTHER),
+    /**
+     * Resolved to ISO by the caller before it reaches here, so an unrecognised country is simply
+     * absent rather than a two-letter string that means nothing. Same reasoning as `source` falling
+     * back to OTHER: a column the importer cannot read must not cost the clinic the row.
+     */
+    country: zod_1.z.string().trim().length(2).optional(),
+    preferredLanguage: zod_1.z.string().trim().min(2).max(3).optional(),
     estimatedValue: zod_1.z.number().positive().optional(),
     currency: zod_1.z.string().trim().length(3).optional(),
     notes: zod_1.z.string().trim().optional(),

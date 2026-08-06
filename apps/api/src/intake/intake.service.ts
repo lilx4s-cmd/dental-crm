@@ -13,6 +13,7 @@ import {
   INTAKE_MAX_FILES,
   INTAKE_MAX_FILE_BYTES,
   resolveCountryCode,
+  resolveLanguageCode,
 } from '@dental-crm/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -76,6 +77,10 @@ export class IntakeService {
           // Free text in, ISO code out. Unrecognised resolves to null rather than to a guess: not
           // knowing is safe, and a wrong country dials a real number belonging to somebody else.
           country: resolveCountryCode(dto.countryOfResidence),
+          // Dropped in exactly the same way as country was, and it matters as much: this clinic's
+          // patients are overwhelmingly Arabic-speaking while its staff and dossiers are English
+          // and Turkish, so it decides who takes the case and whether a translator is booked.
+          preferredLanguage: resolveLanguageCode(dto.preferredLanguage),
           utmSource: dto.utmSource,
           utmMedium: dto.utmMedium,
           utmCampaign: dto.utmCampaign,

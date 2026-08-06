@@ -1,4 +1,9 @@
-import { resolveCountryCode, toE164Digits } from '@dental-crm/shared';
+import {
+  languageName,
+  resolveCountryCode,
+  resolveLanguageCode,
+  toE164Digits,
+} from '@dental-crm/shared';
 
 /**
  * The public enquiry form asked for a country of residence, stored it on the submission, and never
@@ -78,5 +83,69 @@ describe('what a resolved country changes', () => {
   it('leaves an unknown country as digits rather than assuming Turkey', () => {
     const digits = toE164Digits('055 512 3456', resolveCountryCode('Atlantis') ?? undefined);
     expect(digits).not.toBe('905555123456');
+  });
+});
+
+/**
+ * Language was dropped in exactly the same place, and matters as much.
+ *
+ * 125 of the 152 leads that carry one are Arabic, in a clinic whose staff and dossiers are English
+ * and Turkish. It decides who picks the case up and whether a translator is booked.
+ */
+describe('resolveLanguageCode', () => {
+  it('takes the English name', () => {
+    expect(resolveLanguageCode('Arabic')).toBe('ar');
+    expect(resolveLanguageCode('Turkish')).toBe('tr');
+  });
+
+  it('takes what the patient would write themselves', () => {
+    expect(resolveLanguageCode('العربية')).toBe('ar');
+    expect(resolveLanguageCode('Türkçe')).toBe('tr');
+    expect(resolveLanguageCode('Français')).toBe('fr');
+  });
+
+  it('takes the Turkish names, since the form is offered in Turkish too', () => {
+    expect(resolveLanguageCode('Arapça')).toBe('ar');
+    expect(resolveLanguageCode('Almanca')).toBe('de');
+  });
+
+  it('takes an ISO code directly', () => {
+    expect(resolveLanguageCode('ar')).toBe('ar');
+    expect(resolveLanguageCode('EN')).toBe('en');
+  });
+
+  it('returns null rather than defaulting to English', () => {
+    // "We do not know what language this patient speaks" and "this patient speaks English" are
+    // different facts. The second one sends an English treatment plan to somebody who cannot
+    // read it.
+    expect(resolveLanguageCode('Klingon')).toBeNull();
+    expect(resolveLanguageCode('')).toBeNull();
+    expect(resolveLanguageCode(null)).toBeNull();
+  });
+});
+
+describe('languageName', () => {
+  it('renders a stored code for a human', () => {
+    expect(languageName('ar')).toBe('Arabic');
+  });
+
+  it('falls back to the code rather than rendering blank', () => {
+    // A code from a future list this build does not know about should still show something.
+    expect(languageName('xx')).toBe('xx');
+    expect(languageName(null)).toBe('');
+  });
+});
+
+/**
+ * The countries were extended from the clinic's own history rather than guessed.
+ */
+describe('the countries this clinic actually sees', () => {
+  it('resolves the ones the Bitrix export turned out to contain', () => {
+    // Canada was 16 of the 55 deals that recorded a country — second only to the United States —
+    // and was missing from a list built around the Gulf.
+    expect(resolveCountryCode('Canada')).toBe('CA');
+    expect(resolveCountryCode('Bosnia and Herzegovina')).toBe('BA');
+    expect(resolveCountryCode('Malta')).toBe('MT');
+    expect(resolveCountryCode('Austria')).toBe('AT');
   });
 });

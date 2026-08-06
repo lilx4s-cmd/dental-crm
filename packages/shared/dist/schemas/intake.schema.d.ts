@@ -49,9 +49,9 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     dateOfBirth?: string | undefined;
     gender?: "" | "OTHER" | "MALE" | "FEMALE" | "UNKNOWN" | undefined;
     website?: string | undefined;
+    preferredLanguage?: string | undefined;
     nationality?: string | undefined;
     countryOfResidence?: string | undefined;
-    preferredLanguage?: string | undefined;
     treatmentInterest?: string[] | undefined;
     chiefComplaint?: string | undefined;
     desiredTimeframe?: string | undefined;
@@ -81,9 +81,9 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     dateOfBirth?: string | undefined;
     gender?: "" | "OTHER" | "MALE" | "FEMALE" | "UNKNOWN" | undefined;
     website?: string | undefined;
+    preferredLanguage?: string | undefined;
     nationality?: string | undefined;
     countryOfResidence?: string | undefined;
-    preferredLanguage?: string | undefined;
     treatmentInterest?: string[] | undefined;
     chiefComplaint?: string | undefined;
     desiredTimeframe?: string | undefined;

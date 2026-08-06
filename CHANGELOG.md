@@ -1,5 +1,63 @@
 # Changelog
 
+## Recovering what the CRM had stopped capturing (2026-08-07)
+
+Reporting was next on the list. Checking production first showed that three of the four reports
+proposed would have rendered empty pages:
+
+    campaignId   0 of 1005      utmSource  0 of 1005
+    country      0 of 1005      source     999 of 1005 are OTHER
+    campaigns    0 rows         plans with a coordinator  3
+
+So the reporting gap was not a reporting gap. It was a capture gap, and building charts over it
+would have shipped four menu items that do nothing.
+
+### The intake form was dropping two fields
+
+The public enquiry form asks for country of residence and preferred language. Both landed on
+`intake_submissions` and neither was copied to the lead — sitting directly beside the UTM fields,
+which were copied.
+
+`Lead.country` decides whether a leading zero on a phone number means Turkey or Saudi Arabia, so
+every enquiry through the form had its number parsed as Turkish whatever the patient wrote. A
+Saudi 055 512 3456 became 90555123456 rather than 966555123456: both dialable, one a stranger.
+
+### What was recoverable, and what was not
+
+The Bitrix export is still on disk, and carried three custom fields the migration ignored:
+
+  - country   — 55 of the imported leads
+  - language  — 152, of which **125 are Arabic**
+  - "treatment interest" — reads "Dental Treatment" on all 88 that set it, which is not
+    information in a dental clinic. Deliberately ignored rather than made into a tag.
+
+`SOURCE_ID` is **not** recoverable and never was: 1676 of the 1682 exported deals have it empty.
+The 999 leads reading OTHER are honest, not a migration failure.
+
+Backfilled to production: 55 countries, 152 languages, 1005 leads intact.
+
+### Lead.preferredLanguage
+
+A new column, because 125 Arabic-speaking patients in a clinic whose staff and dossiers are
+English and Turkish is not a detail — it decides who picks the case up, whether a translator is
+booked, and which language the treatment plan is produced in.
+
+Null means nobody has said, which is deliberately not the same as English. A default there sends
+an English treatment plan to somebody who cannot read it.
+
+Captured now from the enquiry form, the new-deal dialog, and CSV import; editable afterwards;
+shown on the card as a code and on the deal sheet by name.
+
+### Two smaller things found on the way
+
+`update` accepted neither country nor language, so a deal entered without one — which is every
+deal imported from Bitrix — could never be corrected through the UI.
+
+`DIAL_COUNTRIES` was built around the Gulf. The clinic's own history says otherwise: Canada was 16
+of the 55 recorded countries, second only to the United States. Canada, Bosnia, Serbia,
+Montenegro, Austria and Malta added from the data rather than guessed.
+
+
 ## Appointment reminders (2026-08-06)
 
 The first thing in this system that runs without somebody clicking.

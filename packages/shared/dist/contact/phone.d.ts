@@ -78,4 +78,32 @@ export declare function phoneMatchKey(raw: string | null | undefined, countryCod
  * Not knowing is safe — `toE164Digits` falls back to digits-only when the country is unknown.
  */
 export declare function resolveCountryCode(raw: string | null | undefined): string | null;
+/**
+ * The languages this clinic's patients are served in.
+ *
+ * Not a decorative field. 125 of the 152 deals that recorded one in the old CRM were Arabic, in a
+ * clinic whose staff and dossiers are English and Turkish — so this decides which coordinator
+ * takes the case, whether a translator is booked, and which language the treatment plan is
+ * produced in.
+ *
+ * Stored as an ISO 639-1 code so it can key the dossier's own locale map, rather than as whatever
+ * word somebody typed.
+ */
+export interface PatientLanguage {
+    readonly code: string;
+    readonly name: string;
+    /** What the patient would call it, for a form they fill in themselves. */
+    readonly endonym: string;
+}
+export declare const PATIENT_LANGUAGES: readonly PatientLanguage[];
+/**
+ * Turns whatever somebody wrote into an ISO 639-1 code, or null.
+ *
+ * Null rather than defaulting to English: "we do not know what language this patient speaks" and
+ * "this patient speaks English" are different facts, and the second one sends an English treatment
+ * plan to somebody who cannot read it.
+ */
+export declare function resolveLanguageCode(raw: string | null | undefined): string | null;
+/** The display name for a stored code. Falls back to the code so nothing renders blank. */
+export declare function languageName(code: string | null | undefined): string;
 //# sourceMappingURL=phone.d.ts.map
