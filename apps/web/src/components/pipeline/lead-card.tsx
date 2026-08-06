@@ -2,9 +2,9 @@
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Clock, Mail, MessageCircle, Phone } from 'lucide-react';
+import { Clock, History, Mail, MessageCircle, Phone } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { STUCK_LEAD_DAYS } from '@dental-crm/shared';
+import { STAGE_LABELS, STUCK_LEAD_DAYS } from '@dental-crm/shared';
 import { useUpdateLeadTask, type Lead } from '@/hooks/use-leads';
 import { useClinicSettings } from '@/hooks/use-reports';
 import { formatDealValue } from '@/lib/money';
@@ -50,6 +50,21 @@ function daysSince(iso: string): number {
 }
 
 /**
+ * A short relative age: "3m", "2h", "5d".
+ *
+ * Abbreviated because it sits at the end of a truncating line and every character it takes is one
+ * the message preview loses. Nothing older than a year is interesting on a board, so it stops at
+ * days rather than growing a month unit nobody would read.
+ */
+function shortAgo(iso: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (seconds < 60) return 'now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86_400)}d`;
+}
+
+/**
  * A deal card in the Bitrix24 shape: title as a blue link, the amount directly under it in bold,
  * then the quiet contact lines. The order is the point — on a fourteen-column board the two things
  * anyone scans for are who it is and what it is worth, so nothing sits between them.
@@ -80,6 +95,48 @@ export function LeadCard({
     clinicSettings?.clinicName ?? 'the clinic',
     lead.country,
   );
+
+  /**
+   * The most recent thing that happened, from either side.
+   *
+   * The patient's last message and the last thing staff recorded are two different clocks, and the
+   * card has room for one line. Whichever is newer is the one that answers "where is this deal" —
+   * a reply that arrived after our note changes the picture, and a note written after their reply
+   * means somebody has already dealt with it.
+   */
+  const lastEvent = (() => {
+    const activity = lead.activities?.[0];
+    const message = lead.conversations?.[0]?.messages?.[0];
+
+    const activityAt = activity ? new Date(activity.createdAt).getTime() : -1;
+    const messageAt = message ? new Date(message.createdAt).getTime() : -1;
+    if (activityAt < 0 && messageAt < 0) return null;
+
+    if (messageAt >= activityAt && message) {
+      const inbound = message.direction === 'INBOUND';
+      const body = message.content?.replace(/\s+/g, ' ').trim();
+      return {
+        icon: (
+          <MessageCircle
+            className={cn('h-3 w-3 shrink-0', inbound ? 'text-success' : 'text-bx-muted')}
+          />
+        ),
+        // Prefixed rather than colour-coded alone: on a dense board the direction is the whole
+        // meaning, and colour is the first thing lost to a projector or a colour-blind reader.
+        text: `${inbound ? '' : 'You: '}${body || (inbound ? 'Sent an attachment' : 'Sent a message')}`,
+        title: body ?? undefined,
+        ago: shortAgo(message.createdAt),
+      };
+    }
+
+    const note = activity!.note?.replace(/\s+/g, ' ').trim();
+    return {
+      icon: <History className="h-3 w-3 shrink-0" />,
+      text: note || (activity!.toStage ? `Moved to ${STAGE_LABELS[activity!.toStage] ?? activity!.toStage}` : 'Updated'),
+      title: note ?? undefined,
+      ago: shortAgo(activity!.createdAt),
+    };
+  })();
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -125,25 +182,13 @@ export function LeadCard({
         )}
 
         <div className="mt-1.5 space-y-0.5 text-[11px] leading-snug text-bx-muted">
+          {/* The WhatsApp shortcut used to live inline here. It moved to the action row at the
+              bottom of the card, so the three contact actions sit together instead of one being
+              attached to the phone line and the rest appearing below it on hover. */}
           {lead.phone && (
             <div className="flex items-center gap-1.5">
               <Phone className="h-3 w-3 shrink-0" />
               <span className="truncate">{lead.phone}</span>
-              {whatsappLink && (
-                <a
-                  href={whatsappLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  // The card is both a link to the deal and a drag handle, so a click meant for
-                  // WhatsApp must not open the sheet or start a drag on its way out.
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  title="Message on WhatsApp"
-                  className="shrink-0 rounded-full p-0.5 text-success transition-colors hover:bg-success-muted"
-                >
-                  <MessageCircle className="h-3 w-3" />
-                </a>
-              )}
             </div>
           )}
           {lead.email && (
@@ -196,12 +241,72 @@ export function LeadCard({
           />
         )}
 
+        {/* The last thing that happened, whichever side it came from.
+            One line, not two: a card showing both its own history and the patient's reply is a
+            card nobody reads. Whichever is newer is the one that answers "where is this deal". */}
+        {lastEvent && (
+          <p
+            className="mt-1.5 flex items-center gap-1 truncate text-[10px] leading-snug text-bx-muted"
+            title={lastEvent.title}
+          >
+            {lastEvent.icon}
+            <span className="truncate">{lastEvent.text}</span>
+            <span className="shrink-0 tabular-nums opacity-70">· {lastEvent.ago}</span>
+          </p>
+        )}
+
         {isStuck && (
           <p className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-destructive-muted-foreground">
             <Clock className="h-3 w-3" />
             No movement · {idleDays}d
           </p>
         )}
+
+        {/* Hover actions. Hidden until the pointer is on the card, and revealed on focus-within so
+            they are reachable by keyboard — `group-hover` alone makes a control that exists only
+            for people using a mouse.
+            Kept to the three that are genuinely one-click: everything else needs a form, and lives
+            in the right-click menu or the deal sheet where there is room to ask. */}
+        <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          {lead.phone && (
+            <a
+              href={`tel:${lead.phone}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              title={`Call ${lead.phone}`}
+              aria-label={`Call ${fullName}`}
+              className="rounded p-1 text-bx-muted transition-colors hover:bg-bx-board hover:text-bx-text"
+            >
+              <Phone className="h-3 w-3" />
+            </a>
+          )}
+          {whatsappLink && (
+            <a
+              href={whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              title="Message on WhatsApp"
+              aria-label={`Message ${fullName} on WhatsApp`}
+              className="rounded p-1 text-success transition-colors hover:bg-success-muted"
+            >
+              <MessageCircle className="h-3 w-3" />
+            </a>
+          )}
+          {lead.email && (
+            <a
+              href={`mailto:${lead.email}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              title={`Email ${lead.email}`}
+              aria-label={`Email ${fullName}`}
+              className="rounded p-1 text-bx-muted transition-colors hover:bg-bx-board hover:text-bx-text"
+            >
+              <Mail className="h-3 w-3" />
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );

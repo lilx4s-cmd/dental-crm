@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 /**
  * The set a bulk action applies to.
@@ -60,6 +71,35 @@ export class BulkTagDto extends BulkLeadIdsDto {
   @IsOptional()
   @IsBoolean()
   remove?: boolean;
+}
+
+export class BulkTaskDto extends BulkLeadIdsDto {
+  @ApiProperty({ example: 'Chase for flight dates' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title!: string;
+
+  /**
+   * Required, matching CreateLeadTaskDto.
+   *
+   * A task with no due date cannot answer "who do I contact today", which is the only reason the
+   * pipeline carries tasks at all — and a bulk action is the easiest place to create forty of them
+   * that never surface anywhere.
+   */
+  @ApiProperty({ example: '2026-08-12T09:00:00.000Z' })
+  @IsDateString()
+  dueDate!: string;
+
+  /**
+   * Who each task falls to. Omitted means the deal's own assignee, which is usually what a bulk
+   * reminder means: forty deals owned by four people become forty tasks across those four, not
+   * forty tasks for whoever clicked.
+   */
+  @ApiPropertyOptional({ description: 'Defaults to each deal’s own assignee' })
+  @IsOptional()
+  @IsUUID()
+  assignedToId?: string;
 }
 
 export class BulkDeleteDto extends BulkLeadIdsDto {

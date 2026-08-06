@@ -78,7 +78,13 @@ function renderList(leads: Lead[], activeId: string | null = null) {
         leads={leads}
         activeId={activeId}
         selection={noSelection}
+        // Nothing selected and no menu actions exercised here — these tests are about which cards
+        // the virtualizer mounts, not about what the right-click menu does with them.
+        selectedLeads={[]}
         onLeadClick={() => undefined}
+        onMoveToStage={() => undefined}
+        onChangeResponsible={() => undefined}
+        onTag={() => undefined}
       />
     </DndContext>,
   );

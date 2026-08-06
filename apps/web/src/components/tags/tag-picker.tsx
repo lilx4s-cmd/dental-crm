@@ -38,14 +38,21 @@ export function TagPicker({
   /** Shown in the trigger. The bulk bar counts deals; the deal sheet does not. */
   triggerLabel = 'Tags',
   align = 'start',
+  open: controlledOpen,
+  onOpenChange,
 }: {
   selectedIds: string[];
   onToggle: (tag: Tag, selected: boolean) => void;
   disabled?: boolean;
   triggerLabel?: string;
   align?: 'start' | 'center' | 'end';
+  /** Optional. Given, the picker is controlled — the board's right-click menu opens it this way. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

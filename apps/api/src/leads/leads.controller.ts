@@ -17,7 +17,14 @@ import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
 import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
-import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto, BulkTagDto } from './dto/bulk.dto';
+import {
+  BulkArchiveDto,
+  BulkDeleteDto,
+  BulkLeadIdsDto,
+  BulkNoteDto,
+  BulkTagDto,
+  BulkTaskDto,
+} from './dto/bulk.dto';
 import { exportFilename } from './lead-csv';
 
 const PIPELINE_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT];
@@ -156,6 +163,15 @@ export class LeadsController {
       'Cache-Control': 'no-store',
     });
     return csv;
+  }
+
+  // Reception included, matching POST /leads/:id/tasks: setting a reminder is the least
+  // consequential thing anyone can do to a deal, and reception takes the call that prompts it.
+  @Post('bulk/tasks')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Add the same reminder to many deals at once' })
+  bulkTask(@Body() dto: BulkTaskDto, @CurrentUser() user: JwtPayload) {
+    return this.leadsService.bulkTask(dto, user);
   }
 
   // Add or remove tags across a selection. One route for both directions — see BulkTagDto.

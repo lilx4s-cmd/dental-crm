@@ -11,10 +11,42 @@ export interface WorkItem {
   recycleAngle?: string | null;
 }
 
+/**
+ * An open reminder, with the deal it sits on.
+ *
+ * Carries the lead's own fields rather than a full `Lead`, because this list deliberately includes
+ * tasks on won and archived deals — "send the warranty certificate" is due whether or not the sale
+ * closed — and those never appear in the pipeline lists a `Lead` comes from.
+ */
+export interface WorkTask {
+  id: string;
+  title: string;
+  dueDate: string;
+  overdue: boolean;
+  assignedTo: { id: string; firstName: string; lastName: string } | null;
+  lead: {
+    id: string;
+    firstName: string;
+    lastName: string | null;
+    phone: string | null;
+    whatsappNumber: string | null;
+    country: string | null;
+    stage: string;
+    status: string;
+  };
+}
+
 export interface WorkList {
   due: WorkItem[];
   dormant: WorkItem[];
-  counts: { due: number; dormant: number; openPipeline: number };
+  tasks: WorkTask[];
+  counts: {
+    due: number;
+    dormant: number;
+    tasks: number;
+    tasksOverdue: number;
+    openPipeline: number;
+  };
 }
 
 export function useWorkList() {

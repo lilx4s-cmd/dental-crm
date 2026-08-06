@@ -5,6 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 import { LeadCard } from './lead-card';
+import { LeadCardContextMenu } from './lead-card-context-menu';
 import type { BoardSelection } from './use-board-selection';
 import type { Lead } from '@/hooks/use-leads';
 import { cn } from '@/lib/utils';
@@ -35,13 +36,25 @@ export function VirtualCardList({
   leads,
   activeId,
   selection,
+  selectedLeads,
   onLeadClick,
+  onMoveToStage,
+  onChangeResponsible,
+  onTag,
 }: {
   leads: Lead[];
   /** The card currently being dragged, if any. Kept mounted regardless of scroll position. */
   activeId: string | null;
   selection: BoardSelection;
+  /**
+   * The board's whole selection, resolved. Passed down rather than derived here because a
+   * selection spans columns and this component only knows its own.
+   */
+  selectedLeads: Lead[];
   onLeadClick: (lead: Lead) => void;
+  onMoveToStage: (leads: Lead[], stage: string) => void;
+  onChangeResponsible: (leads: Lead[]) => void;
+  onTag: (leads: Lead[]) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -90,15 +103,29 @@ export function VirtualCardList({
                     'ring-2 ring-inset ring-bx-link ring-offset-0',
                 )}
               >
-                <LeadCard
+                {/* The context menu wraps the card rather than living inside it, so the trigger
+                    covers the whole card including its padding — a right-click on the 4px gap
+                    beside the name should still open the menu. */}
+                <LeadCardContextMenu
                   lead={leads[item.index]}
-                  onClick={(event) => {
-                    // Ctrl/Cmd and Shift are selection gestures; a plain click still opens the
-                    // deal, which is what the card has always done.
-                    if (selection.handleCardClick(leads[item.index], leads, event)) return;
-                    onLeadClick(leads[item.index]);
-                  }}
-                />
+                  selectedLeads={selectedLeads}
+                  onOpen={() => onLeadClick(leads[item.index])}
+                  onMoveToStage={onMoveToStage}
+                  onChangeResponsible={onChangeResponsible}
+                  onTag={onTag}
+                >
+                  <div>
+                    <LeadCard
+                      lead={leads[item.index]}
+                      onClick={(event) => {
+                        // Ctrl/Cmd and Shift are selection gestures; a plain click still opens the
+                        // deal, which is what the card has always done.
+                        if (selection.handleCardClick(leads[item.index], leads, event)) return;
+                        onLeadClick(leads[item.index]);
+                      }}
+                    />
+                  </div>
+                </LeadCardContextMenu>
               </div>
             </div>
           ))}

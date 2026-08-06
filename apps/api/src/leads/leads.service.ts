@@ -15,7 +15,14 @@ import { TransferLeadsDto } from './dto/transfer-leads.dto';
 import { ActivityQueryDto } from './dto/activity-query.dto';
 import { CreateLeadTaskDto, UpdateLeadTaskDto } from './dto/lead-task.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
-import { BulkArchiveDto, BulkDeleteDto, BulkLeadIdsDto, BulkNoteDto, BulkTagDto } from './dto/bulk.dto';
+import {
+  BulkArchiveDto,
+  BulkDeleteDto,
+  BulkLeadIdsDto,
+  BulkNoteDto,
+  BulkTagDto,
+  BulkTaskDto,
+} from './dto/bulk.dto';
 import { TagsService } from '../tags/tags.service';
 import { toCsv } from './lead-csv';
 import {
@@ -88,6 +95,31 @@ const LEAD_SELECT = {
   },
 } as const;
 
+/**
+ * What the board's cards need on top of the shared projection.
+ *
+ * Deliberately *not* part of `LEAD_SELECT`. These two started life inside it, which meant the work
+ * list paid for them too — a nested `take: 1` is a correlated subquery run once per row, and My Day
+ * renders a name, a stage and a sentence. It was fetching a message preview and an activity for
+ * every one of 735 open deals in order to draw neither.
+ *
+ * Measured against production, best of three runs over 735 deals: ~2.9s with them in the work
+ * list's select, ~2.1s without. (A first, colder sample read 7.9s versus 1.2s and is not
+ * trustworthy — noted because the smaller number is the honest one.) Most of both figures is
+ * round-trip latency rather than query time; the difference between them is the part this
+ * removes.
+ *
+ * The board genuinely needs them, so it fetches them separately and flat (see `lastEventsFor`) —
+ * a few queries for the whole board rather than two per card.
+ */
+const LAST_ACTIVITY_SELECT = {
+  id: true,
+  leadId: true,
+  note: true,
+  toStage: true,
+  createdAt: true,
+} satisfies Prisma.LeadActivitySelect;
+
 // Only for the single-lead view. The intake questionnaire is a page of answers per lead, and the
 // kanban renders hundreds of cards at once — putting it in LEAD_SELECT would download every
 // patient's medical history to draw a board that never shows it.
@@ -125,6 +157,12 @@ const LEAD_DETAIL_SELECT = {
     orderBy: { createdAt: 'desc' as const },
   },
 } as const;
+
+type LastActivity = Prisma.LeadActivityGetPayload<{ select: typeof LAST_ACTIVITY_SELECT }>;
+type LastThread = {
+  conversation: { id: string; leadId: string | null; lastMessageAt: Date | null };
+  message: { id: string; conversationId: string; direction: $Enums.MessageDirection; content: string | null; createdAt: Date };
+};
 
 @Injectable()
 export class LeadsService {
@@ -808,6 +846,67 @@ export class LeadsService {
     return { patient, lead: updatedLead };
   }
 
+  /**
+   * The last thing anyone did to each deal, and the last thing each patient said.
+   *
+   * Flat queries for the whole board rather than correlated subqueries per card. Prisma's
+   * `distinct` compiles to Postgres DISTINCT ON, which with a matching index is one scan taking
+   * the newest row per lead — where the nested form re-runs a sorted lookup for every card.
+   *
+   * Returned as maps because the caller stitches them onto leads it already has. Joining in the
+   * database would bring the lead rows back duplicated once per activity.
+   */
+  private async lastEventsFor(leadIds: string[]) {
+    const empty = {
+      activityByLead: new Map<string, LastActivity>(),
+      messageByLead: new Map<string, LastThread>(),
+    };
+    if (leadIds.length === 0) return empty;
+
+    const [activities, conversations] = await Promise.all([
+      this.prisma.leadActivity.findMany({
+        where: { leadId: { in: leadIds } },
+        // leadId leads the sort because DISTINCT ON requires it to; the createdAt desc after it is
+        // what makes the row kept per lead the newest one rather than an arbitrary one.
+        orderBy: [{ leadId: 'asc' }, { createdAt: 'desc' }],
+        distinct: ['leadId'],
+        select: LAST_ACTIVITY_SELECT,
+      }),
+      this.prisma.conversation.findMany({
+        // The thread that spoke most recently, not the newest thread: a patient replying on an old
+        // conversation is still a patient who replied.
+        where: { leadId: { in: leadIds }, lastMessageAt: { not: null } },
+        orderBy: [{ leadId: 'asc' }, { lastMessageAt: 'desc' }],
+        distinct: ['leadId'],
+        select: { id: true, leadId: true, lastMessageAt: true },
+      }),
+    ]);
+
+    const messages = conversations.length
+      ? await this.prisma.message.findMany({
+          where: { conversationId: { in: conversations.map((c) => c.id) } },
+          orderBy: [{ conversationId: 'asc' }, { createdAt: 'desc' }],
+          distinct: ['conversationId'],
+          select: { id: true, conversationId: true, direction: true, content: true, createdAt: true },
+        })
+      : [];
+
+    const byConversation = new Map(messages.map((m) => [m.conversationId, m]));
+
+    const messageByLead = new Map<string, LastThread>();
+    for (const conversation of conversations) {
+      const message = byConversation.get(conversation.id);
+      // A thread whose lastMessageAt is set but whose messages are gone is not worth a blank line
+      // on a card.
+      if (conversation.leadId && message) messageByLead.set(conversation.leadId, { conversation, message });
+    }
+
+    return {
+      activityByLead: new Map(activities.map((a) => [a.leadId, a])),
+      messageByLead,
+    };
+  }
+
   async findAllByStage(query: LeadsQueryDto, currentUser: JwtPayload) {
     // The board deliberately ignores the `stage` filter: hiding columns would break the drag
     // targets, and a stage filter on a stage-partitioned view is what the column already is.
@@ -819,9 +918,24 @@ export class LeadsService {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Only the board draws the "last thing that happened" line, so only the board pays for it.
+    const { activityByLead, messageByLead } = await this.lastEventsFor(leads.map((l) => l.id));
+
+    const enriched = leads.map((lead) => {
+      const activity = activityByLead.get(lead.id);
+      const thread = messageByLead.get(lead.id);
+      return {
+        ...lead,
+        // Shaped as arrays of zero or one, matching what a nested `take: 1` would have returned,
+        // so the client reads the same field however it was fetched.
+        activities: activity ? [activity] : [],
+        conversations: thread ? [{ ...thread.conversation, messages: [thread.message] }] : [],
+      };
+    });
+
     return Object.values(PipelineStage).map((stage) => ({
       stage,
-      leads: leads.filter((l) => l.stage === stage),
+      leads: enriched.filter((l) => l.stage === stage),
     }));
   }
 
@@ -977,7 +1091,14 @@ export class LeadsService {
    * model is used later, to write the message, once these rules have decided who needs one.
    */
   async workList(currentUser: JwtPayload) {
-    const where: Prisma.LeadWhereInput = { status: $Enums.LeadStatus.ACTIVE };
+    const where: Prisma.LeadWhereInput = {
+      status: $Enums.LeadStatus.ACTIVE,
+      // A folded duplicate is off every other list. `mergeDuplicates` archives its losers, so this
+      // changes nothing today — stated anyway because this method builds its own where-clause
+      // rather than going through `buildWhere`, and so does not inherit the rule. Whoever next
+      // changes how a merge marks its losers should not silently resurrect them here.
+      mergedIntoId: null,
+    };
     // Everyone except Super Admin sees their own work; a shared list nobody owns gets ignored.
     if (!this.canSeeAll(currentUser)) where.assignedToId = currentUser.sub;
 
@@ -1015,11 +1136,90 @@ export class LeadsService {
     due.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
     dormant.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
 
+    const tasks = await this.openTasksFor(currentUser, now);
+
     return {
       due,
       dormant,
-      counts: { due: due.length, dormant: dormant.length, openPipeline: leads.length },
+      tasks,
+      counts: {
+        due: due.length,
+        dormant: dormant.length,
+        tasks: tasks.length,
+        // Tasks already past their due date. The number the page leads with, because it is the one
+        // that means somebody has been let down rather than merely that work exists.
+        tasksOverdue: tasks.filter((t) => t.overdue).length,
+        openPipeline: leads.length,
+      },
     };
+  }
+
+  /**
+   * The reminders this person actually has to do.
+   *
+   * Missing until now, which made "My Day" a misnomer: the page showed what the cadence *rules*
+   * thought should happen and never what anyone had said they would do. Worse, a deal with an open
+   * task was deliberately dropped from the follow-up list — so setting a reminder made a deal
+   * disappear from the only screen it should have appeared on more prominently.
+   *
+   * Two rules that differ from the lists above, both deliberate:
+   *
+   * - **Lead status is ignored.** A task on a won deal is still a task — "send the warranty
+   *   certificate" is due whether or not the sale is closed. The single open task in production
+   *   when this was written was exactly that case, and it was invisible.
+   * - **Scoped by the task's assignee, not the deal's owner.** A reminder handed to reception on
+   *   somebody else's deal belongs on reception's list. Unassigned tasks fall back to whoever owns
+   *   the deal, so a bulk reminder set across an unowned deal is not silently lost.
+   */
+  private async openTasksFor(currentUser: JwtPayload, now: Date) {
+    const mine: Prisma.LeadTaskWhereInput = this.canSeeAll(currentUser)
+      ? {}
+      : {
+          OR: [
+            { assignedToId: currentUser.sub },
+            { assignedToId: null, lead: { assignedToId: currentUser.sub } },
+          ],
+        };
+
+    const rows = await this.prisma.leadTask.findMany({
+      where: {
+        completedAt: null,
+        // Merged duplicates are off every other list; a task on one is a task on a record that no
+        // longer exists as far as the pipeline is concerned.
+        lead: { mergedIntoId: null },
+        ...mine,
+      },
+      // Soonest first, so what is late sits at the top rather than buried under next month.
+      orderBy: { dueDate: 'asc' },
+      // A cap, because this is a morning list and not a task manager. Anyone with more than this
+      // outstanding has a problem no ordering fixes.
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
+        lead: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            whatsappNumber: true,
+            country: true,
+            stage: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Compared against the start of today, not against the moment itself: a task due today is due,
+    // not late, at 09:01. `now` is read rather than mutated — `setHours` on it would have shifted
+    // the clock the rest of this request is still using.
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    return rows.map((task) => ({ ...task, overdue: task.dueDate < startOfToday }));
   }
 
   /**
@@ -1186,7 +1386,8 @@ export class LeadsService {
         mergedIntoId: null,
         ...(this.canSeeAll(currentUser) ? {} : { assignedToId: currentUser.sub }),
       },
-      select: { id: true, stage: true, status: true },
+      // assignedToId is here for bulkTask, which defaults each reminder to the deal's own owner.
+      select: { id: true, stage: true, status: true, assignedToId: true },
     });
   }
 
@@ -1504,6 +1705,58 @@ export class LeadsService {
     await this.findOne(leadId, currentUser);
     await this.applyTags([leadId], [tagId], $Enums.TagAction.REMOVED, currentUser);
     return this.findOne(leadId, currentUser);
+  }
+
+  /**
+   * One reminder against every deal in a selection.
+   *
+   * Defaults each task to the deal's own assignee rather than to the caller. Forty deals owned by
+   * four salespeople become forty tasks spread across those four — which is what "remind everyone
+   * to chase their November group" means. Assigning them all to whoever clicked would hand one
+   * person a to-do list of other people's work, and take it off the four whose work it is.
+   *
+   * `assignedToId` overrides that when the reminder genuinely belongs to one person.
+   */
+  async bulkTask(dto: BulkTaskDto, currentUser: JwtPayload) {
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException('Give the reminder a title.');
+
+    const dueDate = new Date(dto.dueDate);
+    if (Number.isNaN(dueDate.getTime())) throw new BadRequestException('That is not a valid date.');
+
+    if (dto.assignedToId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: dto.assignedToId },
+        select: { isActive: true },
+      });
+      if (!user) throw new NotFoundException('That person was not found.');
+      // A task on a deactivated account is invisible to everyone: the work list scopes to the
+      // signed-in user, and nobody signs in as a deactivated account.
+      if (!user.isActive) {
+        throw new BadRequestException('That person is deactivated — reactivate them first.');
+      }
+    }
+
+    const leads = await this.resolveSelection(dto.leadIds, currentUser);
+    if (leads.length === 0) return { created: 0, unassigned: 0, requested: dto.leadIds.length };
+
+    const rows = leads.map((l) => ({
+      leadId: l.id,
+      title,
+      dueDate,
+      assignedToId: dto.assignedToId ?? l.assignedToId,
+      createdById: currentUser.sub,
+    }));
+
+    await this.prisma.leadTask.createMany({ data: rows });
+
+    return {
+      created: rows.length,
+      // An unowned deal produces an unassigned task, which is real but shows up on nobody's list.
+      // Counted so the UI can say so rather than reporting a clean success.
+      unassigned: rows.filter((r) => !r.assignedToId).length,
+      requested: dto.leadIds.length,
+    };
   }
 
   async bulkTag(dto: BulkTagDto, currentUser: JwtPayload) {

@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   ArrowRightLeft,
+  BellPlus,
   Download,
   Loader2,
   MessageSquarePlus,
@@ -36,11 +37,19 @@ import { PIPELINE_STAGES } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useUsers } from '@/hooks/use-users';
 import { useBulkTagLeads } from '@/hooks/use-tags';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { TagPicker } from '@/components/tags/tag-picker';
 import {
   useBulkArchiveLeads,
   useBulkDeleteLeads,
   useBulkNoteLeads,
+  useBulkTaskLeads,
   useExportLeads,
   useTransferLeads,
   type Lead,
@@ -60,16 +69,37 @@ export function BulkActionBar({
   onClear,
   onDone,
   onMoveToStage,
+  intent,
+  onIntentHandled,
 }: {
   selectedLeads: Lead[];
   onClear: () => void;
   onDone: () => void;
   onMoveToStage: (leads: Lead[], stage: string) => void;
+  /**
+   * A dialog the right-click menu asked for.
+   *
+   * The menu could own copies of these dialogs, but then the confirm-count-and-apply logic exists
+   * twice and drifts. This way there is one implementation and two ways in.
+   */
+  intent?: 'reassign' | 'tag' | null;
+  onIntentHandled?: () => void;
 }) {
   const { user } = useAuth();
   const [reassigning, setReassigning] = useState(false);
   const [noting, setNoting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [reminding, setReminding] = useState(false);
+
+  // Consumed immediately, so re-choosing the same menu item reopens the dialog rather than being
+  // swallowed as "no change".
+  useEffect(() => {
+    if (!intent) return;
+    if (intent === 'reassign') setReassigning(true);
+    if (intent === 'tag') setTagOpen(true);
+    onIntentHandled?.();
+  }, [intent, onIntentHandled]);
 
   const archive = useBulkArchiveLeads();
   const exportCsv = useExportLeads();
@@ -198,6 +228,8 @@ export function BulkActionBar({
           <TagPicker
             triggerLabel="Tag"
             align="center"
+            open={tagOpen}
+            onOpenChange={setTagOpen}
             selectedIds={sharedTagIds}
             disabled={tagLeads.isPending}
             onToggle={(tag, on) =>
@@ -235,6 +267,10 @@ export function BulkActionBar({
                   <Archive className="mr-2 h-4 w-4" />
                 )}
                 Archive {deals}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setReminding(true)}>
+                <BellPlus className="mr-2 h-4 w-4" />
+                Set a reminder on {deals}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={runExport} disabled={exportCsv.isPending}>
                 {exportCsv.isPending ? (
@@ -290,6 +326,16 @@ export function BulkActionBar({
         onClose={() => setNoting(false)}
         onDone={() => {
           setNoting(false);
+          onDone();
+        }}
+      />
+
+      <ReminderDialog
+        open={reminding}
+        leads={selectedLeads}
+        onClose={() => setReminding(false)}
+        onDone={() => {
+          setReminding(false);
           onDone();
         }}
       />
@@ -381,6 +427,150 @@ function NoteDialog({
               Add to {leads.length}
             </Button>
           </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * One reminder across a selection.
+ *
+ * The assignee defaults to "whoever owns each deal", which is what a bulk reminder almost always
+ * means: forty deals across four salespeople become forty tasks on those four lists, not forty on
+ * the list of whoever pressed the button. The alternative is offered explicitly because sometimes
+ * the chase genuinely is one person's job.
+ */
+function ReminderDialog({
+  open,
+  leads,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  leads: Lead[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { data: users } = useUsers();
+  const addTask = useBulkTaskLeads();
+  const [title, setTitle] = useState('');
+  // Tomorrow, in the browser's own timezone. A reminder due today is one that is already
+  // half-late by the time it is written, and an empty date field is a form nobody finishes.
+  const [due, setDue] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const OWNER = '__owner__';
+  const [assignee, setAssignee] = useState<string>(OWNER);
+
+  const owners = new Set(leads.map((l) => l.assignedTo?.id ?? 'unassigned'));
+
+  const submit = () => {
+    const text = title.trim();
+    if (!text || !due) return;
+    addTask.mutate(
+      {
+        leadIds: leads.map((l) => l.id),
+        title: text,
+        // Local midday rather than midnight: a date-only value parsed as UTC midnight lands on
+        // the previous day for anyone west of Greenwich, and this clinic's patients are not.
+        dueDate: new Date(`${due}T12:00:00`).toISOString(),
+        assignedToId: assignee === OWNER ? undefined : assignee,
+      },
+      {
+        onSuccess: (r) => {
+          if (r.unassigned > 0) {
+            // A task with nobody on it is real but appears on no work list. Saying so beats a
+            // clean success message and a reminder nobody ever sees.
+            toast.warning(
+              `${r.created} reminders set — ${r.unassigned} on deals with no owner, so they are on nobody's list.`,
+            );
+          } else {
+            toast.success(`${r.created} ${r.created === 1 ? 'reminder' : 'reminders'} set`);
+          }
+          setTitle('');
+          onDone();
+        },
+        onError: (e) => toast.error(e.message || 'Could not set the reminders'),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Set a reminder on {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
+          </DialogTitle>
+          <DialogDescription>
+            Each deal gets its own task, so completing one does not clear the rest.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="reminder-title" className="text-sm font-medium">
+              What needs doing
+            </label>
+            <Input
+              id="reminder-title"
+              autoFocus
+              maxLength={200}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Chase for flight dates"
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="reminder-due" className="text-sm font-medium">
+              Due
+            </label>
+            <Input
+              id="reminder-due"
+              type="date"
+              value={due}
+              onChange={(e) => setDue(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="reminder-who" className="text-sm font-medium">
+              Falls to
+            </label>
+            <Select value={assignee} onValueChange={setAssignee}>
+              <SelectTrigger id="reminder-who">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={OWNER}>
+                  Whoever owns each deal
+                  {owners.size > 1 && ` (${owners.size} people)`}
+                </SelectItem>
+                {(users ?? [])
+                  .filter((u) => u.isActive)
+                  .map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!title.trim() || !due || addTask.isPending}>
+            {addTask.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Set {leads.length}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

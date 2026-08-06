@@ -72,6 +72,20 @@ export interface Lead {
   patient: { id: string; firstName: string; lastName: string } | null;
   /** In the order they were applied. On every card — see LEAD_SELECT. */
   tags: { tag: TagRef }[];
+  /**
+   * The most recent history entry, as a one-element array. Zero or one.
+   *
+   * `stageChangedAt` only knows about stage moves, so a deal somebody called twice yesterday and
+   * left in Contacted reads as neglected, while one dragged across the board by a tidy-up reads as
+   * worked. This is what tells those apart.
+   */
+  activities?: { id: string; note: string | null; toStage: string | null; createdAt: string }[];
+  /** The thread that spoke most recently, with its last message. Zero or one of each. */
+  conversations?: {
+    id: string;
+    lastMessageAt: string | null;
+    messages: { id: string; direction: 'INBOUND' | 'OUTBOUND'; content: string | null; createdAt: string }[];
+  }[];
   /** Only returned by GET /leads/:id — the kanban deliberately omits it. */
   intakeSubmissions?: LeadIntakeSubmission[];
 }
@@ -561,6 +575,31 @@ export function useExportLeads() {
       );
       saveBlob(blob, filename ?? 'deals.csv');
       return { count };
+    },
+  });
+}
+
+/**
+ * One reminder against every selected deal.
+ *
+ * Defaults each task to the deal's own assignee rather than to whoever clicked — see bulkTask on
+ * the API side. Invalidates the work list as well as the board, because a reminder due today
+ * changes what "my day" shows the moment it is created.
+ */
+export function useBulkTaskLeads() {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<
+    BulkResult & { created: number; unassigned: number },
+    Error,
+    { leadIds: string[]; title: string; dueDate: string; assignedToId?: string }
+  >({
+    mutationFn: (payload) =>
+      apiRequest('/api/leads/bulk/tasks', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-tasks'] });
+      qc.invalidateQueries({ queryKey: ['work-list'] });
     },
   });
 }

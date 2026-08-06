@@ -71,6 +71,9 @@ export const AUDIT_RULES: readonly AuditRule[] = [
   // Tagging edits the deal; it does not create or destroy one. Without these the verb-derived
   // action would file "took the VIP tag off" under DELETE Lead, which reads as a deleted record.
   { path: /^leads\/bulk\/tags$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
+  // A bulk reminder creates tasks, but what it changes is the deals — and CREATE Lead would read
+  // as forty new deals appearing.
+  { path: /^leads\/bulk\/tasks$/, methods: ['POST'], entityType: 'Lead', action: 'UPDATE' },
   { path: /^leads\/[^/]+\/tags\//, methods: ['POST', 'DELETE'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },
   // A conversion is the moment a lead becomes a patient record — the most consequential single
   // write in the pipeline, and not a creation of the lead it names.

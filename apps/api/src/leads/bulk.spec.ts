@@ -7,9 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TagsService } from '../tags/tags.service';
 import { toCsv, exportFilename } from './lead-csv';
 
-const mockPrisma = {
+const mockPrisma: Record<string, any> = {
   lead: { findMany: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
   leadActivity: { createMany: jest.fn() },
+  leadTask: { createMany: jest.fn() },
+  user: { findUnique: jest.fn() },
   $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
 };
 
@@ -113,7 +115,7 @@ describe('LeadsService — bulk actions', () => {
 
       await service.bulkArchive({ leadIds: ['won', 'lost', 'open'], archived: false }, admin);
 
-      const written = mockPrisma.lead.updateMany.mock.calls.map((c) => [
+      const written = mockPrisma.lead.updateMany.mock.calls.map((c: [{ data: { status: string }; where: { id: { in: string[] } } }]) => [
         c[0].data.status,
         c[0].where.id.in,
       ]);
@@ -175,6 +177,111 @@ describe('LeadsService — bulk actions', () => {
       const result = await service.bulkNote({ leadIds: ['someone-elses'], note: 'x' }, sales);
       expect(result.noted).toBe(0);
       expect(mockPrisma.leadActivity.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reminders', () => {
+    const TOMORROW = new Date(Date.now() + 86_400_000).toISOString();
+
+    beforeEach(() => {
+      mockPrisma.leadTask = { createMany: jest.fn().mockResolvedValue({ count: 0 }) };
+      mockPrisma.user = { findUnique: jest.fn().mockResolvedValue({ isActive: true }) };
+    });
+
+    it('gives each deal its own task', async () => {
+      // One shared task would be marked done once and vanish from thirty-nine other people's
+      // lists, which is the opposite of a reminder.
+      mockPrisma.lead.findMany.mockResolvedValue([
+        { id: 'a', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'u1' },
+        { id: 'b', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'u2' },
+      ]);
+
+      const result = await service.bulkTask(
+        { leadIds: ['a', 'b'], title: 'Chase flights', dueDate: TOMORROW },
+        admin,
+      );
+
+      expect(mockPrisma.leadTask.createMany.mock.calls[0][0].data).toHaveLength(2);
+      expect(result.created).toBe(2);
+    });
+
+    it('falls to whoever owns each deal, not to whoever clicked', async () => {
+      // Forty deals across four salespeople become forty tasks on those four lists. Assigning
+      // them all to the caller hands one person everyone else's work and takes it off theirs.
+      mockPrisma.lead.findMany.mockResolvedValue([
+        { id: 'a', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'sales-7' },
+        { id: 'b', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'sales-9' },
+      ]);
+
+      await service.bulkTask({ leadIds: ['a', 'b'], title: 'x', dueDate: TOMORROW }, admin);
+
+      const rows = mockPrisma.leadTask.createMany.mock.calls[0][0].data;
+      expect(rows.map((r: { assignedToId: string }) => r.assignedToId)).toEqual(['sales-7', 'sales-9']);
+      // The caller is still recorded as the author of every one of them.
+      expect(rows.every((r: { createdById: string }) => r.createdById === 'admin-1')).toBe(true);
+    });
+
+    it('honours an explicit assignee', async () => {
+      mockPrisma.lead.findMany.mockResolvedValue([
+        { id: 'a', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'sales-7' },
+      ]);
+
+      await service.bulkTask(
+        { leadIds: ['a'], title: 'x', dueDate: TOMORROW, assignedToId: 'sales-1' },
+        admin,
+      );
+
+      expect(mockPrisma.leadTask.createMany.mock.calls[0][0].data[0].assignedToId).toBe('sales-1');
+    });
+
+    it('counts the tasks that landed on nobody', async () => {
+      // An unowned deal produces a real task that appears on no work list. Counted so the UI can
+      // say so rather than reporting a clean success.
+      mockPrisma.lead.findMany.mockResolvedValue([
+        { id: 'a', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: null },
+        { id: 'b', stage: 'CONTACTED', status: 'ACTIVE', assignedToId: 'u1' },
+      ]);
+
+      const result = await service.bulkTask({ leadIds: ['a', 'b'], title: 'x', dueDate: TOMORROW }, admin);
+
+      expect(result.unassigned).toBe(1);
+    });
+
+    it('refuses a deactivated assignee', async () => {
+      // The work list scopes to the signed-in user, and nobody signs in as a deactivated account —
+      // so the tasks would exist and be invisible to everyone.
+      mockPrisma.user.findUnique.mockResolvedValue({ isActive: false });
+
+      await expect(
+        service.bulkTask({ leadIds: ['a'], title: 'x', dueDate: TOMORROW, assignedToId: 'gone' }, admin),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.leadTask.createMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses a title that is only whitespace', async () => {
+      await expect(
+        service.bulkTask({ leadIds: ['a'], title: '   ', dueDate: TOMORROW }, admin),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a date it cannot parse', async () => {
+      await expect(
+        service.bulkTask({ leadIds: ['a'], title: 'x', dueDate: 'next tuesday' }, admin),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('is scoped to the caller’s own deals', async () => {
+      await service.bulkTask({ leadIds: ['a'], title: 'x', dueDate: TOMORROW }, sales);
+      expect(mockPrisma.lead.findMany.mock.calls[0][0].where.assignedToId).toBe('sales-1');
+    });
+
+    it('writes nothing when the selection resolves to nothing', async () => {
+      const result = await service.bulkTask(
+        { leadIds: ['someone-elses'], title: 'x', dueDate: TOMORROW },
+        sales,
+      );
+      expect(result.created).toBe(0);
+      expect(mockPrisma.leadTask.createMany).not.toHaveBeenCalled();
     });
   });
 

@@ -12,7 +12,15 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { useDroppable } from '@dnd-kit/core';
-import { Link2, Merge, Plus, Upload, UserPlus } from 'lucide-react';
+import { CheckSquare, Download, Link2, Merge, Plus, Upload, UserPlus } from 'lucide-react';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadCard } from '@/components/pipeline/lead-card';
@@ -31,6 +39,7 @@ import {
   type Lead,
   type PipelineFilters,
   type PipelineGroup,
+  useExportLeads,
 } from '@/hooks/use-leads';
 import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
 import { QueryError } from '@/components/ui/query-state';
@@ -66,14 +75,25 @@ function DroppableColumn({
   leads,
   activeId,
   selection,
+  selectedLeads,
   onLeadClick,
+  onMoveToStage,
+  onChangeResponsible,
+  onTag,
+  onExportColumn,
 }: {
   stage: (typeof STAGES)[0];
   leads: Lead[];
   /** Threaded down so the dragged card is never recycled out of the DOM mid-drag. */
   activeId: string | null;
   selection: BoardSelection;
+  /** The whole board's selection. A selection spans columns; this one only knows its own leads. */
+  selectedLeads: Lead[];
   onLeadClick: (lead: Lead) => void;
+  onMoveToStage: (leads: Lead[], stage: string) => void;
+  onChangeResponsible: (leads: Lead[]) => void;
+  onTag: (leads: Lead[]) => void;
+  onExportColumn: (leads: Lead[]) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const totals = columnTotals(leads);
@@ -82,6 +102,10 @@ function DroppableColumn({
     <div className="flex h-full shrink-0 flex-col" style={{ width: COLUMN_WIDTH }}>
       {/* The column header is the piece that makes a Bitrix board recognisable: a strip of the
           stage's own colour over a white block carrying the name, the count and the money. */}
+      {/* Right-clicking the header acts on the column: select everything in it, or export it.
+          Both are things people currently do by dragging a selection box that does not exist. */}
+      <ContextMenu>
+      <ContextMenuTrigger asChild>
       <div className="shrink-0 overflow-hidden rounded-[3px] border border-bx-line bg-bx-surface">
         <div className="h-[3px]" style={{ backgroundColor: stage.color }} />
         <div className="flex items-start gap-1 px-2.5 py-1.5">
@@ -110,6 +134,26 @@ function DroppableColumn({
           )}
         </div>
       </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuLabel className="truncate">{stage.label}</ContextMenuLabel>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          disabled={leads.length === 0}
+          onSelect={() => selection.selectAll(leads)}
+        >
+          <CheckSquare className="mr-2 h-4 w-4" />
+          Select all {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
+        </ContextMenuItem>
+        <ContextMenuItem disabled={leads.length === 0} onSelect={() => onExportColumn(leads)}>
+          <Download className="mr-2 h-4 w-4" />
+          Export this column
+        </ContextMenuItem>
+        {/* No "add a deal here": the + button in this header does exactly that and is always
+            visible. A menu item duplicating a control the cursor is already next to adds a place
+            to look without adding anything to do. */}
+      </ContextMenuContent>
+      </ContextMenu>
 
       {/* The droppable and the scroll container are deliberately separate elements now. They used
           to be one, which cannot work with virtualization: the virtualizer needs to own the
@@ -127,7 +171,11 @@ function DroppableColumn({
           leads={leads}
           activeId={activeId}
           selection={selection}
+          selectedLeads={selectedLeads}
           onLeadClick={onLeadClick}
+          onMoveToStage={onMoveToStage}
+          onChangeResponsible={onChangeResponsible}
+          onTag={onTag}
         />
       </div>
     </div>
@@ -154,6 +202,15 @@ export default function PipelinePage() {
   const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const selection = useBoardSelection();
+  const exportLeads = useExportLeads();
+  /**
+   * A dialog the context menu asked the bulk bar to open.
+   *
+   * The bar already owns the reassign and tag dialogs, and duplicating them here would mean two
+   * copies of the same confirm-count-and-apply logic drifting apart. Instead the menu sets an
+   * intent, the bar opens the matching dialog, and clears it when done.
+   */
+  const [bulkIntent, setBulkIntent] = useState<'reassign' | 'tag' | null>(null);
 
   useEffect(() => {
     if (groups) setLocalGroups(groups);
@@ -181,6 +238,10 @@ export default function PipelinePage() {
   }, [selection, localGroups]);
 
   const allLeads = localGroups.flatMap((g) => g.leads as Lead[]);
+  const selectedLeads = selection.resolve(allLeads);
+  // How many cards the current drag is carrying. Drives the stack behind the drag overlay.
+  const draggingCount =
+    activeLead && selection.isSelected(activeLead.id) ? Math.max(1, selectedLeads.length) : 1;
   const boardTotals = columnTotals(allLeads);
 
   function onDragStart(event: DragStartEvent) {
@@ -311,11 +372,41 @@ export default function PipelinePage() {
 
     const lead = (fromGroup.leads as Lead[]).find((l) => l.id === active.id)!;
 
+    /**
+     * Dragging one card of a selection drags all of them.
+     *
+     * Without this, selecting twelve deals and dragging one moved exactly one — and the other
+     * eleven stayed put, still highlighted, looking like they had moved. The rule matches the
+     * right-click menu: inside the selection acts on the selection, outside it acts on the card.
+     *
+     * Only the cards that would actually change column are moved; a selection spanning several
+     * columns can include deals already in the target.
+     */
+    const dragging = selection.isSelected(lead.id) && selectedLeads.length > 1 ? selectedLeads : [lead];
+    const moving = dragging.filter((l) => l.stage !== toGroup.stage);
+    if (moving.length === 0) return;
+
     if (toGroup.stage === 'LOST') {
       // Marking a deal lost always carried a reason in the clinic's old Bitrix
       // setup — hold the move until the dialog confirms instead of committing it
       // optimistically like every other stage change.
+      //
+      // Single deals only: the dialog collects one reason, and applying it to twelve deals would
+      // record a reason that was never given for eleven of them. Dragging a selection to Lost is
+      // refused out loud rather than silently moving the one card under the cursor.
+      if (moving.length > 1) {
+        toast.warning(
+          `Lost needs a reason for each deal. Drag them one at a time — ${moving.length} were not moved.`,
+        );
+        return;
+      }
       setPendingLostMove(lead);
+      return;
+    }
+
+    if (moving.length > 1) {
+      await moveMany(moving, toGroup.stage);
+      selection.clear();
       return;
     }
 
@@ -405,15 +496,55 @@ export default function PipelinePage() {
                   leads={(group?.leads as Lead[]) ?? []}
                   activeId={activeLead?.id ?? null}
                   selection={selection}
+                  selectedLeads={selectedLeads}
                   onLeadClick={setDetailLead}
+                  onMoveToStage={(leads, toStage) => {
+                    void moveMany(leads, toStage);
+                    selection.clear();
+                  }}
+                  // Right-clicking a card and choosing one of these opens the same dialog the
+                  // bulk bar uses, on the cards the menu named — so the selection has to become
+                  // that set first, or the dialog would act on whatever was highlighted before.
+                  onChangeResponsible={(leads) => {
+                    selection.selectAll(leads);
+                    setBulkIntent('reassign');
+                  }}
+                  onTag={(leads) => {
+                    selection.selectAll(leads);
+                    setBulkIntent('tag');
+                  }}
+                  onExportColumn={(leads) =>
+                    exportLeads.mutate(
+                      { leadIds: leads.map((l) => l.id) },
+                      {
+                        onSuccess: (r) =>
+                          toast.success(`Exported ${r.count ?? leads.length} from ${stage.label}`),
+                        onError: (e) => toast.error(e.message || 'Could not export this column'),
+                      },
+                    )
+                  }
                 />
               );
             })}
           </div>
           <DragOverlay>
             {activeLead && (
-              <div className="w-[252px] rotate-1 opacity-95 shadow-md">
+              <div className="relative w-[252px] rotate-1 opacity-95 shadow-md">
+                {/* A dragged selection needs to look like more than one card, or the count in the
+                    toast afterwards is the first anyone learns that twelve deals moved. Two
+                    offset shells behind the real card read as a stack without needing twelve. */}
+                {draggingCount > 1 && (
+                  <>
+                    <div className="absolute inset-0 -z-20 translate-x-2 translate-y-2 rounded-[3px] border border-bx-line bg-bx-surface" />
+                    <div className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-[3px] border border-bx-line bg-bx-surface" />
+                  </>
+                )}
                 <LeadCard lead={activeLead} onClick={() => {}} />
+                {draggingCount > 1 && (
+                  <span className="absolute -right-2 -top-2 rounded-full bg-bx-link px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white shadow">
+                    {draggingCount}
+                  </span>
+                )}
               </div>
             )}
           </DragOverlay>
@@ -431,7 +562,9 @@ export default function PipelinePage() {
         }}
       />
       <BulkActionBar
-        selectedLeads={selection.resolve(allLeads)}
+        selectedLeads={selectedLeads}
+        intent={bulkIntent}
+        onIntentHandled={() => setBulkIntent(null)}
         onClear={selection.clear}
         // Clears afterwards on purpose: the deals have moved owner, so the set on screen is no
         // longer the set that was chosen, and leaving it selected invites a second action on a

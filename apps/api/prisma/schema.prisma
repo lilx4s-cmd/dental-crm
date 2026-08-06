@@ -882,6 +882,9 @@ model LeadActivity {
   createdAt DateTime       @default(now())
 
   @@index([leadId])
+  // The board takes the newest activity per deal in one DISTINCT ON. Without createdAt trailing
+  // leadId that is an index scan followed by a sort of every activity the pipeline has ever had.
+  @@index([leadId, createdAt])
   @@index([userId, createdAt])
   @@map("lead_activities")
 }
@@ -1297,6 +1300,10 @@ model Conversation {
   messages Message[]
 
   @@index([channel])
+  // The board reads each deal's most recent thread to show the last message on its card. Without
+  // this that is a sequential scan of every conversation, once per card, on a 1005-deal pipeline.
+  @@index([leadId, lastMessageAt])
+  @@index([patientId, lastMessageAt])
   @@map("conversations")
 }
 
