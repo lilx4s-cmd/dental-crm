@@ -85,6 +85,24 @@ token must not stop someone seeing a patient.
 | `FACEBOOK_WEBHOOK_VERIFY_TOKEN` | Meta's handshake for lead ads | The webhook cannot be registered. |
 | `XAI_API_KEY` | AI assistant, plan summaries, WhatsApp drafts | Those four features report that AI is not configured. Everything else is unaffected. |
 | `XAI_MODEL`, `XAI_BASE_URL` | Override the model or endpoint | Defaults to `grok-4.5` on x.ai. |
+| `MALWARE_SCAN_URL` | Scans every upload before it becomes a file | Uploads are recorded `SKIPPED`, never `CLEAN` — see below. |
+| `MALWARE_SCAN_TIMEOUT_MS` | How long to wait for the scanner | Defaults to 10000. A slow scanner leaves files `PENDING` rather than blocking the upload. |
+
+---
+
+## `MALWARE_SCAN_URL` — worth setting once patients can send files
+
+| | |
+|---|---|
+| **Purpose** | Scans every upload before a `File` row exists for it. Patients attach files in chat, and those land in the same bucket as the radiographs and passport scans. |
+| **Required?** | No. The allowlist and `Content-Disposition: attachment` are the primary controls and work without it. |
+| **Example** | `MALWARE_SCAN_URL=http://clamav-rest:8080/scan` |
+| **How to obtain** | Any endpoint accepting `POST { "url": "..." }` and answering `{ "clean": true }` or `{ "clean": false }`. ClamAV behind a small HTTP wrapper is the usual shape; Cloudmersive and VirusTotal both work with a thin adapter. The URL handed to it is a short-lived signed link, so the scanner needs no credentials of its own. |
+| **What breaks** | Nothing. Every file is recorded with `scanStatus = SKIPPED` — **deliberately not `CLEAN`**. Those are different facts, and a file nothing has looked at, recorded as clean, is a claim this system cannot support. |
+| **Watch out** | A scanner that is unreachable or slow leaves files `PENDING` and lets the upload through. That is chosen: taking the inbox off the air because a sidecar is down is the worse failure. `PENDING` is visible in the UI and a sweep can re-run over it. |
+
+An infected file is deleted from storage and never becomes a row, so `INFECTED` is a state you
+will not normally see — it exists so the refusal has a name.
 
 ---
 

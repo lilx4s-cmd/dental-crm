@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { FilesService } from './files.service';
+import { MalwareScanService } from './malware-scan';
 
 /**
  * Builds the service with a given SUPABASE_URL and reports what it decided to use, which is the
@@ -23,6 +24,9 @@ async function serviceWithUrl(url?: string) {
       FilesService,
       { provide: PrismaService, useValue: {} },
       { provide: ConfigService, useValue: config },
+      // No scanner configured in these tests, matching this clinic — the status written is
+      // SKIPPED, and confirm() short-circuits before any network call.
+      { provide: MalwareScanService, useValue: { configured: false, scan: jest.fn() } },
     ],
   }).compile();
 

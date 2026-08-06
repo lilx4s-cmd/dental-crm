@@ -120,6 +120,19 @@ export const FILE_OWNER_ACCESS: Record<string, readonly Role[]> = {
   WARRANTY: PLAN_COORDINATION,
   // A deal's paperwork is passports and flight tickets, collected by sales and the front desk.
   LEAD: PIPELINE_WRITE,
+  /**
+   * Whatever was sent or received in a thread.
+   *
+   * PATIENT_FACING, matching who can read the thread — not CLINICAL like `PATIENT`. A sales
+   * consultant can already read every message in a conversation; refusing them the photo attached
+   * to one of those messages would be incoherent, and would mean the attachment button worked for
+   * some of the people the inbox is built for and not others.
+   *
+   * The consequence is deliberate and worth naming: a file a patient sends in chat is reachable by
+   * sales, where a radiograph filed against the patient record is not. They are different acts —
+   * the patient chose to put one in a conversation sales is part of.
+   */
+  CONVERSATION: PATIENT_FACING,
   INVOICE: FINANCE,
   APPOINTMENT: SCHEDULING,
   USER: MANAGEMENT,

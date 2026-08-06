@@ -1,5 +1,101 @@
 # Changelog
 
+## Attachments in the Communication Center (2026-08-06)
+
+Patients could not send the clinic a file, and the clinic could not send them one. `Message.mediaUrl`
+existed, `SendMessageDto` accepted it, and the files module handled signed uploads with an
+allowlist — three pieces that had never been connected.
+
+### Uploaded against the conversation, not the message
+
+The composer uploads before a message exists, so the file cannot be owned by one. It is owned by
+the **conversation** (`AttachableType.CONVERSATION`), and `MessageAttachment` links it to the
+message on send.
+
+That choice is what makes the rest fall out cleanly. One stored object serves the chat bubble, the
+deal timeline and the patient's document library — the library *references* it rather than copying
+it, so there is one row, one object and one answer to "delete this". The library marks where it
+came from, so nobody wonders why it cannot be deleted from there.
+
+Access follows who can read the thread (`PATIENT_FACING`), not `PATIENT` files (`CLINICAL`). A
+sales consultant can already read every message in a conversation; refusing them the photo attached
+to one would be incoherent. The consequence is deliberate and worth naming: a file a patient sends
+in chat is reachable by sales, where a radiograph filed against the patient record is not. They are
+different acts — the patient chose to put one into a conversation sales is part of.
+
+### What is accepted
+
+Images, video, audio, PDF, Word, Excel, PowerPoint, OpenDocument, plain text, CSV and archives. The
+widest allowlist in the system, because a patient sends what a patient sends — and refusing it
+means they send it to somebody's personal WhatsApp instead, outside the record entirely.
+
+Still an allowlist. No SVG (an image to a person, a script container to a browser). No HTML or XML.
+No executables or scripts. **No `application/octet-stream`** — it is what a browser reports for an
+unusual file and also what an `.exe` reports, so admitting it would admit everything. That cost is
+real and taken deliberately: a file the browser cannot type is refused with a message saying so.
+
+### Composer
+
+Attach button, drag & drop, paste from clipboard (the Win+Shift+S → Ctrl+V case), multiple
+selection, per-file progress, cancel, retry, remove. On a phone the same input offers camera,
+gallery and document picker — `capture` is deliberately not set, which would give the camera only.
+
+Progress is real bytes-sent, via XMLHttpRequest: `fetch` has no upload progress, and for a 100 MB
+video on a hotel connection a spinner that cannot distinguish stalled from slow is what people
+cancel. Each upload owns an `AbortController`, so cancel closes the socket rather than abandoning a
+promise while the bytes keep going.
+
+Uploads start on pick rather than on send, so the wait overlaps with typing. The cost is that a
+file picked and then removed leaves an object in storage; it is never linked to a message, so it
+appears nowhere.
+
+A tile per file, not one bar for the batch: six files where the fourth failed is the case that
+matters, and an aggregate bar reads either as "still going" forever or as "done" while a file is
+missing. Retry is not offered for a file the allowlist refused — that retry cannot succeed.
+
+### Sending
+
+Text, attachment, or both. An attachment on its own is a message, so requiring text would make
+people type "." to send a photo. The send button waits for uploads to finish, and `handleSend`
+guards rather than relying on the disabled state — Enter reaches it whatever the button says.
+
+File ids are checked against the conversation, not against permission: a file being *readable* is
+not the same as it belonging in this thread. A partial match refuses the whole send rather than
+delivering a message the patient is told about and cannot be given.
+
+### Reading
+
+Images render with a lightbox; video and audio get players — a voice note arrives as audio and is
+meant to be listened to, not downloaded. Everything else is a row with an icon, a name and a size:
+a PDF thumbnail at 200px tells you less than the word "PDF" and costs a render.
+
+Signed URLs are fetched per tile on mount, not baked into the message payload — one lives five
+minutes, so a thread loaded twenty minutes ago would show broken images.
+
+`getInlineUrl` is separate from `getDownloadUrl` and refuses anything that is not image, video or
+audio. The download path keeps `Content-Disposition: attachment`, which is what stops anything
+scriptable in the bucket executing on the storage origin.
+
+### Malware scanning
+
+A hook, not a promise. With `MALWARE_SCAN_URL` unset every file records `scanStatus = SKIPPED` —
+**never `CLEAN`**. Those are different facts, and a file nothing has looked at, recorded as clean,
+is a claim the system cannot support. An infected file is deleted before a row exists for it. A
+scanner that is unreachable leaves the file `PENDING` and lets the upload through, because taking
+the inbox off the air over an optional sidecar is the worse failure.
+
+The scanner is handed a short-lived signed URL rather than bytes: uploads go browser-to-storage,
+and pulling a 100 MB video through the API to feed a scanner would route it through the one process
+with neither the memory nor the reason to see it.
+
+### Also
+
+`WHATSAPP_MEDIA_LIMITS` warns in the composer when storage will take a file that the transport will
+not carry — 5 MB for images, 16 MB for video. A caution on an accepted upload, not a rejection: the
+file is still worth keeping on the record. Saying so before the upload beats a gateway error nobody
+can read after the send.
+
+
 ## Phase A — Harden (2026-08-03, in progress)
 
 Security and correctness work, taken before any new feature, on the principle that the cheap

@@ -819,6 +819,12 @@ export class LeadsService {
           createdAt: true,
           conversationId: true,
           senderUser: { select: { id: true, firstName: true, lastName: true } },
+          attachments: {
+            orderBy: { createdAt: 'asc' as const },
+            select: {
+              file: { select: { id: true, fileName: true, mimeType: true, sizeBytes: true } },
+            },
+          },
         },
       }),
       this.prisma.leadTagHistory.findMany({
@@ -854,7 +860,11 @@ export class LeadsService {
         user: m.senderUser,
         direction: m.direction,
         content: m.content,
+        // `mediaUrl` is WhatsApp's own URL for inbound media, which the CRM cannot download.
+        // Attachments are files this clinic stored. Both mean "something came with this message",
+        // and the timeline says so either way.
         hasMedia: !!m.mediaUrl,
+        attachments: m.attachments.map((a) => a.file),
         status: m.status,
         conversationId: m.conversationId,
       })),

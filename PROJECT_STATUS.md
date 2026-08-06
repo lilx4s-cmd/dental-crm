@@ -1,6 +1,6 @@
 # Project Status
 
-**Updated:** 2026-08-04
+**Updated:** 2026-08-06
 **Branch:** `main` — deploys to Vercel (web) and Render (API) on push.
 
 ---
@@ -10,8 +10,42 @@
 **Phase A (Harden) is code-complete.** 10 of 10 items; one — the backup restore drill — needs
 Supabase access only you have.
 
+**The CRM UX & Pipeline brief is complete**, including the Communication Center and attachments.
+
 | Suite | Count | State |
 |---|---|---|
+| API | 529 | green |
+| Web | 104 | green |
+| Lint | 3 packages | green |
+| Builds | api + web | green |
+
+Live production data: **1,005 leads, 11 patients, 8 staff accounts**. 45 Prisma models, 30
+migrations, all applied and verified against production.
+
+---
+
+## What shipped since 2026-08-04
+
+| Feature | Commit | Notes |
+|---|---|---|
+| Unread tracking | `2f8b6fb` | Sidebar badge counts *threads*, not messages. `Conversation.lastReadAt` — `Message.readAt` meant the opposite (the patient reading us). |
+| Bulk actions | `86d65ae` | Archive, note, CSV export, delete. Ids are a request, not a permission. Export is audited as `EXPORT` for KVKK/GDPR. |
+| Tags + `Organization` | `71d29cc` | The tags module had endpoints nothing called; the table was empty after a year. New tables carry `organizationId` with a real FK — see MULTI_TENANCY.md. |
+| Context menus, card fields, bulk reminders, **My Day fix** | `8136992` | My Day never showed a single task. See below. |
+| Pinning, thread search, saved replies, deal timeline | `020678f` | The inbox is usable past forty threads. |
+| Attachments | *this commit* | Images, video, audio, PDF, Office, text, archives. |
+
+### The My Day bug, since it was the worst of them
+
+The page never showed a task. Two rules combined: it rendered only what the cadence rules flagged,
+and a deal carrying an open task was deliberately *removed* from that list. So setting a reminder
+made a deal disappear from the one screen it should have appeared on more prominently.
+
+Production had exactly one open task, due that day, invisible twice over — its deal was `WON`, and
+the list filters to `ACTIVE`. Fixed with a "My tasks" tab that ignores lead status and scopes by
+the task's assignee.
+
+---|---|
 | API | 295 | green |
 | Web | 65 | green |
 | Lint | 3 packages | green (4 `no-explicit-any` warnings, all at third-party boundaries) |

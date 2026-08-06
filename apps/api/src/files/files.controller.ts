@@ -48,6 +48,18 @@ export class FilesController {
     return this.service.findByOwner(ownerType, ownerId, user);
   }
 
+  /**
+   * For rendering in place: an image in a chat bubble, a video in a player.
+   *
+   * Distinct from the download URL, which forces `Content-Disposition: attachment` — the header
+   * that keeps anything scriptable in the bucket from executing on the storage origin. The service
+   * refuses anything that is not an image, video or audio file.
+   */
+  @Get(':id/inline-url')
+  getInlineUrl(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.getInlineUrl(id, user);
+  }
+
   @Get(':id/download-url')
   getDownloadUrl(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.service.getDownloadUrl(id, user);

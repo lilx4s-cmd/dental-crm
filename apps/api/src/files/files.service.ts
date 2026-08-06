@@ -6,8 +6,10 @@ import { $Enums } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { ConfirmFileDto } from './dto/confirm-file.dto';
+import { MalwareScanService } from './malware-scan';
 import {
   canAccessFilesFor,
+  fileKind,
   isOwnedStorageKey,
   rejectUpload,
   type JwtPayload,
@@ -29,6 +31,7 @@ export class FilesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly malwareScan: MalwareScanService,
   ) {
     const rawUrl = this.config.get<string>('supabase.url');
     this.url = FilesService.normaliseProjectUrl(rawUrl);
@@ -207,6 +210,15 @@ export class FilesService {
       throw new BadRequestException(rejection.message);
     }
 
+    // Scanned before the row exists, so an infected file never becomes a record anything can link
+    // to. Skipped entirely when no scanner is configured, which is this clinic today — the status
+    // written then is SKIPPED, never CLEAN. See MalwareScanService.
+    const scan = await this.scanStoredObject(dto.s3Key);
+    if (scan.status === $Enums.FileScanStatus.INFECTED) {
+      await this.deleteObject(dto.s3Key);
+      throw new BadRequestException('That file did not pass the malware scan and was not stored.');
+    }
+
     return this.prisma.file.create({
       data: {
         ownerType: dto.ownerType as $Enums.AttachableType,
@@ -218,8 +230,68 @@ export class FilesService {
         s3Bucket: this.bucket,
         s3Key: dto.s3Key,
         uploadedById,
+        scanStatus: scan.status,
+        scannedAt: scan.scannedAt,
       },
     });
+  }
+
+  /**
+   * Hands the scanner a short-lived link rather than the bytes.
+   *
+   * The API never holds an upload — it goes straight from the browser to storage — and pulling a
+   * 100 MB video through this process to feed a scanner would put it through the one place with
+   * neither the memory nor the reason to see it.
+   */
+  private async scanStoredObject(s3Key: string) {
+    if (!this.malwareScan.configured) {
+      return { status: $Enums.FileScanStatus.SKIPPED, scannedAt: null };
+    }
+    try {
+      const { data } = await this.getClient().storage.from(this.bucket).createSignedUrl(s3Key, 120);
+      if (!data?.signedUrl) return { status: $Enums.FileScanStatus.PENDING, scannedAt: null };
+      return this.malwareScan.scan(data.signedUrl);
+    } catch {
+      // Same rule as the scanner itself being unreachable: the upload proceeds and stays PENDING
+      // rather than the inbox going down over an optional integration.
+      return { status: $Enums.FileScanStatus.PENDING, scannedAt: null };
+    }
+  }
+
+  /**
+   * A signed URL for viewing something inline — an image in a chat bubble, a video in a player.
+   *
+   * Separate from `getDownloadUrl`, which forces `Content-Disposition: attachment`. That header is
+   * what stops anything scriptable in the bucket executing on the storage origin, so it is not
+   * loosened lightly: this method refuses any type a browser would treat as markup, and serves
+   * only images, video and audio inline. Everything else still downloads.
+   */
+  async getInlineUrl(id: string, user: JwtPayload) {
+    const file = await this.prisma.file.findUnique({ where: { id } });
+    if (!file) throw new NotFoundException('File not found');
+    this.assertOwnerAccess(file.ownerType, user);
+
+    const kind = fileKind(file.mimeType);
+    if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
+      // Not an error the UI shows — it asks for an inline URL only for these kinds — but the rule
+      // has to live on the server, because that is where the `download` flag is decided.
+      throw new BadRequestException('Only images, video and audio can be opened inline.');
+    }
+
+    // An infected file has already been deleted at confirm time, so this can only be PENDING —
+    // a scanner that was down. Refused rather than rendered: an unscanned file inlined into a
+    // page is exactly the case the scanner exists for.
+    if (file.scanStatus === $Enums.FileScanStatus.INFECTED) {
+      throw new BadRequestException('That file did not pass the malware scan.');
+    }
+
+    const { data, error } = await this.getClient()
+      .storage.from(file.s3Bucket)
+      .createSignedUrl(file.s3Key, 300);
+    if (error || !data) {
+      throw new BadRequestException(error?.message ?? 'Failed to create signed URL');
+    }
+    return { signedUrl: data.signedUrl, mimeType: file.mimeType, kind };
   }
 
   /** What storage says is actually at this key, or null if nothing is. */
@@ -250,12 +322,56 @@ export class FilesService {
     }
   }
 
+  /**
+   * A record's documents, including what was sent in its conversations.
+   *
+   * A file attached to a message is owned by the *conversation*, not by the patient — it is
+   * uploaded from the composer, before any message exists, and its access rule follows who can
+   * read the thread. But a scan of an insurance letter a patient sent in chat plainly belongs in
+   * their document library, and copying it there would mean two rows, two objects, and two
+   * answers to "delete this".
+   *
+   * So it is referenced rather than copied: one stored object, surfaced in both places, marked
+   * with where it came from so nobody wonders why they cannot delete it from here.
+   *
+   * The conversation's own access rule still governs. Someone who may read this patient's files
+   * but not their threads sees the attachments, which is deliberate — they are looking at the
+   * patient's record, and the file is part of it.
+   */
   async findByOwner(ownerType: string, ownerId: string, user: JwtPayload) {
     this.assertOwnerAccess(ownerType, user);
-    return this.prisma.file.findMany({
+
+    const own = await this.prisma.file.findMany({
       where: { ownerType: ownerType as $Enums.AttachableType, ownerId },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Only patients and deals have conversations. Asking for a treatment plan's files should not
+    // run a second query that can never match.
+    if (ownerType !== 'PATIENT' && ownerType !== 'LEAD') {
+      return own.map((f) => ({ ...f, fromConversationId: null as string | null }));
+    }
+
+    const attached = await this.prisma.messageAttachment.findMany({
+      where: {
+        message: {
+          conversation: ownerType === 'PATIENT' ? { patientId: ownerId } : { leadId: ownerId },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { file: true, message: { select: { conversationId: true } } },
+    });
+
+    // Deduplicated by id: one file sent twice in a thread is one document, and the join would
+    // otherwise return it once per message.
+    const seen = new Set(own.map((f) => f.id));
+    const fromChat = attached
+      .filter(({ file }) => !seen.has(file.id) && seen.add(file.id))
+      .map(({ file, message }) => ({ ...file, fromConversationId: message.conversationId }));
+
+    return [...own.map((f) => ({ ...f, fromConversationId: null as string | null })), ...fromChat].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
   }
 
   async getDownloadUrl(id: string, user: JwtPayload) {

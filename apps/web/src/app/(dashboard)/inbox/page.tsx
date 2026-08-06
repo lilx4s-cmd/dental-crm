@@ -14,6 +14,8 @@ import {
   Check,
   Pin,
   Search,
+  Paperclip,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -36,6 +38,17 @@ import {
 import type { ConversationSummary, Message } from '@/hooks/use-conversations';
 import { QueryError } from '@/components/ui/query-state';
 import { TemplatePicker } from '@/components/inbox/template-picker';
+import { AttachmentTray } from '@/components/inbox/attachment-tray';
+import {
+  ImageLightbox,
+  MessageAttachment,
+  type SentAttachment,
+} from '@/components/inbox/message-attachment';
+import { useAttachmentUpload } from '@/hooks/use-attachment-upload';
+import { UPLOAD_RULES } from '@dental-crm/shared';
+
+/** What the picker offers, taken from the same rule the API enforces. */
+const MESSAGE_ATTACHMENT_ACCEPT = UPLOAD_RULES.MESSAGE_ATTACHMENT.accept;
 
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp',
@@ -153,13 +166,36 @@ function ConversationRow({
  * default reading of a message sitting in a thread is "the patient has it". Silence after a
  * treatment quote means something very different depending on whether the quote actually arrived.
  */
-function MessageBubble({ msg, onRetry, retrying }: { msg: Message; onRetry: () => void; retrying: boolean }) {
+function MessageBubble({
+  msg,
+  onRetry,
+  retrying,
+  onOpenImage,
+}: {
+  msg: Message;
+  onRetry: () => void;
+  retrying: boolean;
+  onOpenImage: (file: SentAttachment) => void;
+}) {
   const outbound = msg.direction === 'OUTBOUND';
   const failed = msg.status === 'FAILED';
+  const attachments = msg.attachments?.map((a) => a.file) ?? [];
+  // An attachment-only message is legitimate — a photo is a message. The bubble must not print
+  // "(media)" underneath one, which is what the old placeholder did for anything without text.
+  const hasText = !!msg.content?.trim();
 
   return (
     <div className={cn('flex', outbound ? 'justify-end' : 'justify-start')}>
       <div className="max-w-[70%] space-y-1">
+        {attachments.length > 0 && (
+          <div className={cn('flex flex-col gap-1.5', outbound && 'items-end')}>
+            {attachments.map((file) => (
+              <MessageAttachment key={file.id} file={file} outbound={outbound} onOpenImage={onOpenImage} />
+            ))}
+          </div>
+        )}
+
+        {(hasText || attachments.length === 0) && (
         <div
           className={cn(
             'rounded-2xl px-3 py-2 text-sm',
@@ -186,6 +222,7 @@ function MessageBubble({ msg, onRetry, retrying }: { msg: Message; onRetry: () =
             {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
           </p>
         </div>
+        )}
 
         {failed && (
           <div className="flex items-start justify-end gap-2">
@@ -226,20 +263,50 @@ function MessageThread({ conversationId }: { conversationId: string }) {
   const archiveConversation = useArchiveConversation();
   const { data: sending } = useSendingStatus();
   const [text, setText] = useState('');
+  const [lightbox, setLightbox] = useState<SentAttachment | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // Nested drag events fire on every child element, so a plain boolean flickers as the pointer
+  // crosses the composer's own contents. Counting enter and leave is what makes the overlay stable.
+  const dragDepth = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploads = useAttachmentUpload(conversationId);
+
+  // Anything still going up blocks the send, so a message cannot go out referencing a file that is
+  // not there yet.
+  const canSend = (!!text.trim() || uploads.fileIds.length > 0) && !uploads.busy && !sendMessage.isPending;
 
   async function handleSend() {
-    if (!text.trim()) return;
+    // Guarded rather than merely disabled: Enter reaches here whatever the button's state is, and
+    // a double-press while the request is in flight would send twice.
+    if (!canSend) return;
     try {
       // The API answers with the stored message either way, so a rejection by WhatsApp arrives as
       // a successful response carrying a FAILED status rather than as a thrown error.
-      const sent = (await sendMessage.mutateAsync(text.trim())) as Message;
+      const sent = (await sendMessage.mutateAsync({
+        content: text.trim() || undefined,
+        fileIds: uploads.fileIds,
+      })) as Message;
       setText('');
+      uploads.clear();
       if (sent?.status === 'FAILED') {
         toast.error(sent.failureReason ?? 'WhatsApp did not accept the message');
       }
-    } catch {
-      toast.error('Failed to send message');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to send message');
     }
+  }
+
+  /**
+   * Files pasted into the composer.
+   *
+   * The case this exists for is a screenshot: Win+Shift+S then Ctrl+V is how somebody sends a
+   * patient a cropped section of an X-ray report, and without this it silently does nothing.
+   */
+  function handlePaste(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData.files);
+    if (files.length === 0) return;
+    e.preventDefault();
+    uploads.add(files);
   }
 
   async function handleRetry(messageId: string) {
@@ -291,6 +358,7 @@ function MessageThread({ conversationId }: { conversationId: string }) {
             msg={msg}
             onRetry={() => handleRetry(msg.id)}
             retrying={retryMessage.isPending && retryMessage.variables === msg.id}
+            onOpenImage={setLightbox}
           />
         ))}
         {conv.messages.length === 0 && (
@@ -298,7 +366,40 @@ function MessageThread({ conversationId }: { conversationId: string }) {
         )}
       </div>
 
-      <div className="border-t p-3">
+      <div
+        className="relative border-t p-3"
+        onPaste={handlePaste}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          dragDepth.current += 1;
+          setDragging(true);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={() => {
+          dragDepth.current -= 1;
+          if (dragDepth.current <= 0) setDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          const files = Array.from(e.dataTransfer.files);
+          if (files.length) uploads.add(files);
+        }}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed border-primary bg-primary/5 text-sm font-medium text-primary">
+            Drop to attach
+          </div>
+        )}
+
+        <AttachmentTray
+          items={uploads.items}
+          onCancel={uploads.cancel}
+          onRetry={uploads.retry}
+          onRemove={uploads.remove}
+        />
+
         {sending && !sending.canSend && (
           <p className="mb-2 flex items-start gap-1.5 rounded-md border border-destructive/25 bg-destructive-muted px-2.5 py-1.5 text-xs text-destructive-muted-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -307,6 +408,33 @@ function MessageThread({ conversationId }: { conversationId: string }) {
           </p>
         )}
         <div className="flex gap-2">
+          {/* `multiple` and no `capture`: on a phone this offers camera, gallery and the document
+              picker, which is the whole mobile requirement. Forcing `capture` would give the
+              camera only and take the gallery away. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={MESSAGE_ATTACHMENT_ACCEPT}
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length) uploads.add(files);
+              // Reset, or picking the same file twice in a row fires no change event.
+              e.target.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+
           <TemplatePicker
             recipient={contact}
             disabled={sendMessage.isPending}
@@ -317,16 +445,31 @@ function MessageThread({ conversationId }: { conversationId: string }) {
 ${body}` : body))}
           />
           <Input
-            placeholder={conv.channel === 'WHATSAPP' ? 'Type a message…' : `Sending on ${conv.channel} is not connected yet`}
+            placeholder={
+              conv.channel === 'WHATSAPP'
+                ? 'Type a message, or drop a file…'
+                : `Sending on ${conv.channel} is not connected yet`
+            }
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
           />
-          <Button size="icon" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}>
-            <Send className="h-4 w-4" />
+          <Button
+            size="icon"
+            onClick={handleSend}
+            disabled={!canSend}
+            title={uploads.busy ? 'Waiting for the uploads to finish' : 'Send'}
+          >
+            {sendMessage.isPending || uploads.busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
+
+      <ImageLightbox file={lightbox} onClose={() => setLightbox(null)} />
     </div>
   );
 }

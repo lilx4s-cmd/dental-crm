@@ -1,6 +1,43 @@
 # Next Task
 
-Supersedes `NEXT_PHASE.md`, which described Phase A while it was still open.
+**Updated:** 2026-08-06. Supersedes `NEXT_PHASE.md`, which described Phase A while it was open.
+
+---
+
+## Done since the last revision of this file
+
+The CRM UX & Pipeline brief is complete: multi-select and bulk actions, tags, right-click menus,
+card enrichment, drag, the Communication Center, and attachments. Question 4 below (phone country)
+was answered and shipped — `Lead.country` exists, is indexed, and drives both phone parsing and the
+flag on every card.
+
+---
+
+## Next, in the order I would take them
+
+### 1 · Appointment reminders — the largest gap left
+
+`Appointment.reminderSentAt` is a column nothing reads or writes, and `Notification` still has zero
+code references. There is no scheduler in this system at all — no `@nestjs/schedule`, no queue, no
+cron. Everything that happens, happens because somebody clicked.
+
+For a clinic whose patients fly in, "your appointment is on Thursday" not being sent is the most
+expensive silence in the product. This needs a scheduler, a rules table, and one working channel.
+Email works today; SMS is blocked on question 3 below.
+
+### 2 · Reporting that answers who and what, not just how many
+
+Doctor and coordinator performance, lead-source attribution, treatment profitability, marketing
+ROI. All absent; all computable from data already stored (`Lead.source`, `utm*`, `campaignId`,
+`assignedDentistId`, `assignedCoordinatorId`), and all cheap now that the indexes exist.
+
+### 3 · The multi-tenancy retrofit
+
+41 tables still have no `organizationId`. New tables have carried one since the tags migration.
+`MULTI_TENANCY.md` sets out the ~15 day shape and, more importantly, why a half-scoped read path is
+worse than an unscoped one while there is a single tenant.
+
+Not urgent. Worth doing before a second clinic exists rather than during.
 
 ---
 

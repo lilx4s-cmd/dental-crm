@@ -216,6 +216,10 @@ enum CampaignStatus {
 enum AttachableType {
   PATIENT
   LEAD
+  // What was attached to a message. The owner is the *conversation*, not the message: the file is
+  // uploaded from the composer, which is before any message exists to own it. `MessageAttachment`
+  // links it to the message once that is sent.
+  CONVERSATION
   TREATMENT_PLAN
   TREATMENT_PLAN_ITEM
   WARRANTY
@@ -237,7 +241,23 @@ enum FileCategory {
   DOCUMENT
   INVOICE_PDF
   WARRANTY_PDF
+  // Sent or received in a conversation. The widest allowlist in the system, because a patient
+  // sends what a patient sends — a photo, a scan of an insurance letter, a voice note — and the
+  // clinic replies with quotes and itineraries. Still an allowlist: see upload-policy.ts.
+  MESSAGE_ATTACHMENT
   OTHER
+}
+
+/// Where a file stands with the malware scanner.
+///
+/// SKIPPED rather than CLEAN when no scanner is configured, which is the state this clinic is in
+/// today. The distinction matters: "nothing scanned it" and "something scanned it and it was fine"
+/// are different facts, and collapsing them into CLEAN would be a claim the system cannot support.
+enum FileScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  SKIPPED
 }
 
 enum NotificationChannel {
@@ -1375,11 +1395,40 @@ model Message {
   readAt            DateTime?
   createdAt         DateTime         @default(now())
 
+  attachments MessageAttachment[]
+
   @@index([conversationId])
   // Unread counting filters a conversation's messages by direction and time. Without this it is a
   // scan per conversation, on every inbox load.
   @@index([conversationId, direction, createdAt])
   @@map("messages")
+}
+
+/// A file sent with a message.
+///
+/// A join rather than a column on `Message`, because one message can carry several files — a
+/// coordinator sends the quote, the itinerary and the hotel photo together, and three separate
+/// messages for that is three notifications on the patient's phone.
+///
+/// `Message.mediaUrl` predates this and is left alone: it holds the URL WhatsApp itself gave for
+/// an *inbound* media message, which is a different thing from a file this clinic stored. Both are
+/// rendered; only this one can be downloaded from the CRM.
+///
+/// Deleting the message takes the link but not the file. The file belongs to the conversation and
+/// may already be surfaced in the patient's document library — removing it because a message was
+/// retracted would take a radiograph out of a clinical record.
+model MessageAttachment {
+  messageId String
+  fileId    String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([messageId, fileId])
+  // The join's primary key serves lookups by message. Going the other way — "which message was
+  // this file sent with", asked by the patient's document library — needs its own.
+  @@index([fileId])
+  @@map("message_attachments")
 }
 
 model CallLog {
@@ -1416,7 +1465,16 @@ model File {
   s3Key        String
   uploadedById String
   uploadedBy   User           @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  /// Where this file stands with the malware scanner.
+  ///
+  /// SKIPPED when none is configured, which is this clinic today — see FileScanStatus. Recorded on
+  /// the row rather than assumed, so the day a scanner is wired in there is no ambiguity about
+  /// which of the existing files it has actually seen.
+  scanStatus   FileScanStatus @default(SKIPPED)
+  scannedAt    DateTime?
   createdAt    DateTime       @default(now())
+
+  messageAttachments MessageAttachment[]
 
   @@index([ownerType, ownerId])
   @@map("files")

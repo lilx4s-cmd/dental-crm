@@ -4,6 +4,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { FilesService } from './files.service';
+import { MalwareScanService } from './malware-scan';
 import type { JwtPayload } from '@dental-crm/shared';
 
 /**
@@ -51,6 +52,9 @@ async function makeService() {
       FilesService,
       { provide: PrismaService, useValue: mockPrisma },
       { provide: ConfigService, useValue: config },
+      // No scanner configured in these tests, matching this clinic — the status written is
+      // SKIPPED, and confirm() short-circuits before any network call.
+      { provide: MalwareScanService, useValue: { configured: false, scan: jest.fn() } },
     ],
   }).compile();
   return moduleRef.get(FilesService);

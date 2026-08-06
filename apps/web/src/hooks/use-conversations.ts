@@ -20,11 +20,28 @@ export interface ConversationSummary {
   messages: { content: string | null; direction: string; createdAt: string }[];
 }
 
+export interface MessageAttachmentFile {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  scanStatus?: string;
+  uploadedBy?: { id: string; firstName: string; lastName: string } | null;
+}
+
 export interface Message {
   id: string;
   direction: string;
   content: string | null;
+  /**
+   * WhatsApp's own URL for inbound media, which the CRM cannot download.
+   *
+   * Distinct from `attachments`, which are files this clinic stored and can serve. Both mean
+   * "something came with this message"; only the second can be opened from here.
+   */
   mediaUrl: string | null;
+  attachments?: { file: MessageAttachmentFile }[];
   status: string;
   /** Why a send failed. Present only on FAILED messages. */
   failureReason: string | null;
@@ -108,17 +125,28 @@ export function useConversation(id: string) {
   });
 }
 
+/**
+ * Sends text, attachments, or both.
+ *
+ * `fileIds` reference files already uploaded against this conversation and confirmed as rows — the
+ * bytes went browser-to-storage through a signed URL and never through this request. The API
+ * checks each id belongs to this thread.
+ */
 export function useSendMessage(conversationId: string) {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (content: string) =>
+  return useMutation<unknown, Error, { content?: string; fileIds?: string[] }>({
+    mutationFn: (body) =>
       apiRequest(
         `/api/conversations/${conversationId}/messages`,
-        { method: 'POST', body: JSON.stringify({ content }) },
+        { method: 'POST', body: JSON.stringify(body) },
         accessToken ?? undefined,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations', conversationId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conversations', conversationId] });
+      // The list shows the last message and its timestamp, so it is stale the moment one is sent.
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
   });
 }
 

@@ -26,6 +26,11 @@ export default () => ({
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_STORAGE_BUCKET,
   },
+  // Optional. Unset means uploads are recorded as SKIPPED rather than CLEAN — see MalwareScanService.
+  malwareScan: {
+    url: process.env.MALWARE_SCAN_URL,
+    timeoutMs: process.env.MALWARE_SCAN_TIMEOUT_MS,
+  },
   whatsapp: {
     token: process.env.WHATSAPP_CLOUD_API_TOKEN,
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,

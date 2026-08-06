@@ -39,7 +39,78 @@ const PDF = 'application/pdf';
 /** What a CT scanner actually produces. Browsers do not render it, which is part of why it is safe. */
 const DICOM = ['application/dicom', 'application/octet-stream'] as const;
 
+/**
+ * What a conversation carries.
+ *
+ * The widest allowlist in the system, and deliberately so: a patient sends what a patient sends —
+ * a photo of their teeth, a scan of an insurance letter, a voice note, a video of a symptom — and
+ * refusing it means they send it to somebody's personal WhatsApp instead, where it is outside the
+ * record entirely. The clinic replies with quotes, itineraries and spreadsheets.
+ *
+ * Still an allowlist, and the exclusions are the point:
+ *
+ * - **No SVG.** An image to a person, a script container to a browser.
+ * - **No HTML, XML or anything else a browser renders as markup.** Same reason.
+ * - **No executables, installers or scripts** — `.exe`, `.msi`, `.sh`, `.bat`, `.js`. Nothing in a
+ *   dental conversation needs them, and a signed URL to one is a delivery mechanism.
+ *
+ * `application/octet-stream` is absent too, which is a real cost: it is what some browsers report
+ * for an unusual file, and those uploads will be refused. Admitting it would admit everything,
+ * since it is also what an `.exe` reports.
+ */
+const MESSAGE_IMAGE = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif'] as const;
+const MESSAGE_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp', 'video/x-msvideo'] as const;
+// WhatsApp voice notes arrive as OGG/Opus; iOS records m4a; Android often amr.
+const MESSAGE_AUDIO = [
+  'audio/ogg', 'audio/opus', 'audio/mpeg', 'audio/mp4', 'audio/m4a', 'audio/x-m4a',
+  'audio/aac', 'audio/wav', 'audio/webm', 'audio/amr', 'audio/3gpp',
+] as const;
+const MESSAGE_DOC = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  // Plain text only. `text/html` and `text/xml` are deliberately absent — a browser renders those.
+  'text/plain',
+  'text/csv',
+] as const;
+const MESSAGE_ARCHIVE = [
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-7z-compressed',
+  'application/x-rar-compressed',
+  'application/vnd.rar',
+] as const;
+
+export const MESSAGE_ATTACHMENT_TYPES = [
+  ...MESSAGE_IMAGE,
+  ...MESSAGE_VIDEO,
+  ...MESSAGE_AUDIO,
+  ...MESSAGE_DOC,
+  ...MESSAGE_ARCHIVE,
+] as const;
+
 export const UPLOAD_RULES: Readonly<Record<string, UploadRule>> = {
+  /**
+   * 100 MB, which is a compromise stated rather than hidden.
+   *
+   * WhatsApp itself caps media at 16 MB for the Cloud API and 100 MB for documents, so anything
+   * above that cannot be *sent* even though it can be stored — the composer says so at 16 MB
+   * rather than letting the send fail. The ceiling is here for the other direction: a patient's
+   * phone video arriving through a gateway that permits more.
+   */
+  MESSAGE_ATTACHMENT: {
+    mimeTypes: MESSAGE_ATTACHMENT_TYPES,
+    maxBytes: 100 * MB,
+    accept:
+      '.jpg,.jpeg,.png,.webp,.heic,.gif,.mp4,.mov,.webm,.3gp,.avi,.ogg,.opus,.mp3,.m4a,.aac,.wav,.amr,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip,.7z,.rar',
+    label: 'Attachment',
+  },
   // Radiographs come off the sensor as JPEG or PNG, or arrive as a PDF report from the imaging
   // centre. 25 MB covers a full-mouth series.
   XRAY: {
@@ -147,4 +218,75 @@ export function formatBytes(bytes: number): string {
 export function isOwnedStorageKey(s3Key: string, ownerType: string, ownerId: string): boolean {
   if (s3Key.includes('..') || s3Key.startsWith('/')) return false;
   return s3Key.startsWith(`${ownerType}/${ownerId}/`);
+}
+
+/**
+ * What kind of thing a file is, for choosing a preview.
+ *
+ * Derived from the MIME type rather than the extension: the extension is whatever the sender's
+ * phone chose, and a `.jpg` that is really a PDF should draw a PDF icon. The type on the row is
+ * the one storage observed, so it is the trustworthy one.
+ */
+export type FileKind = 'image' | 'video' | 'audio' | 'pdf' | 'document' | 'spreadsheet' | 'archive' | 'text' | 'other';
+
+export function fileKind(mimeType: string | null | undefined): FileKind {
+  const bare = (mimeType ?? '').split(';')[0].trim().toLowerCase();
+  if (!bare) return 'other';
+
+  // Prefix matching is safe here in a way it is not in the allowlist: this only chooses an icon.
+  // A type that slipped through as an image would already have passed `rejectUpload`.
+  if (bare.startsWith('image/')) return 'image';
+  if (bare.startsWith('video/')) return 'video';
+  if (bare.startsWith('audio/')) return 'audio';
+  if (bare === 'application/pdf') return 'pdf';
+
+  if (bare.includes('spreadsheet') || bare.includes('ms-excel') || bare === 'text/csv') return 'spreadsheet';
+  if (
+    bare.includes('word') ||
+    bare.includes('presentation') ||
+    bare.includes('powerpoint') ||
+    bare.includes('opendocument')
+  ) {
+    return 'document';
+  }
+  if (
+    bare.includes('zip') ||
+    bare.includes('7z-compressed') ||
+    bare.includes('rar')
+  ) {
+    return 'archive';
+  }
+  if (bare.startsWith('text/')) return 'text';
+  return 'other';
+}
+
+/**
+ * What WhatsApp will actually carry.
+ *
+ * Storage accepts more than the transport does. Saying so in the composer — before a 40 MB video
+ * is uploaded — is the difference between a clear refusal and an upload that succeeds and then
+ * fails to send with a gateway error nobody can read.
+ *
+ * Figures are Meta's published Cloud API limits. Evolution and the QR transport are more
+ * permissive, but the strictest is the honest thing to warn against, since which transport is
+ * live can change without the person composing knowing.
+ */
+export const WHATSAPP_MEDIA_LIMITS: Readonly<Record<FileKind, number>> = {
+  image: 5 * MB,
+  video: 16 * MB,
+  audio: 16 * MB,
+  pdf: 100 * MB,
+  document: 100 * MB,
+  spreadsheet: 100 * MB,
+  text: 100 * MB,
+  archive: 100 * MB,
+  other: 100 * MB,
+};
+
+/** Null when WhatsApp would carry it; otherwise why it will not. */
+export function whatsappMediaWarning(mimeType: string, sizeBytes: number): string | null {
+  const kind = fileKind(mimeType);
+  const limit = WHATSAPP_MEDIA_LIMITS[kind];
+  if (sizeBytes <= limit) return null;
+  return `WhatsApp will not carry ${kind === 'other' ? 'a file' : `${kind}s`} over ${formatBytes(limit)}. This one is ${formatBytes(sizeBytes)} — it will be stored on the record, but the patient will not receive it.`;
 }

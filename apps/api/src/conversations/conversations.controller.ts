@@ -78,6 +78,13 @@ export class ConversationsController {
     return this.conversationsService.markRead(id);
   }
 
+  // Everything sent or received in this thread, for the attachments panel.
+  @Get(':id/attachments')
+  @Roles(...PATIENT_FACING)
+  attachments(@Param('id') id: string) {
+    return this.conversationsService.attachments(id);
+  }
+
   // Pinning is clinic-wide, so it is deliberately not restricted to whoever is assigned: the
   // point of a pin is that the person covering can find the thread too.
   @Patch(':id/pin')

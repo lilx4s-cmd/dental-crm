@@ -29,6 +29,24 @@ const MESSAGE_SELECT = {
   createdAt: true,
   sentAt: true,
   senderUser: { select: { id: true, firstName: true, lastName: true } },
+  // Ordered by when they were linked, which is the order they were picked in the composer. A
+  // quote followed by its itinerary reads differently from the reverse.
+  attachments: {
+    orderBy: { createdAt: 'asc' as const },
+    select: {
+      file: {
+        select: {
+          id: true,
+          fileName: true,
+          mimeType: true,
+          sizeBytes: true,
+          scanStatus: true,
+          createdAt: true,
+          uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      },
+    },
+  },
 } as const;
 
 const CONVERSATION_SELECT = {
@@ -226,6 +244,32 @@ export class ConversationsService {
     });
     if (!conv) throw new NotFoundException('Conversation not found');
 
+    // Checked before anything is written: an id from another thread is not attachable here,
+    // however it was come by. Scoped to this conversation rather than merely to files the caller
+    // could read, because a file being readable is not the same as it belonging in this thread.
+    const fileIds = [...new Set(dto.fileIds ?? [])];
+    const attachable = fileIds.length
+      ? await this.prisma.file.findMany({
+          where: {
+            id: { in: fileIds },
+            ownerType: $Enums.AttachableType.CONVERSATION,
+            ownerId: conversationId,
+          },
+          select: { id: true },
+        })
+      : [];
+
+    if (attachable.length !== fileIds.length) {
+      throw new BadRequestException('One of those attachments does not belong to this conversation.');
+    }
+
+    if (!dto.content?.trim() && attachable.length === 0) {
+      throw new BadRequestException('Send some text, an attachment, or both.');
+    }
+
+    // Preserves the order they were picked in rather than whatever order the database returned.
+    const ordered = fileIds.filter((id) => attachable.some((f) => f.id === id));
+
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -236,6 +280,9 @@ export class ConversationsService {
           mediaUrl: dto.mediaUrl,
           templateName: dto.templateName,
           status: $Enums.MessageStatus.QUEUED,
+          // Written in the same transaction as the message. A message that exists without its
+          // attachments is one the patient is told about and cannot be given.
+          attachments: { create: ordered.map((fileId) => ({ fileId })) },
         },
         select: MESSAGE_SELECT,
       }),
@@ -246,6 +293,43 @@ export class ConversationsService {
     ]);
 
     return this.dispatch(message.id, conv, dto.content ?? '');
+  }
+
+  /**
+   * Every file sent or received in this thread, newest first.
+   *
+   * Read from the attachments rather than from `File.ownerId`, so a file uploaded into the
+   * composer and then removed before sending does not appear — it exists in storage until the
+   * sweep collects it, but it was never part of the conversation.
+   */
+  async attachments(conversationId: string) {
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { id: true },
+    });
+    if (!conv) throw new NotFoundException('Conversation not found');
+
+    const rows = await this.prisma.messageAttachment.findMany({
+      where: { message: { conversationId } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        createdAt: true,
+        message: { select: { id: true, direction: true, createdAt: true } },
+        file: {
+          select: {
+            id: true,
+            fileName: true,
+            mimeType: true,
+            sizeBytes: true,
+            scanStatus: true,
+            createdAt: true,
+            uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+
+    return rows.map((r) => ({ ...r.file, message: r.message }));
   }
 
   /**
