@@ -1,5 +1,58 @@
 # Changelog
 
+## The system says what to do next with a patient (2026-08-07)
+
+The pipeline has told salespeople which deal to chase since `nextAction` was written. The patient
+side had nothing: once a lead converted the CRM stopped offering an opinion and became a set of
+forms somebody had to remember to fill in — at exactly the point where the cost of forgetting
+rises from a lost sale to a missed allergy.
+
+`GET /patients/:id/guidance` answers "what now", ordered by consequence. The rules are pure
+functions in `@dental-crm/shared`, so whether "ask about blood thinners" outranks "raise an
+invoice" is readable and testable without a database in front of it.
+
+### "Not asked" is never "no"
+
+The distinction the whole thing turns on. A null `allergies` field means nobody asked; the string
+"None" means somebody asked and there were none. A checklist that ticks a blank converts an open
+question into a silent assumption, on a record a clinician treats from.
+
+The three yes/no questions are nullable booleans for the same reason, and the form offers a
+three-way control — Yes / No / Not asked — because a checkbox cannot express the third and an
+unticked box reads as "no" to whoever opens the record next.
+
+### What it found immediately
+
+All 11 patients in production have all five safety questions unanswered. Not one allergy answer on
+file. Record completeness 8–18%.
+
+### The checklist would have been unclearable
+
+Found while wiring it up: the API accepted only `allergies`. `medications`, `medicalConditions`,
+`previousSurgeries`, `takesBloodThinners`, `isPregnant` and `isSmoker` were columns in the database
+that no endpoint would write and no form offered — so four of the five safety questions could not
+be answered anywhere in the app.
+
+A checklist item nobody can clear is worse than no checklist. Fixed end to end: DTO, create,
+update, the web type, and a medical-history section on the edit form.
+
+## Duplication swept (2026-08-07)
+
+Six real duplicates, measured rather than guessed, now in `apps/web/src/lib/format.ts`:
+`SOURCE_LABELS` (card + filter bar), `initials()` (card + sheet), `WARRANTY_STATUS_VARIANT` (staff
++ portal, byte-identical), `countryFlag`, `daysSince`, `shortAgo`, and the import preview's
+`toLocaleString()` bypassing the one money formatter.
+
+Two were worth more than tidiness:
+
+  - **Two byte formatters that disagreed.** The attachment tray rendered one decimal place under
+    10 MB where the shared one rounds, so the same file read "4.2 MB" beside the composer and
+    "4 MB" in the message refusing it.
+  - **Two functions named `normalisePhone`**, one in shared and one local to conversations, with
+    different rules and different return types. Whoever added the next import had even odds. The
+    local one is now `whatsappAddress`, which is what it does.
+
+
 ## Recovering what the CRM had stopped capturing (2026-08-07)
 
 Reporting was next on the list. Checking production first showed that three of the four reports

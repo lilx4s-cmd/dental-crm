@@ -34,6 +34,18 @@ export class PatientsController {
     return this.patientsService.create(dto);
   }
 
+  /**
+   * The next thing to do with this patient, and what the record is missing.
+   *
+   * Declared before ':id' so it is not captured as a patient id.
+   */
+  @Get(':id/guidance')
+  @Roles(...CLINICAL)
+  @ApiOperation({ summary: 'What to do next with this patient, ordered by consequence' })
+  guidance(@Param('id') id: string) {
+    return this.patientsService.guidance(id);
+  }
+
   @Get(':id')
   @Roles(...CLINICAL)
   @ApiOperation({ summary: 'Get a patient by ID' })

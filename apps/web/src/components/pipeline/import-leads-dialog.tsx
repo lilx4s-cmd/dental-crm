@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useImportLeads, type ImportedLeadRow, type ImportLeadsResult } from '@/hooks/use-leads';
 import { useUsers } from '@/hooks/use-users';
+import { formatMoney } from '@/lib/money';
 
 /** Radix reserves '' for "no selection", so "not imported" needs a value of its own. */
 const NO_COLUMN = '__none__';
@@ -305,7 +306,7 @@ export function ImportLeadsDialog({ children }: { children: React.ReactNode }) {
                         <td className="px-2 py-1.5">{row.email ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.source}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">
-                          {row.estimatedValue?.toLocaleString() ?? '—'}
+                          {row.estimatedValue == null ? '—' : formatMoney(row.estimatedValue, row.currency)}
                         </td>
                       </tr>
                     ))}

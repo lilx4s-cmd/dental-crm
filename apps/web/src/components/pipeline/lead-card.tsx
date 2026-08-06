@@ -12,57 +12,7 @@ import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { cn } from '@/lib/utils';
 import { LeadTaskBadge } from './lead-task-badge';
 import { TagPill } from '@/components/tags/tag-pill';
-
-const SOURCE_LABELS: Record<string, string> = {
-  WALK_IN: 'Walk-in',
-  PHONE: 'Phone',
-  WHATSAPP: 'WhatsApp',
-  FACEBOOK_ADS: 'Facebook',
-  INSTAGRAM_ADS: 'Instagram',
-  GOOGLE: 'Google',
-  REFERRAL: 'Referral',
-  WEBSITE: 'Website',
-  OTHER: 'Other',
-};
-
-function initials(firstName?: string, lastName?: string | null) {
-  return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
-}
-
-/**
- * An ISO country code as its flag emoji.
- *
- * Arithmetic on the code points rather than a lookup table of 250 entries: regional indicator
- * symbols sit at U+1F1E6 in the same order as A–Z, so a two-letter code maps directly. Anything
- * that is not two letters returns nothing, and the code still prints beside it — the flag is a
- * scanning aid, not the label.
- */
-function countryFlag(code: string): string {
-  if (!/^[A-Za-z]{2}$/.test(code)) return '';
-  return String.fromCodePoint(
-    ...code.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65),
-  );
-}
-
-/** Whole days since the lead last changed stage. */
-function daysSince(iso: string): number {
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-}
-
-/**
- * A short relative age: "3m", "2h", "5d".
- *
- * Abbreviated because it sits at the end of a truncating line and every character it takes is one
- * the message preview loses. Nothing older than a year is interesting on a board, so it stops at
- * days rather than growing a month unit nobody would read.
- */
-function shortAgo(iso: string): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86_400)}d`;
-}
+import { countryFlag, daysSince, initials, shortAgo, sourceLabel } from '@/lib/format';
 
 /**
  * A deal card in the Bitrix24 shape: title as a blue link, the amount directly under it in bold,
@@ -224,7 +174,7 @@ export function LeadCard({
                 </>
               )}
               {(lead.country || lead.preferredLanguage) && lead.source && <span className="text-bx-line">·</span>}
-              {lead.source && <span className="truncate">{SOURCE_LABELS[lead.source] ?? lead.source}</span>}
+              {lead.source && <span className="truncate">{sourceLabel(lead.source)}</span>}
             </p>
           )}
         </div>

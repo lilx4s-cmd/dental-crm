@@ -14,6 +14,7 @@ import {
 import type { FileKind } from '@dental-crm/shared';
 
 import { Button } from '@/components/ui/button';
+import { formatSize } from '@/lib/format';
 import type { PendingAttachment } from '@/hooks/use-attachment-upload';
 import { cn } from '@/lib/utils';
 
@@ -39,12 +40,10 @@ export function KindIcon({ kind, className }: { kind: FileKind; className?: stri
   return <Icon className={className} />;
 }
 
-export function formatSize(bytes: number): string {
-  const MB = 1024 * 1024;
-  if (bytes >= MB) return `${(bytes / MB).toFixed(bytes >= 10 * MB ? 0 : 1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
+// Re-exported so the tiles below and the message bubbles keep importing it from one place. The
+// implementation is the shared one the API also formats its refusals with — this file used to
+// carry its own, which rendered "4.2 MB" beside a message that called the same file "4 MB".
+export { formatSize };
 
 /**
  * What is about to be sent, above the composer.

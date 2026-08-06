@@ -6,13 +6,8 @@ import { ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import type { PortalPlanItem, PortalWarranty } from '@/hooks/use-portal';
+import { WARRANTY_STATUS_VARIANT } from '@/lib/format';
 
-const WARRANTY_STATUS_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'outline'> = {
-  ACTIVE: 'success',
-  EXPIRED: 'outline',
-  VOIDED: 'destructive',
-  CLAIMED: 'warning',
-};
 
 function WarrantyCard({ warranty }: { warranty: PortalWarranty }) {
   const expiresAt = addMonths(new Date(warranty.startDate), warranty.durationMonths);

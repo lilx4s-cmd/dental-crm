@@ -20,6 +20,7 @@ import { CLINICAL, STAGE_LABELS } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useLead, useLeadTimeline, useConvertLeadToPatient, type Lead } from '@/hooks/use-leads';
 import { languageName } from '@dental-crm/shared';
+import { initials } from '@/lib/format';
 import { usePatient } from '@/hooks/use-patients';
 import { useAppointments } from '@/hooks/use-appointments';
 import { useTreatmentPlans } from '@/hooks/use-treatment-plans';
@@ -137,10 +138,6 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
       </div>
     </div>
   );
-}
-
-function initials(firstName?: string, lastName?: string | null) {
-  return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?';
 }
 
 export function LeadDetailSheet({

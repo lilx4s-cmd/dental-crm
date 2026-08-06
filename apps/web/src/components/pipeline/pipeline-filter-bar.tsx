@@ -29,20 +29,9 @@ import { cn } from '@/lib/utils';
 import type { PipelineFilters } from '@/hooks/use-leads';
 import { useUsers } from '@/hooks/use-users';
 import { useTags } from '@/hooks/use-tags';
+import { SOURCE_LABELS } from '@/lib/format';
 import { TagPicker } from '@/components/tags/tag-picker';
 import { TagPill } from '@/components/tags/tag-pill';
-
-const SOURCE_LABELS: Record<string, string> = {
-  WALK_IN: 'Walk-in',
-  PHONE: 'Phone',
-  WHATSAPP: 'WhatsApp',
-  FACEBOOK_ADS: 'Facebook',
-  INSTAGRAM_ADS: 'Instagram',
-  GOOGLE: 'Google',
-  REFERRAL: 'Referral',
-  WEBSITE: 'Website',
-  OTHER: 'Other',
-};
 
 /** Quick presets. These are the questions actually asked each morning, so they get one click. */
 const QUICK_FILTERS: { label: string; filters: PipelineFilters }[] = [

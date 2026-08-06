@@ -17,7 +17,20 @@ export interface Patient {
   country: string | null;
   nationalId: string | null;
   notes: string | null;
+  /**
+   * The medical history a clinician plans treatment from.
+   *
+   * Null throughout means "nobody asked", never "no". The string fields hold "None" when the
+   * question was put and the answer was negative; the booleans are nullable for the same reason,
+   * so an unanswered question is never stored as a false.
+   */
   allergies: string | null;
+  medications: string | null;
+  medicalConditions: string | null;
+  previousSurgeries: string | null;
+  takesBloodThinners: boolean | null;
+  isPregnant: boolean | null;
+  isSmoker: boolean | null;
   diagnosis: string | null;
   insuranceInfo: string | null;
   isActive: boolean;
@@ -89,5 +102,38 @@ export function useUpdatePatient(id: string) {
       qc.invalidateQueries({ queryKey: ['patients'] });
       qc.invalidateQueries({ queryKey: ['patients', id] });
     },
+  });
+}
+
+/**
+ * What to do next with this patient, and what the record is missing.
+ *
+ * Fetched separately from the patient rather than folded into it: the checklist counts plans,
+ * appointments, invoices, files and warranties, and a patient record that is only being read for a
+ * phone number should not pay for eight counts.
+ */
+export interface PatientStep {
+  id: string;
+  label: string;
+  why: string;
+  severity: 'safety' | 'blocking' | 'admin';
+  done: boolean;
+  target?: 'overview' | 'medical' | 'plans' | 'appointments' | 'files' | 'finance';
+}
+
+export interface PatientGuidance {
+  steps: PatientStep[];
+  nextStep: PatientStep | null;
+  outstanding: PatientStep[];
+  counts: { safety: number; blocking: number; admin: number; done: number; total: number };
+  completeness: number;
+}
+
+export function usePatientGuidance(patientId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<PatientGuidance>({
+    queryKey: ['patient-guidance', patientId],
+    queryFn: () => apiRequest(`/api/patients/${patientId}/guidance`, {}, accessToken ?? undefined),
+    enabled: !!patientId,
   });
 }

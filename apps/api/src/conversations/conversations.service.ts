@@ -12,8 +12,14 @@ import { StartConversationDto } from './dto/start-conversation.dto';
  * Inbound messages arrive as `905551112233@s.whatsapp.net`, while staff type numbers with plus
  * signs, spaces and brackets. Storing both in the same shape is what keeps a thread the clinic
  * started and a reply the patient sends from becoming two separate conversations.
+ *
+ * Named `whatsappAddress` rather than `normalisePhone`, which is what it used to be called. The
+ * shared package exports a `normalisePhone` too — a different function, with different rules and a
+ * different return type — and two functions with one name is a mistake waiting for whoever adds
+ * the next import. This one deliberately has no country logic: a WhatsApp id is already
+ * international by the time it reaches us.
  */
-function normalisePhone(value?: string | null): string | null {
+function whatsappAddress(value?: string | null): string | null {
   const digits = (value ?? '').replace(/\D/g, '');
   // Shorter than this is a typo or an extension, not a reachable international number.
   return digits.length >= 8 ? digits : null;
@@ -381,7 +387,7 @@ export class ConversationsService {
         });
     if (!contact) throw new NotFoundException('Contact not found');
 
-    const phone = normalisePhone(contact.whatsappNumber ?? contact.phone);
+    const phone = whatsappAddress(contact.whatsappNumber ?? contact.phone);
     if (!phone) {
       throw new BadRequestException('This contact has no phone number to message');
     }
@@ -430,7 +436,7 @@ export class ConversationsService {
       return fail(`Sending on ${conv.channel} is not connected yet`);
     }
 
-    const phone = normalisePhone(
+    const phone = whatsappAddress(
       conv.externalThreadId ??
         conv.patient?.whatsappNumber ??
         conv.patient?.phone ??

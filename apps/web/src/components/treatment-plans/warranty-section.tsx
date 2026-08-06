@@ -10,14 +10,9 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/
 
 import { usePatientWarranties, type Warranty } from '@/hooks/use-warranties';
 import type { TreatmentPlan, TreatmentPlanItem } from '@/hooks/use-treatment-plans';
+import { WARRANTY_STATUS_VARIANT } from '@/lib/format';
 import { IssueWarrantyDialog } from './issue-warranty-dialog';
 
-const WARRANTY_STATUS_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'outline'> = {
-  ACTIVE: 'success',
-  EXPIRED: 'outline',
-  VOIDED: 'destructive',
-  CLAIMED: 'warning',
-};
 
 function WarrantyCard({ warranty }: { warranty: Warranty }) {
   const expiresAt = addMonths(new Date(warranty.startDate), warranty.durationMonths);

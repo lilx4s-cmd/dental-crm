@@ -31,6 +31,7 @@ import { TreatmentPlansTab } from '@/components/treatment-plans/treatment-plans-
 import { CLINICAL_FILE_CATEGORIES, FileSection } from '@/components/files/file-section';
 import { QueryError } from '@/components/ui/query-state';
 import { TagPill } from '@/components/tags/tag-pill';
+import { PatientGuidanceCard, TriState } from '@/components/patients/patient-guidance-card';
 import { formatMoney } from '@/lib/money';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,14 +85,35 @@ function EditPatientDialog({
     country: patient?.country ?? '',
     notes: patient?.notes ?? '',
     allergies: patient?.allergies ?? '',
+    medications: patient?.medications ?? '',
+    medicalConditions: patient?.medicalConditions ?? '',
+    previousSurgeries: patient?.previousSurgeries ?? '',
     diagnosis: patient?.diagnosis ?? '',
     insuranceInfo: patient?.insuranceInfo ?? '',
   });
+
+  /**
+   * The three yes/no questions, held as a tri-state.
+   *
+   * `undefined` is "not asked" and is the value a record starts at. A checkbox cannot express
+   * that — an unticked box reads as "no" — so these are a three-way choice, and the record keeps
+   * the difference between a question skipped and a question answered negatively.
+   */
+  const [flags, setFlags] = useState<{
+    takesBloodThinners?: boolean;
+    isPregnant?: boolean;
+    isSmoker?: boolean;
+  }>({
+    takesBloodThinners: patient?.takesBloodThinners ?? undefined,
+    isPregnant: patient?.isPregnant ?? undefined,
+    isSmoker: patient?.isSmoker ?? undefined,
+  });
+
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSave = () => {
     update.mutate(
-      { ...form, email: form.email || undefined, phone: form.phone || undefined },
+      { ...form, ...flags, email: form.email || undefined, phone: form.phone || undefined },
       {
         onSuccess: () => { toast.success('Patient updated'); onClose(); },
         onError: () => toast.error('Failed to update'),
@@ -119,7 +141,28 @@ function EditPatientDialog({
             <div className="space-y-1"><Label>Country</Label><Input value={form.country} onChange={(e) => set('country', e.target.value)} /></div>
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
-          <div className="space-y-1"><Label>Allergies</Label><Textarea rows={2} placeholder="Leave blank if not yet asked" value={form.allergies} onChange={(e) => set('allergies', e.target.value)} /></div>
+          {/* The medical history a clinician plans treatment from. Only allergies was here before,
+              and only allergies was writable through the API — so four of the five questions the
+              next-steps card asks could not be answered anywhere in the app.
+
+              Every placeholder says to write "None" rather than leaving the field empty. That is
+              the distinction the whole record turns on: a blank is a question nobody asked. */}
+          <div className="rounded-md border p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Medical history
+            </p>
+            <div className="space-y-1"><Label>Allergies</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none — a blank means nobody asked' value={form.allergies} onChange={(e) => set('allergies', e.target.value)} /></div>
+            <div className="space-y-1"><Label>Current medications</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none' value={form.medications} onChange={(e) => set('medications', e.target.value)} /></div>
+            <div className="space-y-1"><Label>Medical conditions</Label><Textarea rows={2} placeholder='Diabetes, heart conditions, immune suppression — or "None"' value={form.medicalConditions} onChange={(e) => set('medicalConditions', e.target.value)} /></div>
+            <div className="space-y-1"><Label>Previous surgeries</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none' value={form.previousSurgeries} onChange={(e) => set('previousSurgeries', e.target.value)} /></div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <TriState label="Blood thinners" value={flags.takesBloodThinners} onChange={(v) => setFlags((f) => ({ ...f, takesBloodThinners: v }))} />
+              <TriState label="Pregnant" value={flags.isPregnant} onChange={(v) => setFlags((f) => ({ ...f, isPregnant: v }))} />
+              <TriState label="Smoker" value={flags.isSmoker} onChange={(v) => setFlags((f) => ({ ...f, isSmoker: v }))} />
+            </div>
+          </div>
+
           <div className="space-y-1"><Label>Diagnosis</Label><Textarea rows={2} value={form.diagnosis} onChange={(e) => set('diagnosis', e.target.value)} /></div>
           <div className="space-y-1"><Label>Insurance</Label><Input value={form.insuranceInfo} onChange={(e) => set('insuranceInfo', e.target.value)} placeholder="Provider — Policy #" /></div>
         </div>
@@ -478,6 +521,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <Edit2 className="h-4 w-4 mr-2" /> Edit
         </Button>
       </div>
+
+      {/* Above the info cards, deliberately. It is the only thing on this page that says what to
+          do rather than what is already known, and a record with five unanswered medical questions
+          should say so before it shows a phone number. */}
+      <PatientGuidanceCard patientId={patient.id} />
 
       {/* Info cards */}
       <div className="grid gap-4 md:grid-cols-2">

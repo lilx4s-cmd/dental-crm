@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { UpdateCaseEconomicsDto } from './dto/case-economics.dto';
-import { computeCaseEconomics } from '@dental-crm/shared';
+import { computeCaseEconomics, patientGuidance } from '@dental-crm/shared';
 import { PatientsQueryDto } from './dto/patients-query.dto';
 
 const PATIENT_SELECT = {
@@ -81,6 +81,106 @@ export class PatientsService {
     return patient;
   }
 
+  /**
+   * What to do next with this patient, and what is missing from the record.
+   *
+   * The rules live in `@dental-crm/shared` and are pure — this method only gathers the counts they
+   * need. That split is deliberate: the ordering of "ask about blood thinners" against "raise an
+   * invoice" is a clinical judgement that should be readable and testable without a database in
+   * front of it.
+   *
+   * Counted rather than fetched. The checklist needs to know *whether* there is an approved plan,
+   * not what is in it, and pulling every plan, appointment and invoice to answer nine yes/no
+   * questions would make opening a patient record slower than the record is worth.
+   */
+  async guidance(id: string) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id },
+      select: {
+        firstName: true,
+        lastName: true,
+        phone: true,
+        whatsappNumber: true,
+        email: true,
+        dateOfBirth: true,
+        country: true,
+        allergies: true,
+        medications: true,
+        medicalConditions: true,
+        takesBloodThinners: true,
+        isPregnant: true,
+        diagnosis: true,
+        aftercareStartedAt: true,
+      },
+    });
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const now = new Date();
+
+    const [
+      treatmentPlanCount,
+      approvedPlanCount,
+      upcomingAppointmentCount,
+      pastAppointmentCount,
+      invoiceCount,
+      unpaidCount,
+      passportCount,
+      warrantyCount,
+    ] = await this.prisma.$transaction([
+      this.prisma.treatmentPlan.count({ where: { patientId: id } }),
+      this.prisma.treatmentPlan.count({
+        where: { patientId: id, approvalStatus: $Enums.PatientApprovalStatus.APPROVED },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          patientId: id,
+          startTime: { gte: now },
+          status: { in: [$Enums.AppointmentStatus.SCHEDULED, $Enums.AppointmentStatus.CONFIRMED] },
+        },
+      }),
+      // What actually happened, not merely what was booked and then cancelled — the warranty and
+      // aftercare steps hang off this, and neither is due because somebody no-showed.
+      this.prisma.appointment.count({
+        where: { patientId: id, status: $Enums.AppointmentStatus.COMPLETED },
+      }),
+      this.prisma.invoice.count({ where: { patientId: id } }),
+      this.prisma.invoice.count({
+        where: {
+          patientId: id,
+          status: { notIn: [$Enums.InvoiceStatus.PAID, $Enums.InvoiceStatus.CANCELLED] },
+        },
+      }),
+      // Files are polymorphic; a passport on a patient record is what this asks about. One taken
+      // on the deal before conversion is a different row and is not counted — which is honest,
+      // since it is also not where a clinician would look for it.
+      this.prisma.file.count({
+        where: {
+          ownerType: $Enums.AttachableType.PATIENT,
+          ownerId: id,
+          category: $Enums.FileCategory.PASSPORT,
+        },
+      }),
+      // A warranty hangs off a treatment plan *item*, not the plan — one is issued per crown, not
+      // per proposal. So the patient is two relations away.
+      this.prisma.warranty.count({
+        where: { treatmentPlanItem: { treatmentPlan: { patientId: id } } },
+      }),
+    ]);
+
+    return patientGuidance({
+      ...patient,
+      treatmentPlanCount,
+      approvedPlanCount,
+      upcomingAppointmentCount,
+      pastAppointmentCount,
+      invoiceCount,
+      // Vacuously true with no invoices, which is why the checklist asks whether one exists first.
+      fullyPaid: invoiceCount > 0 && unpaidCount === 0,
+      hasPassportOnFile: passportCount > 0,
+      warrantyCount,
+    });
+  }
+
   async create(dto: CreatePatientDto) {
     return this.prisma.patient.create({
       data: {
@@ -96,7 +196,16 @@ export class PatientsService {
         country: dto.country,
         nationalId: dto.nationalId,
         notes: dto.notes,
+        // The medical history. Only `allergies` was writable before, so four of the five questions
+        // the patient checklist asks could not be answered anywhere in the app — a nag with no
+        // path to clearing it.
         allergies: dto.allergies,
+        medications: dto.medications,
+        medicalConditions: dto.medicalConditions,
+        previousSurgeries: dto.previousSurgeries,
+        takesBloodThinners: dto.takesBloodThinners,
+        isPregnant: dto.isPregnant,
+        isSmoker: dto.isSmoker,
         diagnosis: dto.diagnosis,
         insuranceInfo: dto.insuranceInfo,
       },
@@ -122,6 +231,12 @@ export class PatientsService {
         nationalId: dto.nationalId,
         notes: dto.notes,
         allergies: dto.allergies,
+        medications: dto.medications,
+        medicalConditions: dto.medicalConditions,
+        previousSurgeries: dto.previousSurgeries,
+        takesBloodThinners: dto.takesBloodThinners,
+        isPregnant: dto.isPregnant,
+        isSmoker: dto.isSmoker,
         diagnosis: dto.diagnosis,
         insuranceInfo: dto.insuranceInfo,
       },

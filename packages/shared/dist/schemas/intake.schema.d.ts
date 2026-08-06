@@ -43,6 +43,8 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     firstName: string;
     lastName: string;
     consentGiven: true;
+    allergies?: string | undefined;
+    medications?: string | undefined;
     email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
@@ -56,8 +58,6 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     chiefComplaint?: string | undefined;
     desiredTimeframe?: string | undefined;
     openToTravel?: boolean | undefined;
-    allergies?: string | undefined;
-    medications?: string | undefined;
     medicalConditions?: string | undefined;
     previousSurgeries?: string | undefined;
     isSmoker?: boolean | undefined;
@@ -75,6 +75,8 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     firstName: string;
     lastName: string;
     consentGiven: true;
+    allergies?: string | undefined;
+    medications?: string | undefined;
     email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
@@ -88,8 +90,6 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     chiefComplaint?: string | undefined;
     desiredTimeframe?: string | undefined;
     openToTravel?: boolean | "" | "yes" | "no" | undefined;
-    allergies?: string | undefined;
-    medications?: string | undefined;
     medicalConditions?: string | undefined;
     previousSurgeries?: string | undefined;
     isSmoker?: boolean | "" | "yes" | "no" | undefined;
