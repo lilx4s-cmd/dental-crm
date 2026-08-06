@@ -44,7 +44,7 @@ import {
   MessageAttachment,
   type SentAttachment,
 } from '@/components/inbox/message-attachment';
-import { useAttachmentUpload } from '@/hooks/use-attachment-upload';
+import { useAttachmentUpload, useStorageAvailable } from '@/hooks/use-attachment-upload';
 import { UPLOAD_RULES } from '@dental-crm/shared';
 
 /** What the picker offers, taken from the same rule the API enforces. */
@@ -270,6 +270,11 @@ function MessageThread({ conversationId }: { conversationId: string }) {
   const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploads = useAttachmentUpload(conversationId);
+  // Deployment configuration, not a per-message condition. Asked once so the attach button is not
+  // offered on a clinic with no bucket — six files picked and six identical failures blames the
+  // files rather than the setup.
+  const { data: storage } = useStorageAvailable();
+  const canAttach = storage?.configured !== false;
 
   // Anything still going up blocks the send, so a message cannot go out referencing a file that is
   // not there yet.
@@ -306,7 +311,9 @@ function MessageThread({ conversationId }: { conversationId: string }) {
     const files = Array.from(e.clipboardData.files);
     if (files.length === 0) return;
     e.preventDefault();
-    uploads.add(files);
+    // Same gate as the button. Otherwise pasting works where clicking does not, which is the kind
+    // of inconsistency that reads as a bug in the paste rather than as missing configuration.
+    if (canAttach) uploads.add(files);
   }
 
   async function handleRetry(messageId: string) {
@@ -384,10 +391,10 @@ function MessageThread({ conversationId }: { conversationId: string }) {
           dragDepth.current = 0;
           setDragging(false);
           const files = Array.from(e.dataTransfer.files);
-          if (files.length) uploads.add(files);
+          if (canAttach && files.length) uploads.add(files);
         }}
       >
-        {dragging && (
+        {dragging && canAttach && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed border-primary bg-primary/5 text-sm font-medium text-primary">
             Drop to attach
           </div>
@@ -428,9 +435,14 @@ function MessageThread({ conversationId }: { conversationId: string }) {
             type="button"
             size="icon"
             variant="outline"
+            disabled={!canAttach}
             onClick={() => fileInputRef.current?.click()}
             aria-label="Attach files"
-            title="Attach files"
+            title={
+              canAttach
+                ? 'Attach files'
+                : 'File storage is not set up for this clinic yet — see Settings.'
+            }
           >
             <Paperclip className="h-4 w-4" />
           </Button>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   fileKind,
   formatBytes,
@@ -251,4 +252,24 @@ export function useAttachmentUpload(conversationId: string | null) {
     busy,
     formatBytes,
   };
+}
+
+/**
+ * Whether file storage is usable at all.
+ *
+ * Asked before the attach button is offered. Without this, a clinic that has not provisioned a
+ * bucket gets a working-looking button, six files picked, and six identical failures — the failure
+ * is real but it arrives six times and blames the file rather than the configuration.
+ *
+ * Cached for the session: this is deployment configuration, not something that changes while
+ * somebody is typing.
+ */
+export function useStorageAvailable() {
+  const { accessToken } = useAuth();
+  return useQuery<{ configured: boolean; missing: string[] }>({
+    queryKey: ['storage-status'],
+    queryFn: () => apiRequest('/api/files/storage-status', {}, accessToken ?? undefined),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
 }
