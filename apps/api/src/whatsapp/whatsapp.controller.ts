@@ -15,6 +15,7 @@ import { Request, Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../common/decorators/public.decorator';
+import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role, JwtPayload } from '@dental-crm/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -33,24 +34,29 @@ export class WhatsAppController {
   ) {}
 
   @Get('sessions/me')
+  @Permission('conversations.read')
   @Roles(...PATIENT_FACING)
   ownSession(@CurrentUser() user: JwtPayload) { return this.webService.ownStatus(user); }
 
   @Post('sessions/me/connect')
+  @Permission('conversations.read')
   @Roles(...PATIENT_FACING)
   @HttpCode(HttpStatus.OK)
   connectOwnSession(@CurrentUser() user: JwtPayload) { return this.webService.connectOwn(user); }
 
   @Post('sessions/me/logout')
+  @Permission('conversations.read')
   @Roles(...PATIENT_FACING)
   @HttpCode(HttpStatus.OK)
   logoutOwnSession(@CurrentUser() user: JwtPayload) { return this.webService.logoutOwn(user); }
 
   @Get('sessions')
+  @Permission('conversations.supervise')
   @Roles(...MANAGEMENT)
   teamSessions() { return this.webService.teamStatus(); }
 
   @Post('sessions/:ownerId/logout')
+  @Permission('conversations.supervise')
   @Roles(...MANAGEMENT)
   @HttpCode(HttpStatus.OK)
   logoutTeamSession(@Param('ownerId') ownerId: string, @CurrentUser() user: JwtPayload) {

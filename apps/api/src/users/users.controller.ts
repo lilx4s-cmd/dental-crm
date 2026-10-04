@@ -8,11 +8,11 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-const ASSIGNEE_LOOKUP_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION];
+const ASSIGNEE_LOOKUP_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION, Role.DENTIST];
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+@Roles(Role.SUPER_ADMIN)
 @Controller('users')
 export class UsersController {
   constructor(private usersService: UsersService) {}
@@ -42,8 +42,8 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update user' })
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: JwtPayload) {
+    return this.usersService.update(id, dto, user.sub);
   }
 
   @Get(':id/sessions')

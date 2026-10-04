@@ -13,7 +13,7 @@ import * as QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
 import { usePrismaAuthState } from './baileys-auth-state';
 import { WhatsAppService } from './whatsapp.service';
-import { JwtPayload, Role } from '@dental-crm/shared';
+import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
 
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
@@ -461,11 +461,11 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
 
   async resolveSession(user: JwtPayload, ownerUserId?: string) {
     const ownerId = ownerUserId ?? user.sub;
-    if (ownerId !== user.sub && user.role !== Role.SUPER_ADMIN && user.role !== Role.CLINIC_MANAGER) {
+    if (ownerId !== user.sub && !hasPermission(user, 'conversations.supervise', user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER)) {
       throw new ForbiddenException('You can only manage your own WhatsApp session.');
     }
     const owner = await this.prisma.user.findUnique({ where: { id: ownerId }, select: { id: true, isActive: true, role: true } });
-    if (!owner?.isActive || !([Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION] as Role[]).includes(owner.role as Role)) {
+    if (!owner?.isActive || !hasPermission(user, 'conversations.read', ([Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION] as Role[]).includes(owner.role as Role))) {
       throw new NotFoundException('Active sales or reception account not found.');
     }
     return { sessionId: `user:${ownerId}`, ownerId };

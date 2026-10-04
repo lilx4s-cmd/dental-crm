@@ -31,6 +31,8 @@ export const PROTECTED_PATH_PREFIXES = [
   '/settings',
   '/inbox',
   '/whatsapp',
+  '/access',
+  '/supervision',
   '/reports',
 ];
 

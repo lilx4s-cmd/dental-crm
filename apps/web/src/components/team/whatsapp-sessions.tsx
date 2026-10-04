@@ -1,5 +1,6 @@
 'use client';
 
+import { hasPermission } from '@dental-crm/shared';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,7 +32,7 @@ const stateLabels = { disabled: 'Not enabled', disconnected: 'Disconnected', con
 
 export function WhatsAppSessions() {
   const { user, accessToken } = useAuth();
-  const manager = user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER';
+  const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
   const qc = useQueryClient();
   const mine = useQuery<Session>({
     queryKey: ['whatsapp-session', user?.sub],

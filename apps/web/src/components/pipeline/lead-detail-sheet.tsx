@@ -1,4 +1,5 @@
 'use client';
+import { hasPermission } from '@dental-crm/shared';
 
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -179,7 +180,7 @@ export function LeadDetailSheet({
    */
   async function handleOpenThread() {
     if (!lead) return;
-    if (user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER') {
+    if (!hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION')) {
       onOpenChange(false);
       router.push(`/inbox?lead=${lead.id}`);
       return;
@@ -301,7 +302,7 @@ export function LeadDetailSheet({
                   disabled={startConversation.isPending}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
-                  {startConversation.isPending ? 'Opening…' : user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER' ? 'View patient conversations' : 'Message in CRM inbox'}
+                  {startConversation.isPending ? 'Opening…' : !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION') ? 'View patient conversations' : 'Message in CRM inbox'}
                 </Button>
               )}
 

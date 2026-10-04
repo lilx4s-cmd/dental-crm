@@ -413,6 +413,10 @@ model User {
   leadTagsAssigned            LeadTag[]                @relation("LeadTagAssigner")
   leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
   whatsAppAccount             WhatsAppAccount?
+  accessProfileId             String?
+  accessProfile               AccessProfile? @relation(fields: [accessProfileId], references: [id])
+  supervisedLeads             Lead[] @relation("LeadSupervisor")
+  reviewsCreated              LeadReview[] @relation("ReviewAuthor")
 
   @@index([role])
   @@map("users")
@@ -752,6 +756,9 @@ model Lead {
   status         LeadStatus    @default(ACTIVE)
   assignedToId   String?
   assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  supervisorId   String?
+  supervisor     User? @relation("LeadSupervisor", fields: [supervisorId], references: [id])
+  reviews        LeadReview[]
   estimatedValue Decimal?      @db.Decimal(12, 2)
   currency       String?
   lostReason     String?
@@ -936,6 +943,7 @@ model WhatsAppSession {
 // due date is what drives the pipeline's Today / This week / This month filters, so it is required:
 // a task with no date cannot answer "who do I contact now", which is the whole point of having it.
 model LeadTask {
+  review       LeadReview?
   id           String    @id @default(uuid())
   leadId       String
   lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1686,4 +1694,34 @@ model TreatmentPlanShareLink {
 
   @@index([treatmentPlanId])
   @@map("treatment_plan_share_links")
+}
+
+model AccessProfile {
+  id          String @id @default(uuid())
+  name        String @unique
+  permissions Json
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@map("access_profiles")
+}
+model LeadReview {
+  taskId         String? @unique
+  task           LeadTask? @relation(fields: [taskId], references: [id])
+  id             String @id @default(uuid())
+  leadId         String
+  lead           Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewerId     String
+  reviewer       User @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  note           String
+  status         String @default("OPEN")
+  correction     String?
+  submittedById  String?
+  dueAt          DateTime
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@index([leadId, status])
+  @@index([status, dueAt])
+  @@map("lead_reviews")
 }

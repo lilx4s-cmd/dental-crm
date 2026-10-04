@@ -1,3 +1,4 @@
+import { hasPermission, canSeeAllLeads, canSupervise } from '@dental-crm/shared';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { JwtPayload, Role } from '@dental-crm/shared';
@@ -89,8 +90,8 @@ export class ConversationsService {
   ) {}
 
   private scope(user?: JwtPayload): Prisma.ConversationWhereInput {
-    if (!user || user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER) return {};
-    return { AND: [{ OR: [{ whatsappSessionId: 'default' }, { whatsappSessionId: `user:${user.sub}` }] }] };
+    if (!user || hasPermission(user, 'conversations.all', user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER)) return {};
+    return { AND: [{ OR: [{ whatsappSessionId: 'default' }, { whatsappSessionId: `user:${user.sub}` }, ...(canSupervise(user) ? [{ lead: { supervisorId: user.sub } }] : [])] }] };
   }
 
   async assertAccess(id: string, user: JwtPayload) {
@@ -98,12 +99,19 @@ export class ConversationsService {
     if (!conversation) throw new NotFoundException('Conversation not found');
   }
 
+  async assertSendAccess(id: string, user: JwtPayload) {
+    await this.assertAccess(id, user);
+    const conversation = await this.prisma.conversation.findUnique({ where: { id }, select: { whatsappSessionId: true } });
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (conversation.whatsappSessionId !== 'default' && conversation.whatsappSessionId !== `user:${user.sub}`) throw new ForbiddenException('You can only send through your own work account.');
+  }
+
   async assertStartAccess(dto: StartConversationDto, user: JwtPayload) {
     if (!!dto.leadId === !!dto.patientId) throw new BadRequestException('Choose exactly one lead or patient.');
     if (dto.whatsappSessionId && dto.whatsappSessionId !== 'default' && dto.whatsappSessionId !== `user:${user.sub}`) {
       throw new ForbiddenException('Start conversations using your own work number or the shared clinic number.');
     }
-    if (dto.leadId && user.role !== Role.SUPER_ADMIN) {
+    if (dto.leadId && !canSeeAllLeads(user)) {
       const lead = await this.prisma.lead.findFirst({ where: { id: dto.leadId, assignedToId: user.sub }, select: { id: true } });
       if (!lead) throw new NotFoundException('Lead not found');
     }

@@ -4,6 +4,7 @@ import {
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
+import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '@dental-crm/shared';
@@ -71,6 +72,7 @@ export class LeadsController {
   // Reassign leads between salespeople. Super Admin only — this moves data
   // ownership. Declared before ':id'.
   @Post('transfer/preview')
+  @Permission('leads.assign')
   @Roles(Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'List the leads a transfer would move, without moving them' })
   previewTransfer(@Body() dto: TransferLeadsDto, @CurrentUser() user: JwtPayload) {
@@ -78,6 +80,7 @@ export class LeadsController {
   }
 
   @Post('transfer')
+  @Permission('leads.assign')
   @Roles(Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Transfer (reassign) leads between salespeople' })
   transferLeads(@Body() dto: TransferLeadsDto, @CurrentUser() user: JwtPayload) {
@@ -144,6 +147,7 @@ export class LeadsController {
    * proxy cache between here and the browser.
    */
   @Post('bulk/export')
+  @Permission('leads.read')
   @Roles(...PIPELINE_ROLES)
   @ApiOperation({ summary: 'Export the selected deals as CSV' })
   async bulkExport(

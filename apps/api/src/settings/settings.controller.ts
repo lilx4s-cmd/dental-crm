@@ -1,6 +1,7 @@
 import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsArray, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ALL_STAFF, CLINIC_SETTINGS_WRITE } from '../common/access-policy';
 import { SettingsService } from './settings.service';
@@ -50,6 +51,7 @@ export class SettingsController {
    * clinic or change its currency — and currency is stamped on invoices.
    */
   @Patch()
+  @Permission('settings.write')
   @Roles(...CLINIC_SETTINGS_WRITE)
   @ApiOperation({ summary: 'Update clinic configuration (Super Admin only)' })
   update(@Body() dto: UpdateSettingsDto) {

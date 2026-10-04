@@ -12,6 +12,7 @@ const SELECT_SAFE = {
   phone: true,
   avatarUrl: true,
   role: true,
+  accessProfileId: true,
   isActive: true,
   specialization: true,
   calendarColor: true,
@@ -52,8 +53,9 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateUserDto, currentUserId?: string) {
+    const current = await this.findOne(id);
+    if (id === currentUserId && dto.role && dto.role !== current.role) throw new BadRequestException('You cannot change your own owner role.');
     return this.prisma.user.update({ where: { id }, data: dto, select: SELECT_SAFE });
   }
 

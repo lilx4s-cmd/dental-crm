@@ -150,6 +150,7 @@ function UserManagement() {
   const { data: users, isLoading } = usersQuery;
   const { user: currentUser } = useAuth();
   const [accessUser, setAccessUser] = useState<User | null>(null);
+  if (currentUser?.role !== 'SUPER_ADMIN') return null;
 
   return (
     <Card>

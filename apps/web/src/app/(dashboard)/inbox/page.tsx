@@ -1,5 +1,6 @@
 'use client';
 
+import { hasPermission } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -239,7 +240,8 @@ function MessageBubble({
 
 function MessageThread({ conversationId }: { conversationId: string }) {
   const { user } = useAuth();
-  const manager = user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER';
+  const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
+  const readOnly = !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION');
   const threadQuery = useConversation(conversationId);
   const markRead = useMarkConversationRead();
   // Which thread has already been marked, so a re-render does not send the same PATCH again. A ref
@@ -262,7 +264,7 @@ function MessageThread({ conversationId }: { conversationId: string }) {
   const { data: sending } = useSendingStatus(conversationId);
   const [text, setText] = useState('');
   const [lightbox, setLightbox] = useState<SentAttachment | null>(null);
-  const canSend = !manager && conv?.channel === 'WHATSAPP' && !!text.trim() && sending?.canSend === true && !sendMessage.isPending;
+  const canSend = !readOnly && conv?.channel === 'WHATSAPP' && !!text.trim() && sending?.canSend === true && !sendMessage.isPending;
 
   async function handleSend() {
     // Guarded rather than merely disabled: Enter reaches here whatever the button's state is, and
@@ -331,7 +333,7 @@ function MessageThread({ conversationId }: { conversationId: string }) {
           <MessageBubble
             key={msg.id}
             msg={msg}
-            readOnly={manager}
+            readOnly={readOnly}
             onRetry={() => { if (!manager) void handleRetry(msg.id); }}
             retrying={retryMessage.isPending && retryMessage.variables === msg.id}
             onOpenImage={setLightbox}
@@ -342,7 +344,7 @@ function MessageThread({ conversationId }: { conversationId: string }) {
         )}
       </div>
 
-      {manager || conv.channel !== 'WHATSAPP' ? <p className="border-t p-3 text-sm text-muted-foreground">{manager ? 'Manager view · Read team conversations and monitor patient contact here.' : 'This channel has no connected sending service. Messages are read-only.'}</p> : <div className="border-t p-3">
+      {readOnly || conv.channel !== 'WHATSAPP' ? <p className="border-t p-3 text-sm text-muted-foreground">{manager ? 'Manager view · Read team conversations and monitor patient contact here.' : 'This channel has no connected sending service. Messages are read-only.'}</p> : <div className="border-t p-3">
         {sending && !sending.canSend && (
           <p className="mb-2 flex items-start gap-1.5 rounded-md border border-destructive/25 bg-destructive-muted px-2.5 py-1.5 text-xs text-destructive-muted-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

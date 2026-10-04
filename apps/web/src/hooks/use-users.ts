@@ -9,6 +9,7 @@ export interface User {
   lastName: string;
   role: string;
   isActive: boolean;
+  accessProfileId?: string | null;
   calendarColor: string | null;
   specialization: string | null;
 }

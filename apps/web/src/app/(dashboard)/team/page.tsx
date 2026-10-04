@@ -1,4 +1,5 @@
 'use client';
+import { hasPermission } from '@dental-crm/shared';
 
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -144,7 +145,7 @@ function ActivityFeed({ users, isAdmin }: { users: User[]; isAdmin: boolean }) {
 
 export default function TeamPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'SUPER_ADMIN';
+  const isAdmin = hasPermission(user, 'leads.assign', user?.role === 'SUPER_ADMIN');
   const { data: users, isLoading: usersLoading } = useUsers();
   const assignees = useMemo(() => (users ?? []).filter((u) => u.isActive), [users]);
 

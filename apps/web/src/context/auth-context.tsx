@@ -1,8 +1,9 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { apiRequest, clearCsrfToken, setCsrfToken, refreshAccessToken } from '@/lib/api-client';
+import { useQueryClient } from '@tanstack/react-query';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 import {
   JwtPayload,
@@ -53,6 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const lastAccess = useRef<string | null>(null);
   const pathname = usePathname();
 
   // Restore the session on load. The access token lives in a cookie that survives
@@ -72,8 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (cancelled) return;
       if (token && payload) {
-        setUser(payload);
-        setAccessToken(token);
+        const me = await apiRequest<JwtPayload>('/api/auth/me', {}, token).catch(() => null);
+        if (cancelled) return;
+        if (me) { setUser(me); setAccessToken(readCookie('access_token') ?? token); } else { setUser(null); setAccessToken(null); }
       } else {
         document.cookie = 'access_token=; path=/; max-age=0';
       }
@@ -82,12 +86,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void restore();
     const refreshed = (event: Event) => {
       const token = (event as CustomEvent<string>).detail;
-      const payload = decodeJwt(token);
-      if (payload) { setUser(payload); setAccessToken(token); }
+      setAccessToken(token);
+      void apiRequest<JwtPayload>('/api/auth/me', {}, token).then(me => { if (!cancelled) setUser(me); }).catch(() => {});
     };
     window.addEventListener('crm:session-refreshed', refreshed);
     return () => { cancelled = true; window.removeEventListener('crm:session-refreshed', refreshed); };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const signature = JSON.stringify([user.sub, user.role, user.permissions]);
+    if (lastAccess.current !== null && lastAccess.current !== signature) queryClient.clear();
+    lastAccess.current = signature;
+  }, [user, queryClient]);
+  useEffect(() => {
+    if (!accessToken) return;
+    const update = () => { void apiRequest<JwtPayload>('/api/auth/me', {}, accessToken).then(setUser).catch(() => {}); };
+    const timer = setInterval(update, 45000);
+    window.addEventListener('focus', update);
+    return () => { clearInterval(timer); window.removeEventListener('focus', update); };
+  }, [accessToken]);
 
   // Client-side fallback for route protection, checked on every navigation.
   // middleware.ts is supposed to redirect unauthenticated requests away from
@@ -147,13 +165,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [establishSession]);
 
   const logout = useCallback(async () => {
+    queryClient.clear();
     await apiRequest('/api/auth/logout', { method: 'POST' }, accessToken ?? undefined).catch(() => {});
     setUser(null);
     setAccessToken(null);
     document.cookie = 'access_token=; path=/; max-age=0';
     clearCsrfToken();
     router.push('/login');
-  }, [accessToken, router]);
+  }, [accessToken, router, queryClient]);
 
   return (
     <AuthContext.Provider value={{ ready, user, accessToken, login, completeTwoFactor, logout, setAuth }}>

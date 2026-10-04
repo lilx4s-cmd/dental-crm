@@ -5,6 +5,8 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsQueryDto } from './dto/conversations-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
+import { hasPermission } from '@dental-crm/shared';
+import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PATIENT_FACING, MANAGEMENT } from '../common/access-policy';
 
@@ -55,20 +57,22 @@ export class ConversationsController {
   }
 
   @Post(':id/messages')
+  @Permission('conversations.send')
   @Roles('SALES_CONSULTANT', 'RECEPTION')
   async sendMessage(
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.conversationsService.assertAccess(id, user);
+    await this.conversationsService.assertSendAccess(id, user);
     return this.conversationsService.sendMessage(id, dto, user.sub);
   }
 
   @Post(':id/messages/:messageId/retry')
+  @Permission('conversations.send')
   @Roles('SALES_CONSULTANT', 'RECEPTION')
   async retry(@Param('id') id: string, @Param('messageId') messageId: string, @CurrentUser() user: JwtPayload) {
-    await this.conversationsService.assertAccess(id, user);
+    await this.conversationsService.assertSendAccess(id, user);
     return this.conversationsService.retryMessage(id, messageId);
   }
 
@@ -83,7 +87,7 @@ export class ConversationsController {
   @Roles(...PATIENT_FACING)
   async markRead(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     await this.conversationsService.assertAccess(id, user);
-    if (user.role === 'SUPER_ADMIN' || user.role === 'CLINIC_MANAGER') return { success: true };
+    if (hasPermission(user, 'conversations.supervise', user.role === 'SUPER_ADMIN' || user.role === 'CLINIC_MANAGER')) return { success: true };
     return this.conversationsService.markRead(id);
   }
 
@@ -119,8 +123,10 @@ export class ConversationsController {
   }
 
   @Patch(':id/assign/:userId')
+  @Permission('conversations.supervise')
   @Roles(...MANAGEMENT)
-  assign(@Param('id') id: string, @Param('userId') userId: string) {
+  async assign(@Param('id') id: string, @Param('userId') userId: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.assign(id, userId);
   }
 }

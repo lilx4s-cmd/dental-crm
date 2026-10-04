@@ -1,3 +1,4 @@
+import { ROUTE_PERMISSIONS } from './permissions';
 import { Role } from '../enums';
 
 /**
@@ -140,8 +141,11 @@ export const FILE_OWNER_ACCESS: Record<string, readonly Role[]> = {
 };
 
 /** Whether this role may read or write files hanging off this kind of record. */
-export function canAccessFilesFor(ownerType: string, role: string | undefined): boolean {
+export function canAccessFilesFor(ownerType: string, role: string | undefined, permissions?: Record<string, boolean>, write = false): boolean {
   if (!role) return false;
+  const resource: Record<string, string> = { PATIENT: 'patients', LEAD: 'leads', CONVERSATION: 'conversations', TREATMENT_PLAN: 'plans', TREATMENT_PLAN_ITEM: 'plans', WARRANTY: 'plans', INVOICE: 'finance', APPOINTMENT: 'appointments' };
+  const key = resource[ownerType] && `${resource[ownerType]}.${write ? 'write' : 'read'}`;
+  if (key && typeof permissions?.[key] === 'boolean') return permissions[key];
   const allowed = FILE_OWNER_ACCESS[ownerType];
   // An owner type nobody has classified is refused rather than waved through: adding a new
   // attachable thing should require saying whose it is.
@@ -170,10 +174,14 @@ export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
   // Readable by all — the clinic's name and currency are wanted product-wide. Writing is Super
   // Admin only, enforced on the endpoint and reflected in the form.
   '/settings': ALL_STAFF,
+  '/supervision': PIPELINE_WRITE,
+  '/access': CLINIC_ADMIN,
 };
 
-export function canAccessRoute(path: string, role: string | undefined): boolean {
+export function canAccessRoute(path: string, role: string | undefined, permissions?: Record<string, boolean>): boolean {
   if (!role) return false;
+  const key = ROUTE_PERMISSIONS[path];
+  if (key && typeof permissions?.[key] === 'boolean') return permissions[key];
   const allowed = ROUTE_ACCESS[path];
   // An unlisted route is not silently opened: someone adding a page has to say who it is for.
   if (!allowed) return false;

@@ -9,6 +9,9 @@ import { ConfirmFileDto } from './dto/confirm-file.dto';
 import { MalwareScanService } from './malware-scan';
 import {
   canAccessFilesFor,
+  canSeeAllLeads,
+  canSupervise,
+  hasPermission,
   fileKind,
   isOwnedStorageKey,
   rejectUpload,
@@ -119,16 +122,28 @@ export class FilesService {
    * on a patient and passport scans on a deal, and those answer to different people. The rule is
    * that a record's files are reachable by whoever may reach the record.
    */
-  private assertOwnerAccess(ownerType: string, user: JwtPayload) {
-    if (!canAccessFilesFor(ownerType, user.role)) {
+  private assertOwnerAccess(ownerType: string, user: JwtPayload, write = false) {
+    if (!canAccessFilesFor(ownerType, user.role, user.permissions, write)) {
       // Deliberately says what is refused rather than what exists: a sales consultant probing for
       // a patient's radiographs should not learn whether any are on file.
       throw new ForbiddenException('Your role cannot access files on this record');
     }
   }
 
+  private async assertRecordScope(ownerType: string, ownerId: string, user: JwtPayload) {
+    if (ownerType === 'LEAD' && !canSeeAllLeads(user)) {
+      const lead = await this.prisma.lead.findFirst({ where: { id: ownerId, OR: [{ assignedToId: user.sub }, ...(canSupervise(user) ? [{ supervisorId: user.sub }] : [])] }, select: { id: true } });
+      if (!lead) throw new NotFoundException('Record not found');
+    }
+    if (ownerType === 'CONVERSATION' && !hasPermission(user, 'conversations.all', user.role === 'SUPER_ADMIN' || user.role === 'CLINIC_MANAGER')) {
+      const thread = await this.prisma.conversation.findFirst({ where: { id: ownerId, OR: [{ whatsappSessionId: 'default' }, { whatsappSessionId: `user:${user.sub}` }, ...(canSupervise(user) ? [{ lead: { supervisorId: user.sub } }] : [])] }, select: { id: true } });
+      if (!thread) throw new NotFoundException('Record not found');
+    }
+  }
+
   async createUploadUrl(dto: CreateUploadUrlDto, user: JwtPayload) {
-    this.assertOwnerAccess(dto.ownerType, user);
+    this.assertOwnerAccess(dto.ownerType, user, true);
+    await this.assertRecordScope(dto.ownerType, dto.ownerId, user);
     return this.signUpload(dto);
   }
 
@@ -189,7 +204,8 @@ export class FilesService {
    * exist, and the type and size are read from storage and checked against the category's rule.
    */
   async confirm(dto: ConfirmFileDto, uploadedById: string, user: JwtPayload) {
-    this.assertOwnerAccess(dto.ownerType, user);
+    this.assertOwnerAccess(dto.ownerType, user, true);
+    await this.assertRecordScope(dto.ownerType, dto.ownerId, user);
 
     if (!isOwnedStorageKey(dto.s3Key, dto.ownerType, dto.ownerId)) {
       throw new ForbiddenException('That storage key does not belong to this record.');
@@ -270,6 +286,7 @@ export class FilesService {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
     this.assertOwnerAccess(file.ownerType, user);
+    await this.assertRecordScope(file.ownerType, file.ownerId, user);
 
     const kind = fileKind(file.mimeType);
     if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
@@ -340,6 +357,7 @@ export class FilesService {
    */
   async findByOwner(ownerType: string, ownerId: string, user: JwtPayload) {
     this.assertOwnerAccess(ownerType, user);
+    await this.assertRecordScope(ownerType, ownerId, user);
 
     const own = await this.prisma.file.findMany({
       where: { ownerType: ownerType as $Enums.AttachableType, ownerId },
@@ -378,6 +396,7 @@ export class FilesService {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
     this.assertOwnerAccess(file.ownerType, user);
+    await this.assertRecordScope(file.ownerType, file.ownerId, user);
 
     const client = this.getClient();
     const { data, error } = await client.storage
@@ -396,7 +415,8 @@ export class FilesService {
   async remove(id: string, user: JwtPayload) {
     const file = await this.prisma.file.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
-    this.assertOwnerAccess(file.ownerType, user);
+    this.assertOwnerAccess(file.ownerType, user, true);
+    await this.assertRecordScope(file.ownerType, file.ownerId, user);
 
     const client = this.getClient();
     await client.storage.from(file.s3Bucket).remove([file.s3Key]);

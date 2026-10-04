@@ -16,6 +16,8 @@ const navItems = [
   { href: '/patients', label: 'Patients', icon: Users },
   { href: '/my-day', label: 'My Day', icon: Sunrise },
   { href: '/pipeline', label: 'Deals', icon: GitBranch },
+  { href: '/supervision', label: 'Lead Supervision', icon: BarChart2 },
+  { href: '/access', label: 'Access Control', icon: Users },
   { href: '/team', label: 'Sales Team', icon: ArrowLeftRight },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/inbox', label: 'Conversations', icon: MessageSquare },
@@ -36,7 +38,7 @@ export function Sidebar() {
   // Offered only if it can actually be opened. The same policy decides the API's answer, so the
   // nav cannot advertise a page that greets the person with a 403 — which is how a product tells
   // somebody they may do something and then refuses when they try.
-  const visible = navItems.filter((item) => canAccessRoute(item.href, user?.role));
+  const visible = navItems.filter((item) => canAccessRoute(item.href, user?.role, user?.permissions));
 
   return (
     <aside className="flex flex-col w-64 min-h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
