@@ -57,7 +57,7 @@ describe('Outbound message delivery', () => {
 
     const result = await service.sendMessage('c1', { content: 'Hello' }, 'u1');
 
-    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Hello');
+    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Hello', 'default');
     expect(result.status).toBe('SENT');
     expect(deps.updates[0]).toMatchObject({ status: 'SENT', failureReason: null });
   });
@@ -100,7 +100,7 @@ describe('Outbound message delivery', () => {
     await service.sendMessage('c1', { content: 'Hi' }, 'u1');
 
     // Punctuation stripped, so this matches the id inbound messages arrive under.
-    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Hi');
+    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Hi', 'default');
   });
 
   it('does not silently queue on a channel with no transport', async () => {
@@ -123,7 +123,7 @@ describe('Retrying a failed message', () => {
 
     await service.retryMessage('c1', 'm1');
 
-    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Original wording');
+    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Original wording', 'default');
   });
 
   it('refuses to resend one that already went out', async () => {
@@ -169,5 +169,26 @@ describe('Starting a conversation', () => {
     const service = await make(deps);
 
     await expect(service.startConversation({ leadId: 'l1' })).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('Work account delivery', () => {
+  it('uses the conversation account instead of the shared number', async () => {
+    const deps = build({ conversation: { id: 'c1', ...WHATSAPP, whatsappSessionId: 'user:u1' } });
+    const service = await make(deps);
+    await service.sendMessage('c1', { content: 'Hello' }, 'u1');
+    expect(deps.send).toHaveBeenCalledWith('905551112233', 'Hello', 'user:u1');
+  });
+  it('records direct work-phone outgoing messages as successful contact', async () => {
+    const deps = build(); const service = await make(deps);
+    await service.createInboundMessage('WHATSAPP', '905551112233', 'Hello', 'user:u1:wa1', 'lead1', undefined, 'user:u1', 'u1', true);
+    expect(deps.prisma.conversation.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ whatsappSessionId: 'user:u1', assignedToId: 'u1' }) }));
+    expect(deps.prisma.message.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ direction: 'OUTBOUND', status: 'SENT' }) }));
+  });
+  it('ignores a replayed WhatsApp message', async () => {
+    const deps = build(); deps.prisma.message.findFirst.mockResolvedValue({ id: 'existing' });
+    const service = await make(deps);
+    expect(await service.createInboundMessage('WHATSAPP', '905551112233', 'Hello', 'wa1')).toEqual({ id: 'existing' });
+    expect(deps.prisma.message.create).not.toHaveBeenCalled();
   });
 });

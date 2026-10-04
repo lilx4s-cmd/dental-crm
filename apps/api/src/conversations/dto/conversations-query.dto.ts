@@ -1,9 +1,11 @@
-import { IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, MaxLength, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class ConversationsQueryDto {
+  @IsOptional() @IsUUID() leadId?: string;
   @IsOptional() @IsString() channel?: string;
   @IsOptional() @IsString() assignedToId?: string;
+  @IsOptional() @IsString() @MaxLength(80) whatsappSessionId?: string;
   @IsOptional() @Transform(({ value }) => value === 'true') @IsBoolean() isArchived?: boolean;
 
   /**

@@ -4,6 +4,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: Role;
+  permissions?: Record<string, boolean>;
+  accessProfileName?: string;
   iat?: number;
   exp?: number;
 }

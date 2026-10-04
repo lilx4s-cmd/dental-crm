@@ -80,7 +80,7 @@ export declare const CLINIC_ADMIN: readonly ["SUPER_ADMIN"];
  */
 export declare const FILE_OWNER_ACCESS: Record<string, readonly Role[]>;
 /** Whether this role may read or write files hanging off this kind of record. */
-export declare function canAccessFilesFor(ownerType: string, role: string | undefined): boolean;
+export declare function canAccessFilesFor(ownerType: string, role: string | undefined, permissions?: Record<string, boolean>, write?: boolean): boolean;
 /**
  * Which roles may open each page of the dashboard.
  *
@@ -88,7 +88,7 @@ export declare function canAccessFilesFor(ownerType: string, role: string | unde
  * actually load is worse than no page at all: it offers the work and then refuses it.
  */
 export declare const ROUTE_ACCESS: Record<string, readonly Role[]>;
-export declare function canAccessRoute(path: string, role: string | undefined): boolean;
+export declare function canAccessRoute(path: string, role: string | undefined, permissions?: Record<string, boolean>): boolean;
 /**
  * Where a role should land after logging in.
  *

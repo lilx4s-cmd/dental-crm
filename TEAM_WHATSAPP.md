@@ -1,0 +1,27 @@
+# Team WhatsApp and manager supervision
+
+Management (SUPER_ADMIN and CLINIC_MANAGER) uses Work WhatsApp to see each active work account, connection status, assigned lead count, captured-contact count, and conversations. Manager conversation views do not mark staff messages read and cannot send or retry messages. Staff (SALES_CONSULTANT and RECEPTION) pair their own dedicated work number and can send text from Conversations. Other staff cannot access another person's work-account threads, even through a direct URL.
+
+Contacted counts are currently assigned leads with a successful outgoing message captured on that person's account. They do not prove that the patient read the message, do not identify which linked device typed it, and do not count messages sent while tracking was disconnected. Phone and linked-device outgoing messages are captured as outbound; incoming replies remain inbound. Media is represented by a caption or placeholder; files must be sent/viewed on work WhatsApp. Existing saved attachments remain readable. Opening WhatsApp alone never counts as contact.
+
+## Deployment
+
+1. Deploy the backend changes on Render with the existing migration-first start command. The additive migration creates whatsapp_accounts and adds a session identifier to conversations; existing conversations remain in the default clinic session. Do not reset the production database.
+2. Enable WHATSAPP_WEB_ENABLED=true in the Render service. This is an existing optional flag. Persistent authentication keys remain in the existing database-backed WhatsAppSession store, with one namespace per account.
+3. Deploy the matching frontend to Vercel after the backend is healthy. Keep NEXT_PUBLIC_API_URL pointed at the actual Render backend.
+4. Each salesperson opens Work WhatsApp and scans their own QR from their work phone's Linked devices menu. Never use personal numbers: the linked account's individual chats are visible to management.
+5. Verify with an internal test contact: assign a test lead, send staff CRM text, reply from the test phone, send direct work-phone text, inspect manager conversation and contact count, then disconnect and verify sending is disabled. No real patient messages should be sent for testing.
+
+A disconnected account retains its captured history and last capture time. Reconnection backs off automatically for transient failures and requires a fresh QR when credentials are rejected. Reconnect never switches sending to another number. Live disconnection and contact counts poll every 15 seconds; conversation sending availability polls every 10 seconds.
+
+The backend health endpoint checks process availability, not WhatsApp message delivery. Render must remain awake for live capture; a sleeping service creates tracking gaps. Existing shared clinic gateways remain available for historic default threads.
+
+## Editable access and delegated supervision
+
+The owner has an Access Control page with named, reusable profiles and staff assignments. A supervisor preset grants lead reading/editing, all-lead visibility, reassignment, reviews, and read-only team conversation oversight. It does not grant finance, clinical records, sending from other accounts, user-account administration, database cleanup or permanent deletion. Existing role defaults apply when no profile is assigned. Profile edits are audited and affect API authorization on the next request. Browser navigation refreshes access on focus and every 45 seconds, and clears cached workspace data when the access signature changes. Owners cannot assign themselves a restricted profile or change their own owner role. Account administration is owner-only.
+
+A supervisor can be assigned to an individual lead. Supervisors with all-lead access can cover the team; a restricted supervisor can review only leads assigned to their supervision. Lead Supervision lists up to 100 active leads with search, captured WhatsApp contact and overdue tasks. It also lists open issues and corrections awaiting review. Staff see their own correction queue.
+
+Flagging an issue requires a salesperson on the lead and creates a due task (24 hours by default) atomically with the review. The salesperson explains the correction, which moves the issue to READY. A supervisor accepts it or returns it to OPEN. Acceptance closes the related follow-up. Ordinary task completion/deletion cannot bypass the review. Decisions remain in the lead activity history. Follow-ups and the live review queue support ongoing work without the owner, provided a deputy is assigned and staff actually work the queue; this does not automate sales conversations or certify the accuracy of a correction.
+
+Deploy both additive migrations before serving this frontend. After deployment, create the desired access profiles, assign a deputy, and assign supervisors to leads. Test with internal staff/test records: deny finance through direct API/search/files, grant and revoke lead access without re-login, flag and submit an issue, reject staff self-approval, and approve as the deputy. No live role assignments or production migrations have been performed during development.

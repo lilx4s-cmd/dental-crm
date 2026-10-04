@@ -4,6 +4,7 @@ exports.ROUTE_ACCESS = exports.FILE_OWNER_ACCESS = exports.CLINIC_ADMIN = export
 exports.canAccessFilesFor = canAccessFilesFor;
 exports.canAccessRoute = canAccessRoute;
 exports.landingRoute = landingRoute;
+const permissions_1 = require("./permissions");
 const enums_1 = require("../enums");
 /**
  * Who may reach what.
@@ -132,9 +133,13 @@ exports.FILE_OWNER_ACCESS = {
     OTHER: exports.MANAGEMENT,
 };
 /** Whether this role may read or write files hanging off this kind of record. */
-function canAccessFilesFor(ownerType, role) {
+function canAccessFilesFor(ownerType, role, permissions, write = false) {
     if (!role)
         return false;
+    const resource = { PATIENT: 'patients', LEAD: 'leads', CONVERSATION: 'conversations', TREATMENT_PLAN: 'plans', TREATMENT_PLAN_ITEM: 'plans', WARRANTY: 'plans', INVOICE: 'finance', APPOINTMENT: 'appointments' };
+    const key = resource[ownerType] && `${resource[ownerType]}.${write ? 'write' : 'read'}`;
+    if (key && typeof permissions?.[key] === 'boolean')
+        return permissions[key];
     const allowed = exports.FILE_OWNER_ACCESS[ownerType];
     // An owner type nobody has classified is refused rather than waved through: adding a new
     // attachable thing should require saying whose it is.
@@ -156,16 +161,22 @@ exports.ROUTE_ACCESS = {
     '/team': exports.CLINIC_ADMIN,
     '/campaigns': exports.PIPELINE,
     '/inbox': exports.PATIENT_FACING,
+    '/whatsapp': exports.PATIENT_FACING,
     '/appointments': exports.SCHEDULING,
     '/finance': exports.FINANCE,
     '/reports': exports.MANAGEMENT,
     // Readable by all — the clinic's name and currency are wanted product-wide. Writing is Super
     // Admin only, enforced on the endpoint and reflected in the form.
     '/settings': exports.ALL_STAFF,
+    '/supervision': exports.PIPELINE_WRITE,
+    '/access': exports.CLINIC_ADMIN,
 };
-function canAccessRoute(path, role) {
+function canAccessRoute(path, role, permissions) {
     if (!role)
         return false;
+    const key = permissions_1.ROUTE_PERMISSIONS[path];
+    if (key && typeof permissions?.[key] === 'boolean')
+        return permissions[key];
     const allowed = exports.ROUTE_ACCESS[path];
     // An unlisted route is not silently opened: someone adding a page has to say who it is for.
     if (!allowed)

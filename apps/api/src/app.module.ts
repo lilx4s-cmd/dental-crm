@@ -1,3 +1,5 @@
+import { AccessModule } from './access/access.module';
+import { SupervisionModule } from './supervision/supervision.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -49,6 +51,8 @@ import { HealthController } from './health/health.controller';
     PrismaModule,
     AuthModule,
     UsersModule,
+    AccessModule,
+    SupervisionModule,
     // Registered once for the whole app. Per-module registration starts a second scheduler.
     ScheduleModule.forRoot(),
     TagsModule,

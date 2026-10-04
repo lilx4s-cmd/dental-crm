@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
-import { CLINICAL, PIPELINE, Role, type JwtPayload } from '@dental-crm/shared';
+import { CLINICAL, PIPELINE, hasPermission, canSeeAllLeads, type JwtPayload } from '@dental-crm/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -47,7 +47,7 @@ export class SearchService {
   }
 
   private async searchLeads(q: string, user: JwtPayload): Promise<SearchHit[]> {
-    if (!(PIPELINE as readonly string[]).includes(user.role)) return [];
+    if (!hasPermission(user, 'leads.read', (PIPELINE as readonly string[]).includes(user.role))) return [];
 
     const where: Prisma.LeadWhereInput = {
       // Merged duplicates are not separate people. Surfacing both halves of a merge would offer a
@@ -56,7 +56,7 @@ export class SearchService {
       OR: this.contactMatch(q),
     };
     // The same scoping the board uses: only SUPER_ADMIN sees the whole pipeline.
-    if (user.role !== Role.SUPER_ADMIN) where.assignedToId = user.sub;
+    if (!canSeeAllLeads(user)) where.assignedToId = user.sub;
 
     const rows = await this.prisma.lead.findMany({
       where,
@@ -79,7 +79,7 @@ export class SearchService {
   private async searchPatients(q: string, user: JwtPayload): Promise<SearchHit[]> {
     // Deliberately the same gate as PatientsController. A sales consultant must not learn from a
     // search box that a patient exists.
-    if (!(CLINICAL as readonly string[]).includes(user.role)) return [];
+    if (!hasPermission(user, 'patients.read', (CLINICAL as readonly string[]).includes(user.role))) return [];
 
     const rows = await this.prisma.patient.findMany({
       where: { OR: this.contactMatch(q, true) },

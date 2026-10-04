@@ -42,15 +42,16 @@ export class WhatsAppSenderService {
    * only knowable by asking it, and a status call on every keystroke is not worth it. The phone
    * session is different: it holds its own socket, so its liveness is already known here.
    */
-  activeTransport(): WhatsAppTransport {
+  activeTransport(sessionId = 'default'): WhatsAppTransport {
+    if (sessionId !== 'default') return this.web.status(sessionId).state === 'connected' ? 'web' : 'none';
     if (this.evolution.configured) return 'evolution';
     if (this.cloud.status().configured) return 'cloud_api';
     if (this.web.status().state === 'connected') return 'web';
     return 'none';
   }
 
-  status() {
-    const transport = this.activeTransport();
+  status(sessionId = 'default') {
+    const transport = this.activeTransport(sessionId);
     return { transport, label: TRANSPORT_LABELS[transport], canSend: transport !== 'none' };
   }
 
@@ -61,8 +62,8 @@ export class WhatsAppSenderService {
    * caller records the failure against the message, and a message the clinic believes was
    * delivered when it never left the building is the worst outcome available here.
    */
-  async sendText(toPhone: string, text: string): Promise<WhatsAppTransport> {
-    const transport = this.activeTransport();
+  async sendText(toPhone: string, text: string, sessionId = 'default'): Promise<WhatsAppTransport> {
+    const transport = this.activeTransport(sessionId);
 
     switch (transport) {
       case 'evolution':
@@ -72,7 +73,7 @@ export class WhatsAppSenderService {
         await this.cloud.sendTextMessage(toPhone, text);
         return 'cloud_api';
       case 'web':
-        await this.web.sendText(toPhone, text);
+        await this.web.sendText(toPhone, text, sessionId);
         return 'web';
       default:
         throw new ServiceUnavailableException(

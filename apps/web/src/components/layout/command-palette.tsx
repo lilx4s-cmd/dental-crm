@@ -50,7 +50,7 @@ export function CommandPalette() {
     const q = term.trim().toLowerCase();
     return DESTINATIONS.filter(
       (d) =>
-        canAccessRoute(d.href, (user as JwtPayload).role) &&
+        canAccessRoute(d.href, (user as JwtPayload).role, user?.permissions) &&
         (!q || d.label.toLowerCase().includes(q)),
     );
   }, [term, user]);

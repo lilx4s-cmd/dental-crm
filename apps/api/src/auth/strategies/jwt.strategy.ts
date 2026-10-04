@@ -28,8 +28,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Finish signing in with your authentication code.');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, include: { accessProfile: true } });
     if (!user || !user.isActive) throw new UnauthorizedException('User not found or inactive');
-    return { sub: user.id, email: user.email, role: user.role };
+    return { sub: user.id, email: user.email, role: user.role, permissions: user.accessProfile?.permissions as Record<string, boolean> | undefined, accessProfileName: user.accessProfile?.name };
   }
 }

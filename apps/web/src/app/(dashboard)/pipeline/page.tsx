@@ -1,4 +1,5 @@
 'use client';
+import { hasPermission } from '@dental-crm/shared';
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -96,6 +97,8 @@ function DroppableColumn({
   onExportColumn: (leads: Lead[]) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  const { user } = useAuth();
+  const canWrite = hasPermission(user, 'leads.write', true);
   const totals = columnTotals(leads);
 
   return (
@@ -120,7 +123,7 @@ function DroppableColumn({
           </div>
           {/* Lost needs a reason, which this dialog does not collect — so that one column keeps
               the drag-and-drop path that does ask for one. */}
-          {stage.terminal !== 'lost' && (
+          {canWrite && stage.terminal !== 'lost' && (
             <NewLeadDialog defaultStage={stage.id} defaultStageLabel={stage.label}>
               <button
                 type="button"
@@ -192,6 +195,8 @@ function moveErrorMessage(e: unknown): string {
 
 export default function PipelinePage() {
   const { user } = useAuth();
+  const canWrite = hasPermission(user, 'leads.write', true);
+  const canAssign = hasPermission(user, 'leads.assign', user?.role === 'SUPER_ADMIN');
   const [filters, setFilters] = useState<PipelineFilters>({});
   const boardQuery = useLeadsByStage(filters);
   const { data: groups, isLoading } = boardQuery;
@@ -245,6 +250,7 @@ export default function PipelinePage() {
   const boardTotals = columnTotals(allLeads);
 
   function onDragStart(event: DragStartEvent) {
+    if (!canWrite) return;
     const lead = allLeads.find((l) => l.id === event.active.id);
     setActiveLead(lead ?? null);
   }
@@ -253,6 +259,7 @@ export default function PipelinePage() {
   // last known-good server state on failure. Shared by the plain drag-and-drop
   // path and the lost-reason-confirmed path below.
   async function commitMove(lead: Lead, toStage: string, extra?: { lostReason?: string; note?: string }) {
+    if (!canWrite) { toast.error('Your profile has read-only access to deals.'); return; }
     const fromStage = lead.stage;
     setLocalGroups((prev) =>
       prev.map((g) => {
@@ -292,6 +299,7 @@ export default function PipelinePage() {
    * costs the ability to say which ones failed.
    */
   async function moveMany(leads: Lead[], toStage: string) {
+    if (!canWrite) { toast.error('Your profile has read-only access to deals.'); return; }
     if (leads.length === 0) return;
 
     const before = leads.map((l) => ({ id: l.id, fromStage: l.stage }));
@@ -353,6 +361,7 @@ export default function PipelinePage() {
 
   async function onDragEnd(event: DragEndEvent) {
     setActiveLead(null);
+    if (!canWrite) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -454,18 +463,18 @@ export default function PipelinePage() {
               </Button>
             </DuplicatesDialog>
           )}
-          <ImportLeadsDialog>
+          {canWrite && <ImportLeadsDialog>
             <Button variant="outline" size="sm">
               <Upload className="mr-2 h-4 w-4" />
               Import CSV
             </Button>
-          </ImportLeadsDialog>
-          <NewLeadDialog>
+          </ImportLeadsDialog>}
+          {canWrite && <NewLeadDialog>
             <Button size="sm">
               <UserPlus className="mr-2 h-4 w-4" />
               New Deal
             </Button>
-          </NewLeadDialog>
+          </NewLeadDialog>}
         </div>
       </div>
 
@@ -506,6 +515,7 @@ export default function PipelinePage() {
                   // bulk bar uses, on the cards the menu named — so the selection has to become
                   // that set first, or the dialog would act on whatever was highlighted before.
                   onChangeResponsible={(leads) => {
+                    if (!canAssign) { toast.error('Your profile cannot reassign leads.'); return; }
                     selection.selectAll(leads);
                     setBulkIntent('reassign');
                   }}

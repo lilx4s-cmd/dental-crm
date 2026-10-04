@@ -17,7 +17,7 @@ export const OUTBOUND_SENDER = 'OUTBOUND_SENDER';
 
 export interface OutboundSender {
   /** Which route a message would take right now, and whether one exists at all. */
-  status(): { transport: string; label: string; canSend: boolean };
+  status(sessionId?: string): { transport: string; label: string; canSend: boolean };
   /** Delivers text, resolving with the transport used and rejecting when it did not go out. */
-  sendText(toPhone: string, text: string): Promise<string>;
+  sendText(toPhone: string, text: string, sessionId?: string): Promise<string>;
 }

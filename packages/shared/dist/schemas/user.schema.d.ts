@@ -8,19 +8,19 @@ export declare const CreateUserSchema: z.ZodObject<{
     role: z.ZodEnum<["SUPER_ADMIN", "CLINIC_MANAGER", "RECEPTION", "SALES_CONSULTANT", "DENTIST"]>;
     specialization: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    password: string;
+    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     email: string;
+    password: string;
     firstName: string;
     lastName: string;
-    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     phone?: string | undefined;
     specialization?: string | undefined;
 }, {
-    password: string;
+    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     email: string;
+    password: string;
     firstName: string;
     lastName: string;
-    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     phone?: string | undefined;
     specialization?: string | undefined;
 }>;
@@ -34,18 +34,18 @@ export declare const UpdateUserSchema: z.ZodObject<Omit<{
     role: z.ZodOptional<z.ZodEnum<["SUPER_ADMIN", "CLINIC_MANAGER", "RECEPTION", "SALES_CONSULTANT", "DENTIST"]>>;
     specialization: z.ZodOptional<z.ZodOptional<z.ZodString>>;
 }, "password">, "strip", z.ZodTypeAny, {
+    role?: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST" | undefined;
     email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;
-    role?: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST" | undefined;
     specialization?: string | undefined;
 }, {
+    role?: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST" | undefined;
     email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;
-    role?: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST" | undefined;
     specialization?: string | undefined;
 }>;
 export type UpdateUserDto = z.infer<typeof UpdateUserSchema>;
@@ -61,22 +61,22 @@ export declare const UserSchema: z.ZodObject<{
     specialization: z.ZodNullable<z.ZodString>;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     email: string;
     firstName: string;
     lastName: string;
     phone: string | null;
-    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     specialization: string | null;
     id: string;
     avatarUrl: string | null;
     isActive: boolean;
     createdAt: string;
 }, {
+    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     email: string;
     firstName: string;
     lastName: string;
     phone: string | null;
-    role: "SUPER_ADMIN" | "CLINIC_MANAGER" | "RECEPTION" | "SALES_CONSULTANT" | "DENTIST";
     specialization: string | null;
     id: string;
     avatarUrl: string | null;

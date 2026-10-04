@@ -8,6 +8,7 @@ export interface ConversationSummary {
   id: string;
   channel: string;
   externalThreadId: string | null;
+  whatsappSessionId: string;
   isArchived: boolean;
   /** Kept at the top of the inbox. Clinic-wide, not per person — see the schema. */
   isPinned: boolean;
@@ -61,6 +62,8 @@ export interface ConversationDetail extends Omit<ConversationSummary, 'messages'
 }
 
 export interface InboxFilters {
+  leadId?: string;
+  whatsappSessionId?: string;
   channel?: string;
   /** Name, number, or something said in the thread. */
   search?: string;
@@ -76,6 +79,8 @@ export function useConversations(filters: InboxFilters | string = {}) {
   const f: InboxFilters = typeof filters === 'string' ? { channel: filters } : filters;
 
   const params = new URLSearchParams();
+  if (f.leadId) params.set('leadId', f.leadId);
+  if (f.whatsappSessionId) params.set('whatsappSessionId', f.whatsappSessionId);
   if (f.channel) params.set('channel', f.channel);
   if (f.search?.trim()) params.set('search', f.search.trim());
   if (f.unreadOnly) params.set('unreadOnly', 'true');
@@ -156,12 +161,13 @@ export function useSendMessage(conversationId: string) {
  * Worth asking before they type rather than after: discovering the gateway is down from a failed
  * message means the coordinator has already composed it.
  */
-export function useSendingStatus() {
+export function useSendingStatus(conversationId?: string) {
   const { accessToken } = useAuth();
   return useQuery<SendingStatus>({
-    queryKey: ['conversations', 'sending-status'],
-    queryFn: () => apiRequest('/api/conversations/sending-status', {}, accessToken ?? undefined),
-    staleTime: 60_000,
+    queryKey: ['conversations', 'sending-status', conversationId],
+    queryFn: () => apiRequest(`/api/conversations/sending-status${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`, {}, accessToken ?? undefined),
+    staleTime: 5000,
+    refetchInterval: 10000,
   });
 }
 
@@ -181,15 +187,16 @@ export function useRetryMessage(conversationId: string) {
 
 /** Opens (or reuses) a WhatsApp thread with a lead or patient who has not written in yet. */
 export function useStartConversation() {
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const qc = useQueryClient();
-  return useMutation<ConversationSummary, Error, { leadId?: string; patientId?: string }>({
-    mutationFn: (body) =>
-      apiRequest(
+  return useMutation<ConversationSummary, Error, { leadId?: string; patientId?: string; whatsappSessionId?: string }>({
+    mutationFn: async (body) => {
+      return apiRequest<ConversationSummary>(
         '/api/conversations/start',
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: JSON.stringify({ ...body, whatsappSessionId: body.whatsappSessionId ?? `user:${user?.sub}` }) },
         accessToken ?? undefined,
-      ),
+      );
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
   });
 }

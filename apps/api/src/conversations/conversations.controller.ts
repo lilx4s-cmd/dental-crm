@@ -5,6 +5,8 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsQueryDto } from './dto/conversations-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
+import { hasPermission } from '@dental-crm/shared';
+import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PATIENT_FACING, MANAGEMENT } from '../common/access-policy';
 
@@ -14,8 +16,8 @@ export class ConversationsController {
 
   @Get()
   @Roles(...PATIENT_FACING)
-  findAll(@Query() query: ConversationsQueryDto) {
-    return this.conversationsService.findAll(query);
+  findAll(@Query() query: ConversationsQueryDto, @CurrentUser() user: JwtPayload) {
+    return this.conversationsService.findAll(query, user);
   }
 
   /**
@@ -27,41 +29,50 @@ export class ConversationsController {
   /** Threads needing an answer, for the navigation badge. Declared before ':id'. */
   @Get('unread')
   @Roles(...PATIENT_FACING)
-  unreadSummary() {
-    return this.conversationsService.unreadSummary();
+  unreadSummary(@CurrentUser() user: JwtPayload) {
+    return this.conversationsService.unreadSummary(user);
   }
 
   @Get('sending-status')
   @Roles(...PATIENT_FACING)
-  sendingStatus() {
-    return this.conversationsService.sendingStatus();
+  async sendingStatus(@Query('conversationId') id: string | undefined, @CurrentUser() user: JwtPayload) {
+    if (!id) return this.conversationsService.sendingStatus();
+    await this.conversationsService.assertAccess(id, user);
+    const conversation = await this.conversationsService.findOne(id);
+    return this.conversationsService.sendingStatus(conversation.whatsappSessionId);
   }
 
   @Post('start')
   @Roles(...PATIENT_FACING)
-  start(@Body() dto: StartConversationDto) {
-    return this.conversationsService.startConversation(dto);
+  async start(@Body() dto: StartConversationDto, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertStartAccess(dto, user);
+    return this.conversationsService.startConversation(dto, user.sub);
   }
 
   @Get(':id')
   @Roles(...PATIENT_FACING)
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.findOne(id);
   }
 
   @Post(':id/messages')
-  @Roles(...PATIENT_FACING)
-  sendMessage(
+  @Permission('conversations.send')
+  @Roles('SALES_CONSULTANT', 'RECEPTION')
+  async sendMessage(
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    await this.conversationsService.assertSendAccess(id, user);
     return this.conversationsService.sendMessage(id, dto, user.sub);
   }
 
   @Post(':id/messages/:messageId/retry')
-  @Roles(...PATIENT_FACING)
-  retry(@Param('id') id: string, @Param('messageId') messageId: string) {
+  @Permission('conversations.send')
+  @Roles('SALES_CONSULTANT', 'RECEPTION')
+  async retry(@Param('id') id: string, @Param('messageId') messageId: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertSendAccess(id, user);
     return this.conversationsService.retryMessage(id, messageId);
   }
 
@@ -74,14 +85,17 @@ export class ConversationsController {
    */
   @Patch(':id/read')
   @Roles(...PATIENT_FACING)
-  markRead(@Param('id') id: string) {
+  async markRead(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
+    if (hasPermission(user, 'conversations.supervise', user.role === 'SUPER_ADMIN' || user.role === 'CLINIC_MANAGER')) return { success: true };
     return this.conversationsService.markRead(id);
   }
 
   // Everything sent or received in this thread, for the attachments panel.
   @Get(':id/attachments')
   @Roles(...PATIENT_FACING)
-  attachments(@Param('id') id: string) {
+  async attachments(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.attachments(id);
   }
 
@@ -89,25 +103,30 @@ export class ConversationsController {
   // point of a pin is that the person covering can find the thread too.
   @Patch(':id/pin')
   @Roles(...PATIENT_FACING)
-  pin(@Param('id') id: string) {
+  async pin(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.setPinned(id, true);
   }
 
   @Patch(':id/unpin')
   @Roles(...PATIENT_FACING)
-  unpin(@Param('id') id: string) {
+  async unpin(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.setPinned(id, false);
   }
 
   @Patch(':id/archive')
   @Roles(...PATIENT_FACING)
-  archive(@Param('id') id: string) {
+  async archive(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.archive(id);
   }
 
   @Patch(':id/assign/:userId')
+  @Permission('conversations.supervise')
   @Roles(...MANAGEMENT)
-  assign(@Param('id') id: string, @Param('userId') userId: string) {
+  async assign(@Param('id') id: string, @Param('userId') userId: string, @CurrentUser() user: JwtPayload) {
+    await this.conversationsService.assertAccess(id, user);
     return this.conversationsService.assign(id, userId);
   }
 }

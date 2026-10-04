@@ -45,4 +45,5 @@ __exportStar(require("./i18n/dossier-copy"), exports);
 __exportStar(require("./types/user.types"), exports);
 __exportStar(require("./types/api-response.types"), exports);
 __exportStar(require("./types/pagination.types"), exports);
+__exportStar(require("./access/permissions"), exports);
 //# sourceMappingURL=index.js.map

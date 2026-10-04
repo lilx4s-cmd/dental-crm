@@ -43,9 +43,9 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     firstName: string;
     lastName: string;
     consentGiven: true;
+    email?: string | undefined;
     allergies?: string | undefined;
     medications?: string | undefined;
-    email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     dateOfBirth?: string | undefined;
@@ -75,9 +75,9 @@ export declare const IntakeSubmissionSchema: z.ZodObject<{
     firstName: string;
     lastName: string;
     consentGiven: true;
+    email?: string | undefined;
     allergies?: string | undefined;
     medications?: string | undefined;
-    email?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     dateOfBirth?: string | undefined;

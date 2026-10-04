@@ -1,4 +1,5 @@
 'use client';
+import { hasPermission } from '@dental-crm/shared';
 
 import { useMemo, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '@/context/auth-context';
 import { useUsers, type User } from '@/hooks/use-users';
 import { useSalesActivity, type SalesActivity } from '@/hooks/use-leads';
+import { WhatsAppSessions } from '@/components/team/whatsapp-sessions';
 import { TransferPanel } from '@/components/team/transfer-panel';
 import { QueryError } from '@/components/ui/query-state';
 import { STAGE_LABELS } from '@dental-crm/shared';
@@ -143,7 +145,7 @@ function ActivityFeed({ users, isAdmin }: { users: User[]; isAdmin: boolean }) {
 
 export default function TeamPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'SUPER_ADMIN';
+  const isAdmin = hasPermission(user, 'leads.assign', user?.role === 'SUPER_ADMIN');
   const { data: users, isLoading: usersLoading } = useUsers();
   const assignees = useMemo(() => (users ?? []).filter((u) => u.isActive), [users]);
 
@@ -161,10 +163,12 @@ export default function TeamPage() {
           <TabsList>
             <TabsTrigger value="transfer">Transfer Deals</TabsTrigger>
             <TabsTrigger value="activity">Activity History</TabsTrigger>
+            <TabsTrigger value="whatsapp">WhatsApp Connections</TabsTrigger>
           </TabsList>
           <TabsContent value="transfer">
             {usersLoading ? <Skeleton className="h-64 w-full" /> : <TransferPanel users={assignees} />}
           </TabsContent>
+          <TabsContent value="whatsapp"><WhatsAppSessions /></TabsContent>
           <TabsContent value="activity">
             <ActivityFeed users={assignees} isAdmin />
           </TabsContent>

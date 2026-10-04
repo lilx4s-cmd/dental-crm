@@ -1,6 +1,9 @@
 'use client';
 
+import { hasPermission } from '@dental-crm/shared';
+import { useAuth } from '@/context/auth-context';
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -14,7 +17,6 @@ import {
   Check,
   Pin,
   Search,
-  Paperclip,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,18 +40,11 @@ import {
 import type { ConversationSummary, Message } from '@/hooks/use-conversations';
 import { QueryError } from '@/components/ui/query-state';
 import { TemplatePicker } from '@/components/inbox/template-picker';
-import { AttachmentTray } from '@/components/inbox/attachment-tray';
 import {
   ImageLightbox,
   MessageAttachment,
   type SentAttachment,
 } from '@/components/inbox/message-attachment';
-import { useAttachmentUpload, useStorageAvailable } from '@/hooks/use-attachment-upload';
-import { UPLOAD_RULES } from '@dental-crm/shared';
-
-/** What the picker offers, taken from the same rule the API enforces. */
-const MESSAGE_ATTACHMENT_ACCEPT = UPLOAD_RULES.MESSAGE_ATTACHMENT.accept;
-
 const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: 'WhatsApp',
   FACEBOOK_MESSENGER: 'Messenger',
@@ -170,11 +165,13 @@ function MessageBubble({
   msg,
   onRetry,
   retrying,
+  readOnly = false,
   onOpenImage,
 }: {
   msg: Message;
   onRetry: () => void;
   retrying: boolean;
+  readOnly?: boolean;
   onOpenImage: (file: SentAttachment) => void;
 }) {
   const outbound = msg.direction === 'OUTBOUND';
@@ -230,10 +227,10 @@ function MessageBubble({
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>Not delivered — {msg.failureReason ?? 'the send was rejected'}</span>
             </p>
-            <Button variant="outline" size="sm" className="h-6 shrink-0 px-2 text-xs" onClick={onRetry} disabled={retrying}>
+            {!readOnly && <Button variant="outline" size="sm" className="h-6 shrink-0 px-2 text-xs" onClick={onRetry} disabled={retrying}>
               <RotateCw className={cn('mr-1 h-3 w-3', retrying && 'animate-spin')} />
               Retry
-            </Button>
+            </Button>}
           </div>
         )}
       </div>
@@ -242,6 +239,9 @@ function MessageBubble({
 }
 
 function MessageThread({ conversationId }: { conversationId: string }) {
+  const { user } = useAuth();
+  const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
+  const readOnly = !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION');
   const threadQuery = useConversation(conversationId);
   const markRead = useMarkConversationRead();
   // Which thread has already been marked, so a re-render does not send the same PATCH again. A ref
@@ -253,32 +253,18 @@ function MessageThread({ conversationId }: { conversationId: string }) {
   // people with the inbox open do not have one clearing the other's badge just by the list
   // refreshing.
   useEffect(() => {
-    if (!conversationId || markedRef.current === conversationId) return;
+    if (manager || !conversationId || markedRef.current === conversationId) return;
     markedRef.current = conversationId;
     markRead.mutate(conversationId);
-  }, [conversationId, markRead]);
+  }, [conversationId, markRead, user?.role]);
   const { data: conv, isLoading } = threadQuery;
   const sendMessage = useSendMessage(conversationId);
   const retryMessage = useRetryMessage(conversationId);
   const archiveConversation = useArchiveConversation();
-  const { data: sending } = useSendingStatus();
+  const { data: sending } = useSendingStatus(conversationId);
   const [text, setText] = useState('');
   const [lightbox, setLightbox] = useState<SentAttachment | null>(null);
-  const [dragging, setDragging] = useState(false);
-  // Nested drag events fire on every child element, so a plain boolean flickers as the pointer
-  // crosses the composer's own contents. Counting enter and leave is what makes the overlay stable.
-  const dragDepth = useRef(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploads = useAttachmentUpload(conversationId);
-  // Deployment configuration, not a per-message condition. Asked once so the attach button is not
-  // offered on a clinic with no bucket — six files picked and six identical failures blames the
-  // files rather than the setup.
-  const { data: storage } = useStorageAvailable();
-  const canAttach = storage?.configured !== false;
-
-  // Anything still going up blocks the send, so a message cannot go out referencing a file that is
-  // not there yet.
-  const canSend = (!!text.trim() || uploads.fileIds.length > 0) && !uploads.busy && !sendMessage.isPending;
+  const canSend = !readOnly && conv?.channel === 'WHATSAPP' && !!text.trim() && sending?.canSend === true && !sendMessage.isPending;
 
   async function handleSend() {
     // Guarded rather than merely disabled: Enter reaches here whatever the button's state is, and
@@ -289,31 +275,14 @@ function MessageThread({ conversationId }: { conversationId: string }) {
       // a successful response carrying a FAILED status rather than as a thrown error.
       const sent = (await sendMessage.mutateAsync({
         content: text.trim() || undefined,
-        fileIds: uploads.fileIds,
       })) as Message;
       setText('');
-      uploads.clear();
       if (sent?.status === 'FAILED') {
         toast.error(sent.failureReason ?? 'WhatsApp did not accept the message');
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to send message');
     }
-  }
-
-  /**
-   * Files pasted into the composer.
-   *
-   * The case this exists for is a screenshot: Win+Shift+S then Ctrl+V is how somebody sends a
-   * patient a cropped section of an X-ray report, and without this it silently does nothing.
-   */
-  function handlePaste(e: React.ClipboardEvent) {
-    const files = Array.from(e.clipboardData.files);
-    if (files.length === 0) return;
-    e.preventDefault();
-    // Same gate as the button. Otherwise pasting works where clicking does not, which is the kind
-    // of inconsistency that reads as a bug in the paste rather than as missing configuration.
-    if (canAttach) uploads.add(files);
   }
 
   async function handleRetry(messageId: string) {
@@ -339,8 +308,9 @@ function MessageThread({ conversationId }: { conversationId: string }) {
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div>
           <p className="font-semibold">
-            {contact ? `${contact.firstName} ${contact.lastName}` : 'Unknown contact'}
+            {contact ? `${contact.firstName} ${contact.lastName}` : conv.externalThreadId || 'Unknown contact'}
           </p>
+          <p className="text-xs text-muted-foreground">{conv.whatsappSessionId === 'default' ? 'Shared clinic account' : `Work account · ${conv.assignedTo ? `${conv.assignedTo.firstName} ${conv.assignedTo.lastName}` : 'Team member'}`}</p>
           {contact?.phone && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Phone className="h-3 w-3" />
@@ -363,7 +333,8 @@ function MessageThread({ conversationId }: { conversationId: string }) {
           <MessageBubble
             key={msg.id}
             msg={msg}
-            onRetry={() => handleRetry(msg.id)}
+            readOnly={readOnly}
+            onRetry={() => { if (!manager) void handleRetry(msg.id); }}
             retrying={retryMessage.isPending && retryMessage.variables === msg.id}
             onOpenImage={setLightbox}
           />
@@ -373,80 +344,14 @@ function MessageThread({ conversationId }: { conversationId: string }) {
         )}
       </div>
 
-      <div
-        className="relative border-t p-3"
-        onPaste={handlePaste}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          dragDepth.current += 1;
-          setDragging(true);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDragLeave={() => {
-          dragDepth.current -= 1;
-          if (dragDepth.current <= 0) setDragging(false);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          dragDepth.current = 0;
-          setDragging(false);
-          const files = Array.from(e.dataTransfer.files);
-          if (canAttach && files.length) uploads.add(files);
-        }}
-      >
-        {dragging && canAttach && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed border-primary bg-primary/5 text-sm font-medium text-primary">
-            Drop to attach
-          </div>
-        )}
-
-        <AttachmentTray
-          items={uploads.items}
-          onCancel={uploads.cancel}
-          onRetry={uploads.retry}
-          onRemove={uploads.remove}
-        />
-
+      {readOnly || conv.channel !== 'WHATSAPP' ? <p className="border-t p-3 text-sm text-muted-foreground">{manager ? 'Manager view · Read team conversations and monitor patient contact here.' : 'This channel has no connected sending service. Messages are read-only.'}</p> : <div className="border-t p-3">
         {sending && !sending.canSend && (
           <p className="mb-2 flex items-start gap-1.5 rounded-md border border-destructive/25 bg-destructive-muted px-2.5 py-1.5 text-xs text-destructive-muted-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            WhatsApp is not connected, so anything sent from here will not reach the patient. Link
-            the gateway in Settings first.
+            WhatsApp is not connected, so anything sent from here will not reach the patient. Reconnect the work number on the Work WhatsApp page.
           </p>
         )}
         <div className="flex gap-2">
-          {/* `multiple` and no `capture`: on a phone this offers camera, gallery and the document
-              picker, which is the whole mobile requirement. Forcing `capture` would give the
-              camera only and take the gallery away. */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={MESSAGE_ATTACHMENT_ACCEPT}
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              if (files.length) uploads.add(files);
-              // Reset, or picking the same file twice in a row fires no change event.
-              e.target.value = '';
-            }}
-          />
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            disabled={!canAttach}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach files"
-            title={
-              canAttach
-                ? 'Attach files'
-                : 'File storage is not set up for this clinic yet — see Settings.'
-            }
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-
           <TemplatePicker
             recipient={contact}
             disabled={sendMessage.isPending}
@@ -459,7 +364,7 @@ ${body}` : body))}
           <Input
             placeholder={
               conv.channel === 'WHATSAPP'
-                ? 'Type a message, or drop a file…'
+                ? 'Type a message…'
                 : `Sending on ${conv.channel} is not connected yet`
             }
             value={text}
@@ -470,16 +375,16 @@ ${body}` : body))}
             size="icon"
             onClick={handleSend}
             disabled={!canSend}
-            title={uploads.busy ? 'Waiting for the uploads to finish' : 'Send'}
+            title="Send" aria-label="Send message"
           >
-            {sendMessage.isPending || uploads.busy ? (
+            {sendMessage.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
             )}
           </Button>
         </div>
-      </div>
+      </div>}
 
       <ImageLightbox file={lightbox} onClose={() => setLightbox(null)} />
     </div>
@@ -505,27 +410,32 @@ function InboxView() {
 
   const listQuery = useConversations({
     channel,
+    whatsappSessionId: params.get('session') ?? undefined,
+    leadId: params.get('lead') ?? undefined,
     search: debouncedSearch,
     unreadOnly,
     unassignedOnly,
   });
   const { data: conversations, isLoading } = listQuery;
   const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
-  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly;
+  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly || !!params.get('session') || !!params.get('lead');
+  const sessionFilter = params.get('session');
+  const leadFilter = params.get('lead');
+  const selectedParam = params.get('c');
+  useEffect(() => { setSelectedId(selectedParam); }, [sessionFilter, leadFilter, selectedParam]);
 
   return (
     <div className="space-y-4 h-full">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Inbox</h1>
-        <p className="text-muted-foreground mt-1">Manage all patient and lead conversations</p>
+        <h1 className="text-3xl font-bold tracking-tight">Conversations</h1>
+        <p className="text-muted-foreground mt-1">Review patient contact and handle replies</p>
+        {(sessionFilter || leadFilter) && <p className="mt-2 text-sm text-muted-foreground">Showing {sessionFilter ? "one team work account" : "this patient’s conversations"}. <Link href="/inbox" className="text-primary underline">Show all conversations</Link> · <Link href="/whatsapp" className="text-primary underline">Team connection status</Link></p>}
       </div>
 
       <Tabs value={channel ?? 'ALL'} onValueChange={(v) => { setChannel(v === 'ALL' ? undefined : v); setSelectedId(null); }}>
         <TabsList>
           <TabsTrigger value="ALL">All</TabsTrigger>
           <TabsTrigger value="WHATSAPP">WhatsApp</TabsTrigger>
-          <TabsTrigger value="FACEBOOK_MESSENGER">Messenger</TabsTrigger>
-          <TabsTrigger value="EMAIL">Email</TabsTrigger>
         </TabsList>
 
         <TabsContent value={channel ?? 'ALL'} className="mt-0">
@@ -597,7 +507,7 @@ function InboxView() {
                       <>
                         No conversations yet.
                         <br />
-                        Messages from WhatsApp and Facebook will appear here automatically.
+                        Connect your work WhatsApp to capture new messages, or open a conversation from an assigned deal.
                       </>
                     )}
                   </div>

@@ -29,4 +29,5 @@ export * from './i18n/dossier-copy';
 export * from './types/user.types';
 export * from './types/api-response.types';
 export * from './types/pagination.types';
+export * from './access/permissions';
 //# sourceMappingURL=index.d.ts.map

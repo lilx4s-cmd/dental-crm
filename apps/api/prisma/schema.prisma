@@ -412,6 +412,11 @@ model User {
   messageTemplatesCreated     MessageTemplate[]        @relation("MessageTemplateCreator")
   leadTagsAssigned            LeadTag[]                @relation("LeadTagAssigner")
   leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
+  whatsAppAccount             WhatsAppAccount?
+  accessProfileId             String?
+  accessProfile               AccessProfile? @relation(fields: [accessProfileId], references: [id])
+  supervisedLeads             Lead[] @relation("LeadSupervisor")
+  reviewsCreated              LeadReview[] @relation("ReviewAuthor")
 
   @@index([role])
   @@map("users")
@@ -751,6 +756,9 @@ model Lead {
   status         LeadStatus    @default(ACTIVE)
   assignedToId   String?
   assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  supervisorId   String?
+  supervisor     User? @relation("LeadSupervisor", fields: [supervisorId], references: [id])
+  reviews        LeadReview[]
   estimatedValue Decimal?      @db.Decimal(12, 2)
   currency       String?
   lostReason     String?
@@ -901,6 +909,21 @@ model IntakeAttachment {
 //
 // Baileys stores its state as many small keyed blobs (the credentials themselves, plus per-device
 // pre-key and session records), so this is a key-value table rather than typed columns.
+model WhatsAppAccount {
+  sessionId      String   @id
+  ownerUserId    String?  @unique
+  owner          User?    @relation(fields: [ownerUserId], references: [id])
+  linkedNumber   String?
+  autoReconnect  Boolean @default(false)
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  lastMessageAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("whatsapp_accounts")
+}
+
 model WhatsAppSession {
   id        String   @id @default(uuid())
   // Which linked number this belongs to. One row set per session; "default" until the clinic ever
@@ -920,6 +943,7 @@ model WhatsAppSession {
 // due date is what drives the pipeline's Today / This week / This month filters, so it is required:
 // a task with no date cannot answer "who do I contact now", which is the whole point of having it.
 model LeadTask {
+  review       LeadReview?
   id           String    @id @default(uuid())
   leadId       String
   lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1352,6 +1376,8 @@ model Conversation {
   leadId           String?
   lead             Lead?               @relation(fields: [leadId], references: [id])
   externalThreadId String?
+  /// Keeps two salespeople's conversations with the same patient on the correct sending number.
+  whatsappSessionId String @default("default")
   assignedToId     String?
   assignedTo       User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
   lastMessageAt    DateTime?
@@ -1378,6 +1404,7 @@ model Conversation {
   messages Message[]
 
   @@index([channel])
+  @@index([whatsappSessionId, externalThreadId])
   // The board reads each deal's most recent thread to show the last message on its card. Without
   // this that is a sequential scan of every conversation, once per card, on a 1005-deal pipeline.
   @@index([leadId, lastMessageAt])
@@ -1667,4 +1694,34 @@ model TreatmentPlanShareLink {
 
   @@index([treatmentPlanId])
   @@map("treatment_plan_share_links")
+}
+
+model AccessProfile {
+  id          String @id @default(uuid())
+  name        String @unique
+  permissions Json
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@map("access_profiles")
+}
+model LeadReview {
+  taskId         String? @unique
+  task           LeadTask? @relation(fields: [taskId], references: [id])
+  id             String @id @default(uuid())
+  leadId         String
+  lead           Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewerId     String
+  reviewer       User @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  note           String
+  status         String @default("OPEN")
+  correction     String?
+  submittedById  String?
+  dueAt          DateTime
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@index([leadId, status])
+  @@index([status, dueAt])
+  @@map("lead_reviews")
 }

@@ -1,4 +1,4 @@
-import { ApiError, apiRequest, clearCsrfToken, setCsrfToken } from './api-client';
+import { ApiError, refreshAccessToken, apiRequest, clearCsrfToken, setCsrfToken } from './api-client';
 
 /**
  * The transport every screen depends on.
@@ -255,6 +255,22 @@ describe('apiRequest — expired access token', () => {
 
     const err = await rejection(apiRequest('/api/auth/login', { method: 'POST' }));
     expect(err.message).toBe('Invalid credentials');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('session recovery', () => {
+  it('updates the browser token and notifies the auth provider', async () => {
+    const listener = jest.fn(); window.addEventListener('crm:session-refreshed', listener);
+    fetchMock.mockResolvedValueOnce(res(200, { accessToken: 'replacement', csrfToken: 'csrf-new' }));
+    expect(await refreshAccessToken()).toBe('replacement');
+    expect(document.cookie).toContain('access_token=replacement');
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener('crm:session-refreshed', listener);
+  });
+  it('shares concurrent refreshes to avoid rotating the same token twice', async () => {
+    fetchMock.mockResolvedValueOnce(res(200, { accessToken: 'replacement' }));
+    await Promise.all([refreshAccessToken(), refreshAccessToken()]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

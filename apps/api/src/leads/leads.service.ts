@@ -29,6 +29,9 @@ import {
   PipelineStage,
   Role,
   JwtPayload,
+  canSeeAllLeads,
+  canSupervise,
+  hasPermission,
   TaskDueFilter,
   taskDueRange,
   stuckBefore,
@@ -75,6 +78,7 @@ const LEAD_SELECT = {
   createdAt: true,
   updatedAt: true,
   stageChangedAt: true,
+  supervisorId: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
   // Open tasks only, soonest first: the card shows the next thing to do, and completed history
   // would bloat every kanban payload for no benefit.
@@ -181,7 +185,7 @@ export class LeadsService {
   // Only Super Admin sees every salesperson's data. Everyone else (Clinic Manager,
   // Sales Consultant, Reception, Dentist) is limited to the leads assigned to them.
   private canSeeAll(user?: JwtPayload): boolean {
-    return user?.role === Role.SUPER_ADMIN;
+    return canSeeAllLeads(user);
   }
 
   /**
@@ -230,7 +234,10 @@ export class LeadsService {
     if (this.canSeeAll(currentUser)) {
       if (assignedToId) where.assignedToId = assignedToId;
     } else {
-      where.assignedToId = currentUser.sub;
+      if (canSupervise(currentUser)) {
+        const scope = { OR: [{ assignedToId: currentUser.sub }, { supervisorId: currentUser.sub }] };
+        where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), scope];
+      } else where.assignedToId = currentUser.sub;
     }
 
     return where;
@@ -253,7 +260,7 @@ export class LeadsService {
     const lead = await this.prisma.lead.findUnique({ where: { id }, select: LEAD_DETAIL_SELECT });
     if (!lead) throw new NotFoundException('Lead not found');
     // Hide existence of leads a non-admin isn't assigned to (same 404, no info leak).
-    if (currentUser && !this.canSeeAll(currentUser) && lead.assignedTo?.id !== currentUser.sub) {
+    if (currentUser && !this.canSeeAll(currentUser) && lead.assignedTo?.id !== currentUser.sub && !(canSupervise(currentUser) && lead.supervisorId === currentUser.sub)) {
       throw new NotFoundException('Lead not found');
     }
     return lead;
@@ -319,6 +326,7 @@ export class LeadsService {
   }
 
   async create(dto: CreateLeadDto, currentUser?: JwtPayload) {
+    if (currentUser && dto.assignedToId && dto.assignedToId !== currentUser.sub && !hasPermission(currentUser, 'leads.assign', currentUser.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Your access profile cannot assign leads to another salesperson.');
     // Normalised on the way in, so the stored value matches how inbound WhatsApp arrives and so
     // the duplicate check above compares like with like. Without this "+90 555 111 22 33" and
     // "905551112233" are two different strings and no check can see they are one patient.
@@ -377,6 +385,7 @@ export class LeadsService {
    * spent an afternoon preparing, and Postgres would hold locks across the whole file meanwhile.
    */
   async importLeads(dto: ImportLeadsDto, currentUser: JwtPayload): Promise<ImportLeadsResult> {
+    if (dto.assignedToId && dto.assignedToId !== currentUser.sub && !hasPermission(currentUser, 'leads.assign', currentUser.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Your access profile cannot assign leads to another salesperson.');
     const assignedToId = dto.assignedToId ?? currentUser.sub;
     const skipDuplicates = dto.skipDuplicates ?? true;
     const result: ImportLeadsResult = { created: 0, skipped: 0, errors: [] };
@@ -688,7 +697,8 @@ export class LeadsService {
   }
 
   async update(id: string, dto: UpdateLeadDto, currentUser?: JwtPayload) {
-    await this.findOne(id, currentUser);
+    const current = await this.findOne(id, currentUser);
+    if (currentUser && dto.assignedToId !== undefined && dto.assignedToId !== current.assignedTo?.id && !hasPermission(currentUser, 'leads.assign', currentUser.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Your access profile cannot reassign leads.');
 
     // Editing a number is the other way a duplicate appears — someone corrects a typo and lands on
     // a number already in the pipeline. Same normalisation and same check as create, minus this
@@ -1453,7 +1463,7 @@ export class LeadsService {
   private async findTaskForUser(taskId: string, currentUser: JwtPayload) {
     const task = await this.prisma.leadTask.findUnique({
       where: { id: taskId },
-      select: { id: true, leadId: true },
+      select: { id: true, leadId: true, review: { select: { id: true, status: true } } },
     });
     if (!task) throw new NotFoundException('Task not found');
     // Reuse the lead's access check rather than inventing a second rule for tasks.
@@ -1462,7 +1472,8 @@ export class LeadsService {
   }
 
   async updateTask(taskId: string, dto: UpdateLeadTaskDto, currentUser: JwtPayload) {
-    await this.findTaskForUser(taskId, currentUser);
+    const task = await this.findTaskForUser(taskId, currentUser);
+    if (task.review) throw new BadRequestException('Use Lead Supervision to manage this correction task.');
     return this.prisma.leadTask.update({
       where: { id: taskId },
       data: {
@@ -1478,7 +1489,8 @@ export class LeadsService {
   }
 
   async removeTask(taskId: string, currentUser: JwtPayload) {
-    await this.findTaskForUser(taskId, currentUser);
+    const task = await this.findTaskForUser(taskId, currentUser);
+    if (task.review) throw new BadRequestException('Correction tasks cannot be deleted separately from their review.');
     await this.prisma.leadTask.delete({ where: { id: taskId } });
     return { success: true };
   }
@@ -1671,7 +1683,7 @@ export class LeadsService {
     // Super Admin deletes across the whole pipeline — so if this method were ever reached from
     // somewhere without the decorator, that missing scope would be the vulnerability rather than
     // a gap. Every other bulk action gets this for free from `resolveSelection`.
-    if (!this.canSeeAll(currentUser)) {
+    if (currentUser.role !== Role.SUPER_ADMIN) {
       throw new ForbiddenException('Only a Super Admin can delete deals.');
     }
 

@@ -1,4 +1,5 @@
 'use client';
+import { hasPermission } from '@dental-crm/shared';
 
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -157,6 +158,7 @@ export function LeadDetailSheet({
   const { data: fullLead } = useLead(open && lead ? lead.id : '');
   const submission = fullLead?.intakeSubmissions?.[0];
   const convert = useConvertLeadToPatient();
+  const { user } = useAuth();
   const startConversation = useStartConversation();
   const router = useRouter();
   // Cached clinic-wide (see LeadCard), so this doesn't add an extra request beyond what the board already fires.
@@ -178,6 +180,11 @@ export function LeadDetailSheet({
    */
   async function handleOpenThread() {
     if (!lead) return;
+    if (!hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION')) {
+      onOpenChange(false);
+      router.push(`/inbox?lead=${lead.id}`);
+      return;
+    }
     try {
       const conv = await startConversation.mutateAsync({ leadId: lead.id });
       onOpenChange(false);
@@ -295,7 +302,7 @@ export function LeadDetailSheet({
                   disabled={startConversation.isPending}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
-                  {startConversation.isPending ? 'Opening…' : 'Message in CRM inbox'}
+                  {startConversation.isPending ? 'Opening…' : !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION') ? 'View patient conversations' : 'Message in CRM inbox'}
                 </Button>
               )}
 
