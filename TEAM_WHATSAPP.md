@@ -27,3 +27,9 @@ Flagging an issue requires a salesperson on the lead and creates a due task (24 
 Deploy both additive migrations before serving this frontend. After deployment, create the desired access profiles, assign a deputy, and assign supervisors to leads. Test with internal staff/test records: deny finance through direct API/search/files, grant and revoke lead access without re-login, flag and submit an issue, reject staff self-approval, and approve as the deputy. No live role assignments or production migrations have been performed during development.
 
 If the account was paired before history import was enabled, disconnect and scan a fresh QR once to request the available history. WhatsApp determines how much historical data it provides. Group chats and status broadcasts are excluded. Unmapped alternate contact IDs remain visible as chat addresses until phone mapping is available.
+
+### Chat list and contact names
+
+The inbox stores all individual chats WhatsApp supplies in history or chat events, including chats whose older messages are not supplied. There is no ten-chat cap. Saved WhatsApp contact names take priority over push names and CRM names; names and chat ownership persist in the database. Search includes WhatsApp names. Groups and status broadcasts remain excluded from patient conversations. Archived chats have their own filter.
+
+WhatsApp controls the amount of history sent to a linked device. The CRM cannot display history it has not received. Accounts paired before roster/name capture was added may need one fresh QR pairing to receive a new contact and chat snapshot. Existing stored messages are retained when unlinking.

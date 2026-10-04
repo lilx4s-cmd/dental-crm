@@ -1375,6 +1375,8 @@ model Conversation {
   patient          Patient?            @relation(fields: [patientId], references: [id])
   leadId           String?
   lead             Lead?               @relation(fields: [leadId], references: [id])
+  whatsappContactName String?
+  whatsappNameIsSaved Boolean @default(false)
   externalThreadId String?
   /// Keeps two salespeople's conversations with the same patient on the correct sending number.
   whatsappSessionId String @default("default")

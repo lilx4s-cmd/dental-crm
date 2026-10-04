@@ -51,6 +51,16 @@
     --destructive-muted: 0 93% 96%;
     --destructive-muted-foreground: 0 74% 39%;
 
+    /* WhatsApp-style inbox surfaces. Text and secondary text clear 4.5:1 on
+       outgoing, incoming, header and wallpaper surfaces in both themes. */
+    --wa-wallpaper: 38.18 20.75% 89.61%;
+    --wa-outgoing: 111.43 91.30% 90.98%;
+    --wa-text: 202.50 32.00% 9.80%;
+    --wa-muted: 202.22 13.85% 38.24%;
+    --wa-selected: 216.00 20.00% 95.10%;
+    --wa-header: 216.00 20.00% 95.10%;
+    --wa-incoming: 0.00 0.00% 100.00%;
+
     /* Bitrix24 board surfaces. The Deals kanban is a deliberate visual copy of Bitrix24's CRM
        board — the clinic ran on Bitrix for years and asked for the same interface back — so it
        draws from this scoped set instead of the semantic tokens above. They are named once here
@@ -79,6 +89,14 @@
   }
 
   .dark {
+    --wa-wallpaper: 204.00 40.54% 7.25%;
+    --wa-outgoing: 168.91 100.00% 18.04%;
+    --wa-text: 200.00 15.79% 92.55%;
+    --wa-muted: 188.57 12.73% 78.43%;
+    --wa-selected: 202.50 22.22% 21.18%;
+    --wa-header: 202.11 22.89% 16.27%;
+    --wa-incoming: 202.11 22.89% 16.27%;
+
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
     --card: 222.2 84% 4.9%;

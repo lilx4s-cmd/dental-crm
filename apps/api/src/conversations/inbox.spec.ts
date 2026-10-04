@@ -61,6 +61,11 @@ describe('ConversationsService — the inbox', () => {
       expect(or.some((c: any) => c.patient?.firstName)).toBe(true);
     });
 
+    it('searches saved WhatsApp contact names', async () => {
+      await service.findAll({ search: 'Fatima' });
+      expect(whereOf().OR).toContainEqual({ whatsappContactName: { contains: 'Fatima', mode: 'insensitive' } });
+    });
+
     it('searches what was said', async () => {
       // "The one where they mentioned the hotel" is how people describe a thread they are after.
       await service.findAll({ search: 'hotel' });

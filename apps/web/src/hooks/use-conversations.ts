@@ -8,6 +8,7 @@ export interface ConversationSummary {
   id: string;
   channel: string;
   externalThreadId: string | null;
+  whatsappContactName?: string | null;
   whatsappSessionId: string;
   isArchived: boolean;
   /** Kept at the top of the inbox. Clinic-wide, not per person — see the schema. */

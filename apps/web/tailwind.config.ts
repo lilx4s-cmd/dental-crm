@@ -10,6 +10,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        wa: {
+          wallpaper: 'hsl(var(--wa-wallpaper))',
+          outgoing: 'hsl(var(--wa-outgoing))',
+          text: 'hsl(var(--wa-text))',
+          muted: 'hsl(var(--wa-muted))',
+          selected: 'hsl(var(--wa-selected))',
+          header: 'hsl(var(--wa-header))',
+          incoming: 'hsl(var(--wa-incoming))',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

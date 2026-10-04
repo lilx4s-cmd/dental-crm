@@ -59,6 +59,7 @@ const MESSAGE_SELECT = {
 
 const CONVERSATION_SELECT = {
   whatsappSessionId: true,
+  whatsappContactName: true,
   id: true,
   channel: true,
   externalThreadId: true,
@@ -130,6 +131,7 @@ export class ConversationsService {
     if (search) {
       const digits = search.replace(/\D/g, '');
       where.OR = [
+        { whatsappContactName: { contains: search, mode: 'insensitive' } },
         { lead: { firstName: { contains: search, mode: 'insensitive' } } },
         { lead: { lastName: { contains: search, mode: 'insensitive' } } },
         { patient: { firstName: { contains: search, mode: 'insensitive' } } },
@@ -534,10 +536,14 @@ export class ConversationsService {
       conversation = await this.prisma.conversation.create({
         data: { channel, externalThreadId, leadId, patientId, whatsappSessionId: sessionId, assignedToId: ownerUserId, lastMessageAt: messageAt ?? new Date() },
       });
-    } else if (!messageAt || !conversation.lastMessageAt || conversation.lastMessageAt < messageAt) {
+    } else if (!messageAt || !conversation.lastMessageAt || conversation.lastMessageAt < messageAt || (!conversation.leadId && leadId) || (!conversation.patientId && patientId)) {
       await this.prisma.conversation.update({
         where: { id: conversation.id },
-        data: { lastMessageAt: messageAt ?? new Date() },
+        data: {
+          ...(!messageAt || !conversation.lastMessageAt || conversation.lastMessageAt < messageAt ? { lastMessageAt: messageAt ?? new Date() } : {}),
+          ...(!conversation.leadId && leadId ? { leadId } : {}),
+          ...(!conversation.patientId && patientId ? { patientId } : {}),
+        },
       });
     }
 

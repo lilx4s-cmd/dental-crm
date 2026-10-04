@@ -18,15 +18,24 @@ describe('QR-only work-account setup', () => {
   let handlers: Record<string, (value: unknown) => Promise<void>>;
   let values: Record<string, string>;
   let storeSessionMessage: jest.Mock;
+  let chats: Record<string, any>[];
+  let conversation: { count: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   beforeEach(() => {
     handlers = {};
     values = {};
     storeSessionMessage = jest.fn().mockResolvedValue({});
+    chats = [];
+    conversation = {
+      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockImplementation(({ where }) => Promise.resolve(chats.filter(c => c.whatsappSessionId === where.whatsappSessionId && where.externalThreadId.in.includes(c.externalThreadId)))),
+      create: jest.fn().mockImplementation(({ data }) => { const row = { id: `chat-${chats.length}`, ...data }; chats.push(row); return Promise.resolve(row); }),
+      update: jest.fn().mockImplementation(({ where, data }) => { const row = chats.find(c => c.id === where.id); Object.assign(row!, data); return Promise.resolve(row); }),
+    };
     (makeWASocket as jest.Mock).mockImplementation(() => ({ ev: { on: (name: string, fn: (value: unknown) => Promise<void>) => { handlers[name] = fn; } }, end: jest.fn() }));
     service = new WhatsAppWebService({ get: (key: string) => values[key] } as never, {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'staff', isActive: true, role: Role.SALES_CONSULTANT }) },
       whatsAppAccount: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
-      conversation: { count: jest.fn().mockResolvedValue(0) },
+      conversation,
       message: { count: jest.fn().mockResolvedValue(0) },
     } as never, { storeSessionMessage } as never);
   });
@@ -84,4 +93,31 @@ describe('QR-only work-account setup', () => {
     expect(status.captureError).toContain('could not save');
     expect(status.captureError).not.toContain('private database');
   });
+  it('imports every supplied direct chat, including more than ten chats without messages', async () => {
+    await service.connectOwn(user);
+    const roster = Array.from({ length: 35 }, (_, i) => ({ id: `90555000${1000+i}@s.whatsapp.net`, conversationTimestamp: 1700000000 }));
+    await handlers['messaging-history.set']({ contacts: roster.map((c, i) => ({ ...c, name: `Saved contact ${i}` })), chats: [...roster, { id: 'group@g.us' }], messages: [] });
+    expect(chats).toHaveLength(35);
+    expect(chats[34]).toMatchObject({ whatsappContactName: 'Saved contact 34', whatsappNameIsSaved: true, whatsappSessionId: 'user:staff', assignedToId: 'staff' });
+    expect(storeSessionMessage).not.toHaveBeenCalled();
+    await handlers['chats.upsert'](roster);
+    expect(chats).toHaveLength(35);
+  });
+  it('backfills saved names and phone addresses without changing another work account', async () => {
+    chats.push({ id: 'old', externalThreadId: '999@lid', whatsappSessionId: 'user:staff', whatsappContactName: 'Push name', whatsappNameIsSaved: false });
+    chats.push({ id: 'other', externalThreadId: '999@lid', whatsappSessionId: 'user:other', whatsappContactName: 'Other account' });
+    await service.connectOwn(user);
+    await handlers['contacts.upsert']([{ id: '905550000001@s.whatsapp.net', lid: '999@lid', name: 'Name saved on phone' }]);
+    expect(chats[0]).toMatchObject({ externalThreadId: '905550000001', whatsappContactName: 'Name saved on phone', whatsappNameIsSaved: true });
+    expect(chats[1].whatsappContactName).toBe('Other account');
+    await handlers['contacts.update']([{ id: '905550000001@s.whatsapp.net', notify: 'New push name' }]);
+    expect(chats[0].whatsappContactName).toBe('Name saved on phone');
+  });
+  it('preserves a saved name after restart when only a push name is received', async () => {
+    chats.push({ id: 'saved', externalThreadId: '905550000001', whatsappSessionId: 'user:staff', whatsappContactName: 'Saved previously', whatsappNameIsSaved: true });
+    await service.connectOwn(user);
+    await handlers['contacts.upsert']([{ id: '905550000001@s.whatsapp.net', notify: 'Push name' }]);
+    expect(chats[0].whatsappContactName).toBe('Saved previously');
+  });
+
 });

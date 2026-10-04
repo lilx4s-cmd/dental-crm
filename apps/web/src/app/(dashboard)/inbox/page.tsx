@@ -5,8 +5,9 @@ import { useAuth } from '@/context/auth-context';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import {
+  ArrowLeft,
   MessageSquare,
   Archive,
   Send,
@@ -15,6 +16,7 @@ import {
   AlertTriangle,
   RotateCw,
   Check,
+  CheckCheck,
   Pin,
   Search,
   Loader2,
@@ -61,6 +63,11 @@ const CHANNEL_COLORS: Record<string, 'success' | 'info' | 'secondary' | 'warning
   IN_APP: 'default',
 };
 
+function contactLabel(conv: ConversationSummary) {
+  const contact = conv.patient ?? conv.lead;
+  return conv.whatsappContactName || (contact ? `${contact.firstName} ${contact.lastName}` : conv.externalThreadId?.endsWith('@lid') ? 'WhatsApp contact' : conv.externalThreadId ? `+${conv.externalThreadId}` : 'Unknown contact');
+}
+
 function ConversationRow({
   conv,
   selected,
@@ -70,7 +77,6 @@ function ConversationRow({
   selected: boolean;
   onClick: () => void;
 }) {
-  const contact = conv.patient ?? conv.lead;
   const lastMsg = conv.messages[0];
   const pin = usePinConversation();
 
@@ -88,8 +94,8 @@ function ConversationRow({
         }
       }}
       className={cn(
-        'group relative w-full cursor-pointer border-b px-4 py-3 text-left transition-colors hover:bg-muted/40',
-        selected && 'bg-muted/60',
+        'group relative w-full cursor-pointer border-b border-border/50 px-4 py-3 text-left transition-colors hover:bg-muted/40',
+        selected && 'bg-wa-selected',
       )}
     >
       {/* Appears on hover, stays visible once pinned — a pinned thread has to advertise why it is
@@ -117,17 +123,17 @@ function ConversationRow({
       </button>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-            <User className="h-4 w-4 text-primary" />
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <User className="h-6 w-6 text-muted-foreground" />
           </div>
           <div className="min-w-0">
             <p className={cn('truncate text-sm', conv.unreadCount > 0 ? 'font-semibold' : 'font-medium')}>
-              {contact ? `${contact.firstName} ${contact.lastName}` : conv.externalThreadId ?? 'Unknown'}
+              {contactLabel(conv)}
             </p>
             {/* An unread thread's preview stays full-strength; a read one recedes. The weight
                 difference is what lets someone scan forty rows for the ones needing an answer. */}
             <p className={cn('truncate text-xs', conv.unreadCount > 0 ? 'text-foreground' : 'text-muted-foreground')}>
-              {lastMsg?.content ?? 'No messages yet'}
+              {lastMsg?.content ?? 'History not shared by WhatsApp yet'}
             </p>
           </div>
         </div>
@@ -140,9 +146,9 @@ function ConversationRow({
               {conv.unreadCount}
             </span>
           )}
-          <Badge variant={CHANNEL_COLORS[conv.channel] ?? 'default'} className="text-xs">
+          {conv.channel !== 'WHATSAPP' && <Badge variant={CHANNEL_COLORS[conv.channel] ?? 'default'} className="text-xs">
             {CHANNEL_LABELS[conv.channel] ?? conv.channel}
-          </Badge>
+          </Badge>}
           {conv.lastMessageAt && (
             <span className="text-xs text-muted-foreground">
               {formatDistanceToNow(new Date(conv.lastMessageAt), { addSuffix: true })}
@@ -195,12 +201,12 @@ function MessageBubble({
         {(hasText || attachments.length === 0) && (
         <div
           className={cn(
-            'rounded-2xl px-3 py-2 text-sm',
+            'rounded-lg px-3 py-2 text-sm shadow-sm',
             failed
               ? 'border border-destructive/30 bg-destructive-muted text-destructive-muted-foreground rounded-br-sm'
               : outbound
-                ? 'bg-primary text-primary-foreground rounded-br-sm'
-                : 'bg-muted rounded-bl-sm',
+                ? 'bg-wa-outgoing text-wa-text rounded-tr-none'
+                : 'bg-wa-incoming text-wa-text rounded-tl-none',
           )}
         >
           <p className="whitespace-pre-wrap break-words">{msg.content ?? '(media)'}</p>
@@ -211,12 +217,12 @@ function MessageBubble({
               failed
                 ? 'text-destructive-muted-foreground/80'
                 : outbound
-                  ? 'text-primary-foreground/70'
-                  : 'text-muted-foreground',
+                  ? 'text-wa-muted'
+                  : 'text-wa-muted',
             )}
           >
-            {outbound && !failed && msg.status !== 'QUEUED' && <Check className="h-3 w-3" />}
-            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+            {outbound && !failed && (msg.status === 'READ' || msg.status === 'DELIVERED' ? <CheckCheck aria-label={msg.status === 'READ' ? 'Read' : 'Delivered'} className={cn('h-3.5 w-3.5', msg.status === 'READ' && 'text-info')} /> : msg.status === 'SENT' ? <Check aria-label="Sent" className="h-3 w-3" /> : null)}
+            <time dateTime={msg.createdAt} title={format(new Date(msg.createdAt), 'PPpp')}>{format(new Date(msg.createdAt), 'HH:mm')}</time>
           </p>
         </div>
         )}
@@ -238,7 +244,7 @@ function MessageBubble({
   );
 }
 
-function MessageThread({ conversationId }: { conversationId: string }) {
+function MessageThread({ conversationId, onBack }: { conversationId: string; onBack: () => void }) {
   const { user } = useAuth();
   const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
   const readOnly = !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION');
@@ -258,6 +264,12 @@ function MessageThread({ conversationId }: { conversationId: string }) {
     markRead.mutate(conversationId);
   }, [conversationId, markRead, user?.role]);
   const { data: conv, isLoading } = threadQuery;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  useEffect(() => {
+    const pane = scrollRef.current;
+    if (pane && followLatest.current) pane.scrollTop = pane.scrollHeight;
+  }, [conv?.messages.length]);
   const sendMessage = useSendMessage(conversationId);
   const retryMessage = useRetryMessage(conversationId);
   const archiveConversation = useArchiveConversation();
@@ -305,10 +317,11 @@ function MessageThread({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between gap-3 bg-wa-header px-4 py-3 border-b">
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label="Back to chats"><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <p className="font-semibold">
-            {contact ? `${contact.firstName} ${contact.lastName}` : conv.externalThreadId || 'Unknown contact'}
+            {contactLabel(conv)}
           </p>
           <p className="text-xs text-muted-foreground">{conv.whatsappSessionId === 'default' ? 'Shared clinic account' : `Work account · ${conv.assignedTo ? `${conv.assignedTo.firstName} ${conv.assignedTo.lastName}` : 'Team member'}`}</p>
           {contact?.phone && (
@@ -328,8 +341,10 @@ function MessageThread({ conversationId }: { conversationId: string }) {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {conv.messages.map((msg) => (
+      <div ref={scrollRef} onScroll={() => { const pane = scrollRef.current; if (pane) followLatest.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 100; }} className="flex-1 overflow-y-auto bg-wa-wallpaper p-4 md:px-8 space-y-3">
+        {conv.messages.map((msg, index) => (
+          <div key={msg.id}>
+          {(index === 0 || format(new Date(conv.messages[index - 1].createdAt), 'yyyy-MM-dd') !== format(new Date(msg.createdAt), 'yyyy-MM-dd')) && <div className="mb-3 text-center"><span className="rounded-md bg-background px-3 py-1 text-xs text-muted-foreground shadow-sm">{format(new Date(msg.createdAt), 'MMM d, yyyy')}</span></div>}
           <MessageBubble
             key={msg.id}
             msg={msg}
@@ -338,9 +353,10 @@ function MessageThread({ conversationId }: { conversationId: string }) {
             retrying={retryMessage.isPending && retryMessage.variables === msg.id}
             onOpenImage={setLightbox}
           />
+          </div>
         ))}
         {conv.messages.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">No messages yet</p>
+          <p className="text-center text-sm text-muted-foreground py-8">This chat is saved. WhatsApp has not shared its message history with this linked device yet.</p>
         )}
       </div>
 
@@ -399,6 +415,7 @@ function InboxView() {
   const [channel, setChannel] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [archived, setArchived] = useState(false);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
 
   // Debounced, because the inbox polls every ten seconds and every keystroke would otherwise start
@@ -416,10 +433,11 @@ function InboxView() {
     search: debouncedSearch,
     unreadOnly,
     unassignedOnly,
+    isArchived: archived,
   });
   const { data: conversations, isLoading } = listQuery;
   const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
-  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly || !!params.get('session') || !!params.get('lead');
+  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly || archived || !!params.get('session') || !!params.get('lead');
   const sessionFilter = params.get('session');
   const leadFilter = params.get('lead');
   const selectedParam = params.get('c');
@@ -428,7 +446,7 @@ function InboxView() {
   return (
     <div className="space-y-4 h-full">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Conversations</h1>
+        <h1 className="text-2xl font-bold tracking-tight">WhatsApp & conversations</h1>
         <p className="text-muted-foreground mt-1">Review patient contact and handle replies</p>
         {(sessionFilter || leadFilter) && <p className="mt-2 text-sm text-muted-foreground">Showing {sessionFilter ? "one team work account" : "this patient’s conversations"}. <Link href="/inbox" className="text-primary underline">Show all conversations</Link> · <Link href="/whatsapp" className="text-primary underline">Team connection status</Link></p>}
       </div>
@@ -440,26 +458,32 @@ function InboxView() {
         </TabsList>
 
         <TabsContent value={channel ?? 'ALL'} className="mt-0">
-          <Card className="flex h-[calc(100vh-260px)] overflow-hidden">
-            <div className="flex w-72 shrink-0 flex-col border-r">
+          <Card className="flex h-[calc(100dvh-235px)] min-h-[400px] overflow-hidden rounded-xl">
+            <div className={cn("flex w-full md:w-[360px] lg:w-[390px] shrink-0 flex-col border-r", selectedId && "hidden md:flex")}>
+              <div className="flex items-center justify-between px-4 py-4">
+                <h2 className="text-xl font-semibold">Chats <span className="text-sm font-normal text-muted-foreground">{conversations?.length ?? 0}</span></h2>
+                <Link href="/whatsapp" className="text-xs text-success hover:underline">Connections</Link>
+              </div>
               <div className="space-y-2 border-b p-2">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Name, number, or a word they said…"
+                    placeholder="Search or start reading a chat"
                     aria-label="Search conversations"
-                    className="h-8 pl-7 text-sm"
+                    className="h-10 rounded-full border-0 bg-muted pl-8 text-sm"
                   />
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
+                  <Button size="sm" variant={!unreadOnly && !unassignedOnly && !archived ? 'default' : 'outline'} className="h-7 rounded-full text-xs" onClick={() => { setUnreadOnly(false); setUnassignedOnly(false); setArchived(false); }}>All</Button>
+                  <Button size="sm" variant={archived ? 'default' : 'outline'} className="h-7 rounded-full text-xs" aria-pressed={archived} onClick={() => { setArchived(v => !v); setSelectedId(null); }}>Archived</Button>
                   {/* Two filters, not a panel. These are the only two questions an inbox shared by
                       four people gets asked: what needs an answer, and what has nobody taken. */}
                   <Button
                     size="sm"
                     variant={unreadOnly ? 'default' : 'outline'}
-                    className="h-7 flex-1 text-xs"
+                    className="h-7 rounded-full text-xs"
                     onClick={() => setUnreadOnly((v) => !v)}
                     aria-pressed={unreadOnly}
                   >
@@ -468,7 +492,7 @@ function InboxView() {
                   <Button
                     size="sm"
                     variant={unassignedOnly ? 'default' : 'outline'}
-                    className="h-7 flex-1 text-xs"
+                    className="h-7 rounded-full text-xs"
                     onClick={() => setUnassignedOnly((v) => !v)}
                     aria-pressed={unassignedOnly}
                   >
@@ -497,6 +521,7 @@ function InboxView() {
                           className="mt-2 text-primary hover:underline"
                           onClick={() => {
                             setSearch('');
+                            setArchived(false);
                             setUnreadOnly(false);
                             setUnassignedOnly(false);
                             setChannel(undefined);
@@ -527,13 +552,15 @@ function InboxView() {
               </div>
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className={cn("flex-1 min-w-0", !selectedId && "hidden md:block")}>
               {selectedId ? (
-                <MessageThread conversationId={selectedId} />
+                <MessageThread key={selectedId} conversationId={selectedId} onBack={() => setSelectedId(null)} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageSquare className="h-12 w-12 mb-3 opacity-20" />
-                  <p className="text-sm">Select a conversation to view messages</p>
+                  <p className="text-xl font-medium">Your work WhatsApp</p>
+                  <p className="mt-2 text-sm">Select a chat to read the conversation</p>
+                  <p className="mt-3 max-w-sm px-4 text-center text-xs">All synced individual chats appear here. Scroll the chat list to see more. Older messages appear when WhatsApp shares them.</p>
                 </div>
               )}
             </div>

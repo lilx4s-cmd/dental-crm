@@ -16,6 +16,8 @@ import { usePrismaAuthState } from './baileys-auth-state';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
 
+type ContactSnapshot = { id?: string | null; lid?: string | null; jid?: string | null; pnJid?: string | null; lidJid?: string | null; name?: string | null; notify?: string | null; conversationTimestamp?: unknown };
+
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
 /**
@@ -89,6 +91,7 @@ class WhatsAppConnection {
   private stopped = false;
   private generation = 0;
   private sentIds = new Set<string>();
+  private contactNames = new Map<string, { name: string; saved: boolean }>();
   private phoneJids = new Map<string, string>();
   private ingestionQueue: Promise<void> = Promise.resolve();
   private historyReceived = false;
@@ -269,20 +272,35 @@ class WhatsAppConnection {
         }
       });
 
-      const rememberContacts = (contacts: Array<{ id?: string | null; lid?: string | null; jid?: string | null; pnJid?: string | null; lidJid?: string | null }>) => {
+      const rememberContacts = (contacts: ContactSnapshot[]) => {
         for (const contact of contacts) {
           const phone = contact.pnJid ?? contact.jid ?? (contact.id?.endsWith('@s.whatsapp.net') ? contact.id : undefined);
           const lid = contact.lidJid ?? contact.lid ?? (contact.id?.endsWith('@lid') ? contact.id : undefined);
           if (phone && lid) this.phoneJids.set(lid, phone);
+          const name = contact.name?.trim() || contact.notify?.trim();
+          if (name) {
+            const saved = !!contact.name?.trim();
+            for (const address of [contact.id, phone, lid]) {
+              if (address && (saved || !this.contactNames.get(address)?.saved)) this.contactNames.set(address, { name, saved });
+            }
+          }
         }
       };
-      sock.ev.on('contacts.upsert', rememberContacts);
-      sock.ev.on('contacts.update', rememberContacts);
-      sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => { this.phoneJids.set(lid, jid); });
+      const syncContacts = (contacts: ContactSnapshot[], create: boolean) => {
+        rememberContacts(contacts);
+        return this.queueRoster(contacts, sock, create);
+      };
+      sock.ev.on('contacts.upsert', (contacts) => syncContacts(contacts, false));
+      sock.ev.on('contacts.update', (contacts) => syncContacts(contacts, false));
+      sock.ev.on('chats.upsert', (chats) => syncContacts(chats, true));
+      sock.ev.on('chats.update', (chats) => syncContacts(chats, false));
+      sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => syncContacts([{ id: lid, jid, lid }], false));
       sock.ev.on('messaging-history.set', ({ messages, contacts = [], chats = [] }) => {
         this.historyReceived = true;
         rememberContacts(contacts);
         rememberContacts(chats);
+        this.queueRoster([...contacts, ...chats], sock, false);
+        this.queueRoster(chats, sock, true);
         return this.queueMessages(messages, sock);
       });
       sock.ev.on('messages.upsert', ({ messages }) => this.queueMessages(messages, sock));
@@ -389,6 +407,51 @@ class WhatsAppConnection {
    *
    * Work-phone outgoing messages are captured as OUTBOUND. CRM send echoes are skipped.
    */
+  /** Imports the chat roster even when WhatsApp supplies no messages for an older chat. */
+  private queueRoster(contacts: ContactSnapshot[], sock: WASocket, create: boolean) {
+    this.ingestionQueue = this.ingestionQueue.then(async () => {
+      for (const contact of contacts) {
+        if (this.stopped || this.socket !== sock) return;
+        try { await this.syncChat(contact, create); }
+        catch (e) {
+          this.captureError = 'Some WhatsApp chats could not be saved. Check the connection status and retry.';
+          this.logger.error(`Failed to capture WhatsApp chat: ${(e as Error).message}`);
+        }
+      }
+    });
+    return this.ingestionQueue;
+  }
+
+  private async syncChat(contact: ContactSnapshot, create: boolean) {
+    const raw = contact.id ?? contact.pnJid ?? contact.jid ?? '';
+    const jid = this.phoneJids.get(raw) ?? raw;
+    if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
+    const address = (value: string) => value.endsWith('@lid') ? value : value.split('@')[0].split(':')[0];
+    const threadId = address(jid);
+    // Update existing alternate-ID rows when the phone finally shares the real address.
+    // Never combine or delete patient conversations during contact synchronization.
+    const aliases = [...new Set([threadId, address(raw), ...(contact.lid ? [contact.lid] : []), ...(contact.lidJid ? [contact.lidJid] : [])])];
+    const rows = await this.prisma.conversation.findMany({ where: { channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: { in: aliases } } });
+    const label = this.contactNames.get(jid) ?? this.contactNames.get(raw);
+    const seconds = Number(contact.conversationTimestamp);
+    const lastMessageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
+    if (rows.length === 0 && create) {
+      await this.prisma.conversation.create({ data: {
+        channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: threadId,
+        assignedToId: this.ownerUserId, lastMessageAt,
+        whatsappContactName: label?.name, whatsappNameIsSaved: label?.saved ?? false,
+      } });
+    }
+    for (const row of rows) {
+      const nameData = label && (label.saved || !row.whatsappNameIsSaved) ? { whatsappContactName: label.name, whatsappNameIsSaved: label.saved } : {};
+      await this.prisma.conversation.update({ where: { id: row.id }, data: {
+        ...nameData,
+        ...(rows.length === 1 && threadId !== row.externalThreadId ? { externalThreadId: threadId } : {}),
+        ...(lastMessageAt && (!row.lastMessageAt || row.lastMessageAt < lastMessageAt) ? { lastMessageAt } : {}),
+      } });
+    }
+  }
+
   private queueMessages(messages: Parameters<WhatsAppConnection['ingest']>[0][], sock: WASocket) {
     this.messageEventsSeen += messages.length;
     this.ingestionQueue = this.ingestionQueue.then(async () => {
@@ -422,6 +485,8 @@ class WhatsAppConnection {
     const seconds = Number(msg.messageTimestamp);
     const messageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
     await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe, messageAt);
+    if (msg.pushName && !msg.key.fromMe && !this.contactNames.has(jid)) this.contactNames.set(jid, { name: msg.pushName, saved: false });
+    await this.syncChat({ id: jid }, false);
     this.captureError = null;
     await this.onUpdate({ lastMessageAt: new Date() });
   }
