@@ -34,6 +34,7 @@ export class WhatsAppController {
   ) {}
 
   @Get('sessions/me')
+  @ApiOperation({ summary: 'QR-ready work account status; first-time accounts can prepare pairing immediately' })
   @Permission('conversations.read')
   @Roles(...PATIENT_FACING)
   ownSession(@CurrentUser() user: JwtPayload) { return this.webService.ownStatus(user); }
