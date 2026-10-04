@@ -28,17 +28,27 @@ export async function usePrismaAuthState(
     return JSON.parse(JSON.stringify(row.value), BufferJSON.reviver) as T;
   };
 
+  // Drain in-flight writes before deletion; ignore late writes from a closed socket.
+  let closed = false;
+  const pending = new Set<Promise<void>>();
+  const enqueue = async (operation: () => Promise<void>) => {
+    if (closed) return;
+    const next = operation();
+    pending.add(next);
+    try { await next; }
+    finally { pending.delete(next); }
+  };
   const write = async (key: string, value: unknown) => {
     const encoded = JSON.parse(JSON.stringify(value, BufferJSON.replacer));
-    await prisma.whatsAppSession.upsert({
+    await enqueue(async () => { await prisma.whatsAppSession.upsert({
       where: { sessionId_key: { sessionId, key } },
       create: { sessionId, key, value: encoded },
       update: { value: encoded },
-    });
+    }); });
   };
 
   const remove = async (key: string) => {
-    await prisma.whatsAppSession.deleteMany({ where: { sessionId, key } });
+    await enqueue(async () => { await prisma.whatsAppSession.deleteMany({ where: { sessionId, key } }); });
   };
 
   const creds: AuthenticationCreds = (await read<AuthenticationCreds>('creds')) ?? initAuthCreds();
@@ -83,6 +93,8 @@ export async function usePrismaAuthState(
     // Used on logout, and whenever WhatsApp tells us the session is dead — leaving stale
     // credentials behind would make the next connect fail in a way that looks like a bug.
     clear: async () => {
+      closed = true;
+      await Promise.allSettled([...pending]);
       await prisma.whatsAppSession.deleteMany({ where: { sessionId } });
     },
   };

@@ -56,7 +56,8 @@ export function WhatsAppSessions() {
   });
   const action = useMutation({
     mutationFn: (path: string) => apiRequest(path, { method: 'POST' }, accessToken ?? undefined),
-    onSuccess: () => {
+    onSuccess: (result, path) => {
+      if (path.startsWith('/api/whatsapp/sessions/me/') && result) qc.setQueryData(['whatsapp-session', user?.sub], result);
       qc.invalidateQueries({ queryKey: ['whatsapp-session'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-team'] });
       qc.invalidateQueries({ queryKey: ['conversations'] });
@@ -94,12 +95,13 @@ export function WhatsAppSessions() {
           </div>}
           {data.error && <p className="text-sm text-destructive" role="alert">{data.error}</p>}
           <div className="flex flex-wrap gap-2">
-            {data.enabled && data.state !== 'connected' && <Button disabled={action.isPending || data.state === 'connecting' || data.state === 'awaiting_scan'} onClick={() => action.mutate('/api/whatsapp/sessions/me/connect')}>{data.state === 'connecting' ? 'Preparing QR…' : data.state === 'awaiting_scan' ? 'Scan the QR code' : 'Get a QR code'}</Button>}
+            {data.enabled && <Button disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/new-qr')}>{action.isPending ? 'Preparing…' : 'Get a new QR code'}</Button>}
+            {data.enabled && data.state === 'disconnected' && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/connect')}>Resume saved connection</Button>}
             {data.enabled && data.state !== 'disconnected' && <Button variant="outline" disabled={action.isPending} onClick={() => unlink('/api/whatsapp/sessions/me/logout')}>Disconnect</Button>}
             <Button variant="outline" onClick={() => mine.refetch()} disabled={mine.isFetching} aria-label="Refresh connection status"><RefreshCw className="h-4 w-4" /></Button>
             <Button variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(data.sessionId)}`}>My conversations</Link></Button>
           </div>
-          <p className="text-xs text-muted-foreground">Available chat history syncs when you pair the phone. New text from the work phone and its linked devices is also recorded. If you paired before history sync was added, disconnect and scan again once. Use a work account; personal chats on that number will also sync.</p>
+          <p className="text-xs text-muted-foreground">Available chat history syncs when you pair the phone. New text from the work phone and its linked devices is also recorded. To refresh the pairing or request a new history snapshot, choose Get a new QR code and scan again. This replaces the current link and keeps saved conversations. Use a work account; personal chats on that number will also sync.</p>
         </>}
       </CardContent>
     </Card>}

@@ -33,3 +33,7 @@ If the account was paired before history import was enabled, disconnect and scan
 The inbox stores all individual chats WhatsApp supplies in history or chat events, including chats whose older messages are not supplied. There is no ten-chat cap. Saved WhatsApp contact names take priority over push names and CRM names; names and chat ownership persist in the database. Search includes WhatsApp names. Groups and status broadcasts remain excluded from patient conversations. Archived chats have their own filter.
 
 WhatsApp controls the amount of history sent to a linked device. The CRM cannot display history it has not received. Accounts paired before roster/name capture was added may need one fresh QR pairing to receive a new contact and chat snapshot. Existing stored messages are retained when unlinking.
+
+### Renewing a QR
+
+Use **Get a new QR code** in Work WhatsApp to replace an existing link, expired QR, or stuck connection. This clears only the current user's pairing credentials and keeps stored conversations. **Resume saved connection** reconnects without clearing credentials and may not require a QR. Old socket credential events are ignored after reset, and logout has a five-second network timeout.

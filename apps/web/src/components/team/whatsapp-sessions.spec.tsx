@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WhatsAppSessions } from './whatsapp-sessions';
 import { apiRequest } from '@/lib/api-client';
@@ -26,7 +26,7 @@ describe('work WhatsApp setup', () => {
   it('does not automatically reconnect an existing disconnected account', async () => {
     (apiRequest as jest.Mock).mockResolvedValue({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'disconnected', error: null });
     show();
-    await screen.findByText('Get a QR code');
+    await screen.findByText('Get a new QR code');
     expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/connect'))).toBe(false);
   });
   it('lets the owner pair a clinic work number and keeps the team oversight panel', async () => {
@@ -37,4 +37,16 @@ describe('work WhatsApp setup', () => {
     expect(screen.getByText('Team WhatsApp connections')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('+905550000000')).toBeInTheDocument());
   });
+  it('requests fresh pairing from a stuck connection and displays the returned QR', async () => {
+    let paired = false;
+    (apiRequest as jest.Mock).mockImplementation(async (path: string) => {
+      if (path.endsWith('/new-qr')) paired = true;
+      return { sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: paired ? 'awaiting_scan' : 'connecting', error: null, qrDataUrl: paired ? 'data:image/png;base64,dGVzdA==' : null };
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Get a new QR code' }));
+    expect(await screen.findByAltText('Link your work WhatsApp account')).toBeInTheDocument();
+    expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/new-qr', { method: 'POST' }, 'test-token');
+  });
+
 });

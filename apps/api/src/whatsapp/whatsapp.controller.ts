@@ -45,6 +45,12 @@ export class WhatsAppController {
   @HttpCode(HttpStatus.OK)
   connectOwnSession(@CurrentUser() user: JwtPayload) { return this.webService.connectOwn(user); }
 
+  @Post('sessions/me/new-qr')
+  @Permission('conversations.read')
+  @Roles(...PATIENT_FACING)
+  @HttpCode(HttpStatus.OK)
+  newOwnSessionQr(@CurrentUser() user: JwtPayload) { return this.webService.newQrOwn(user); }
+
   @Post('sessions/me/logout')
   @Permission('conversations.read')
   @Roles(...PATIENT_FACING)

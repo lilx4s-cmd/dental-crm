@@ -11,6 +11,7 @@ jest.mock('./whatsapp.service', () => ({ WhatsAppService: class {} }));
 import makeWASocket from '@whiskeysockets/baileys';
 import { WhatsAppWebService } from './whatsapp-web.service';
 import { Role } from '@dental-crm/shared';
+import { usePrismaAuthState } from './baileys-auth-state';
 
 describe('QR-only work-account setup', () => {
   const user = { sub: 'staff', email: 'staff@test.invalid', role: Role.SALES_CONSULTANT };
@@ -31,7 +32,7 @@ describe('QR-only work-account setup', () => {
       create: jest.fn().mockImplementation(({ data }) => { const row = { id: `chat-${chats.length}`, ...data }; chats.push(row); return Promise.resolve(row); }),
       update: jest.fn().mockImplementation(({ where, data }) => { const row = chats.find(c => c.id === where.id); Object.assign(row!, data); return Promise.resolve(row); }),
     };
-    (makeWASocket as jest.Mock).mockImplementation(() => ({ ev: { on: (name: string, fn: (value: unknown) => Promise<void>) => { handlers[name] = fn; } }, end: jest.fn() }));
+    (makeWASocket as jest.Mock).mockImplementation(() => ({ ev: { on: (name: string, fn: (value: unknown) => Promise<void>) => { handlers[name] = fn; } }, end: jest.fn(), logout: jest.fn().mockResolvedValue(undefined), user: { id: '905550000000:1@s.whatsapp.net' } }));
     service = new WhatsAppWebService({ get: (key: string) => values[key] } as never, {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'staff', isActive: true, role: Role.SALES_CONSULTANT }) },
       whatsAppAccount: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
@@ -118,6 +119,33 @@ describe('QR-only work-account setup', () => {
     await service.connectOwn(user);
     await handlers['contacts.upsert']([{ id: '905550000001@s.whatsapp.net', notify: 'Push name' }]);
     expect(chats[0].whatsappContactName).toBe('Saved previously');
+  });
+
+  it('clears a connected session and creates a fresh socket for a new QR', async () => {
+    await service.connectOwn(user);
+    await handlers['connection.update']({ connection: 'open' });
+    const oldCreds = handlers['creds.update'];
+    const oldSocket = (makeWASocket as jest.Mock).mock.results[(makeWASocket as jest.Mock).mock.results.length - 1].value;
+    const auth = await (usePrismaAuthState as jest.Mock).mock.results[(usePrismaAuthState as jest.Mock).mock.results.length - 1].value;
+    auth.clear.mockClear(); auth.saveCreds.mockClear();
+    await service.newQrOwn(user);
+    expect(oldSocket.logout).toHaveBeenCalled();
+    expect(oldSocket.end).toHaveBeenCalled();
+    expect(auth.clear).toHaveBeenCalledTimes(1);
+    expect((makeWASocket as jest.Mock).mock.results[(makeWASocket as jest.Mock).mock.results.length - 1].value).not.toBe(oldSocket);
+    await oldCreds({});
+    expect(auth.saveCreds).not.toHaveBeenCalled();
+    await handlers['connection.update']({ qr: 'fresh-test-qr' });
+    expect(await service.ownStatus(user)).toMatchObject({ state: 'awaiting_scan', linkedNumber: null, qrDataUrl: expect.stringMatching(/^data:image/) });
+  });
+  it('replaces an expired QR instead of ignoring connect while awaiting a scan', async () => {
+    await service.connectOwn(user);
+    await handlers['connection.update']({ qr: 'old-qr' });
+    const before = (await service.ownStatus(user)).qrDataUrl;
+    await Promise.all([service.newQrOwn(user), service.newQrOwn(user)]);
+    expect(await service.ownStatus(user)).toMatchObject({ state: 'connecting', qrDataUrl: null });
+    await handlers['connection.update']({ qr: 'replacement-qr' });
+    expect((await service.ownStatus(user)).qrDataUrl).not.toBe(before);
   });
 
 });

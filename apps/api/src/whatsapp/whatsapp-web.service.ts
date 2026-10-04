@@ -80,6 +80,8 @@ class WhatsAppConnection {
   private lastError: string | null = null;
   /** Guards against two connect attempts racing into two sockets on one session. */
   private connecting = false;
+  private clearAuth: (() => Promise<void>) | null = null;
+  private freshPairing: Promise<void> | null = null;
   /**
    * The pending automatic reconnect, held so it can be cancelled. Without this, unlinking a device
    * was undone a few seconds later by a retry that had already been scheduled — staff pressed
@@ -157,6 +159,19 @@ class WhatsAppConnection {
     await this.connectInternal();
   }
 
+  /** Explicit QR renewal must discard saved authentication, rather than resume it. */
+  async newQr(): Promise<void> {
+    if (!this.enabled) throw new ServiceUnavailableException('WhatsApp linking has been disabled by your administrator.');
+    if (this.freshPairing) return this.freshPairing;
+    this.freshPairing = (async () => {
+      await this.onUpdate({ autoReconnect: false, linkedNumber: null });
+      await this.logout();
+      await this.connect();
+    })();
+    try { await this.freshPairing; }
+    finally { this.freshPairing = null; }
+  }
+
   private async connectInternal(): Promise<void> {
     if (!this.enabled || this.connecting || this.state === 'connected') return;
 
@@ -170,6 +185,7 @@ class WhatsAppConnection {
 
       const version = await this.currentWebVersion();
       if (this.stopped || generation !== this.generation) return;
+      this.clearAuth = clear;
       const sock = makeWASocket({
         // Announcing a stale protocol version gets the connection refused with 405 before any QR
         // is issued — see currentWebVersion below.
@@ -185,14 +201,18 @@ class WhatsAppConnection {
       });
       this.socket = sock;
 
-      sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('creds.update', async () => {
+        if (!this.stopped && this.socket === sock && generation === this.generation) await saveCreds();
+      });
 
       sock.ev.on('connection.update', async (update) => {
         if (this.stopped || this.socket !== sock) return;
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          this.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+          const dataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+          if (this.stopped || this.socket !== sock || generation !== this.generation) return;
+          this.qrDataUrl = dataUrl;
           this.state = 'awaiting_scan';
         }
 
@@ -223,7 +243,7 @@ class WhatsAppConnection {
           await this.onUpdate({ disconnectedAt: new Date() });
 
           // A person pressed unlink while this drop was in flight. Honour that over any retry.
-          if (this.stopped) return;
+          if (this.stopped || generation !== this.generation) return;
 
           if (code !== undefined && TERMINAL_DISCONNECTS.has(code)) {
             if (CREDENTIALS_DEAD.has(code)) {
@@ -305,11 +325,12 @@ class WhatsAppConnection {
       });
       sock.ev.on('messages.upsert', ({ messages }) => this.queueMessages(messages, sock));
     } catch (e) {
+      if (generation !== this.generation) return;
       this.state = 'disconnected';
       this.lastError = e instanceof Error ? e.message : 'Failed to connect';
       this.logger.error(`WhatsApp Web connect failed: ${this.lastError}`);
     } finally {
-      this.connecting = false;
+      if (generation === this.generation) this.connecting = false;
     }
   }
 
@@ -329,7 +350,7 @@ class WhatsAppConnection {
    */
   private async currentWebVersion(): Promise<WAVersion | undefined> {
     try {
-      const { version } = await fetchLatestBaileysVersion();
+      const { version } = await fetchLatestBaileysVersion({ timeout: 10_000 });
       return version;
     } catch (e) {
       this.logger.warn(
@@ -368,14 +389,23 @@ class WhatsAppConnection {
     this.cancelReconnect();
     this.reconnectAttempts = 0;
 
-    const { clear } = await usePrismaAuthState(this.prisma, this.sessionId);
+    const sock = this.socket;
+    this.socket = null;
+    this.connecting = false;
+    const clear = this.clearAuth ?? (await usePrismaAuthState(this.prisma, this.sessionId)).clear;
+    this.clearAuth = null;
+    let timeout: NodeJS.Timeout | undefined;
     try {
-      await this.socket?.logout();
+      // An unresponsive old socket must not hold the new QR request indefinitely.
+      if (sock) await Promise.race([
+        sock.logout(),
+        new Promise<void>((resolve) => { timeout = setTimeout(resolve, 5000); }),
+      ]);
     } catch {
       // Already gone from the phone's side; clearing local state is what matters.
     }
+    finally { if (timeout) clearTimeout(timeout); sock?.end(undefined); }
     await clear();
-    this.socket = null;
     this.state = this.enabled ? 'disconnected' : 'disabled';
     this.qrDataUrl = null;
     this.linkedNumber = null;
@@ -590,6 +620,11 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
   async connectOwn(user: JwtPayload) {
     const { sessionId, ownerId } = await this.resolveSession(user);
     await this.connection(sessionId, ownerId).connect();
+    return this.ownStatus(user);
+  }
+  async newQrOwn(user: JwtPayload) {
+    const { sessionId, ownerId } = await this.resolveSession(user);
+    await this.connection(sessionId, ownerId).newQr();
     return this.ownStatus(user);
   }
   async logoutOwn(user: JwtPayload, ownerUserId?: string) {
