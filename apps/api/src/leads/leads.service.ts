@@ -51,6 +51,8 @@ import {
   type DuplicateGroup,
   type MergeDuplicatesResult,
 } from '@dental-crm/shared';
+import { LOST_REASONS } from '../coaching/rules';
+import { replyCoaching } from './reply-coaching';
 import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
 
 const LEAD_SELECT = {
@@ -748,12 +750,30 @@ export class LeadsService {
   async updateStage(id: string, dto: UpdateLeadStageDto, currentUser: JwtPayload) {
     const lead = await this.findOne(id, currentUser);
 
+    const missing: string[] = [];
+    if (['DONE','TICKET'].includes(dto.stage)) {
+      const patient = await this.prisma.patient.findUnique({ where:{ convertedFromLeadId:id },select:{ id:true,appointments:{ where:{ status:{ notIn:['CANCELLED','NO_SHOW'] } },take:1 },invoices:{ where:{ payments:{ some:{ status:'COMPLETED' } } },take:1 } } });
+      if (!patient || (!patient.appointments.length && !patient.invoices.length)) missing.push('No booking or recorded payment evidence');
+    }
+    if (dto.stage === 'OFFER_SENT') {
+      const assessment = await this.prisma.clinicalAssessment.findUnique({ where:{ leadId:id } });
+      if (assessment) {
+        const requirements = await this.prisma.assessmentRequirement.findMany({ where:{ category:assessment.treatmentCategory,required:true } });
+        const absent = requirements.filter(r => (assessment.checklist as Record<string,boolean>)[r.key] !== true);
+        if (absent.length) missing.push(`Assessment missing: ${absent.map(r=>r.label).join(', ')}`);
+      }
+    }
+    if (missing.length && !dto.confirmSuspicious) throw new ConflictException(`PIPELINE_CONFIRMATION_REQUIRED: ${missing.join('; ')}. Review this move and add a reason to continue.`);
+    if (missing.length && (!dto.note || dto.note.trim().length < 3)) throw new BadRequestException('Explain why this pipeline move is appropriate');
+
     const newStatus = statusForStage(dto.stage as $Enums.PipelineStage);
 
     // Lost reason only ever applies while a lead is actually in the LOST stage:
     // persist it when moving in (falling back to whatever was already there, so
     // re-confirming a move doesn't blank it out), clear it the moment the lead
     // moves anywhere else so a reopened deal doesn't carry a stale reason.
+    if (dto.stage === PipelineStage.LOST && (!dto.lostReason || !LOST_REASONS.includes(dto.lostReason))) throw new BadRequestException('Choose a structured lost reason');
+    if (dto.stage === PipelineStage.LOST && dto.lostReason === 'OTHER' && (!dto.note || dto.note.trim().length < 3)) throw new BadRequestException('Explain the other lost reason');
     const lostReason = dto.stage === PipelineStage.LOST ? (dto.lostReason ?? lead.lostReason) : null;
 
     const [updatedLead] = await this.prisma.$transaction([
@@ -763,6 +783,8 @@ export class LeadsService {
           stage: dto.stage as $Enums.PipelineStage,
           status: newStatus,
           lostReason,
+          lostReasonCode: dto.stage === PipelineStage.LOST ? dto.lostReason : null,
+          lostReasonDetail: dto.stage === PipelineStage.LOST ? dto.note : null,
           stageChangedAt: new Date(),
         },
         select: LEAD_SELECT,
@@ -788,7 +810,7 @@ export class LeadsService {
           note:
             dto.stage === PipelineStage.LOST && dto.lostReason
               ? `${dto.lostReason}${dto.note ? ` — ${dto.note}` : ''}`
-              : dto.note,
+              : missing.length ? `Confirmed pipeline exception: ${missing.join("; ")}. Reason: ${dto.note}` : dto.note,
         },
       }),
     ]);
@@ -1242,6 +1264,21 @@ export class LeadsService {
       select: {
         ...LEAD_SELECT,
         patient: { select: { id: true, firstName: true, lastName: true } },
+        conversations: {
+          select: {
+            messages: {
+              where: {
+                OR: [
+                  { direction: 'INBOUND' },
+                  { direction: 'OUTBOUND', status: { in: ['SENT', 'DELIVERED', 'READ'] } },
+                ],
+              },
+              select: { createdAt: true, direction: true },
+              orderBy: [{ createdAt: 'desc' }, { direction: 'desc' }],
+              take: 1,
+            },
+          },
+        },
       },
       orderBy: { stageChangedAt: 'asc' },
     });
@@ -1250,7 +1287,13 @@ export class LeadsService {
     const due: Array<Record<string, unknown>> = [];
     const dormant: Array<Record<string, unknown>> = [];
 
-    for (const lead of leads) {
+    const replies: Array<Record<string, unknown>> = [];
+    for (const { conversations, ...lead } of leads) {
+      const coaching = replyCoaching(conversations ?? [], now);
+      if (coaching) {
+        replies.push({ lead, ...coaching });
+        continue;
+      }
       const action = nextAction(lead.stage, lead.stageChangedAt, now);
       if (!action.action) continue;
 
@@ -1266,16 +1309,27 @@ export class LeadsService {
     }
 
     // Worst first: the deal ignored longest is the one most likely to be lost outright.
-    due.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
-    dormant.sort((a, b) => (b.action as { overdueDays: number }).overdueDays - (a.action as { overdueDays: number }).overdueDays);
+    due.sort(
+      (a, b) =>
+        (b.action as { overdueDays: number }).overdueDays -
+        (a.action as { overdueDays: number }).overdueDays,
+    );
+    dormant.sort(
+      (a, b) =>
+        (b.action as { overdueDays: number }).overdueDays -
+        (a.action as { overdueDays: number }).overdueDays,
+    );
 
+    replies.sort((a, b) => Number(b.waitingMinutes) - Number(a.waitingMinutes));
     const tasks = await this.openTasksFor(currentUser, now);
 
     return {
+      replies,
       due,
       dormant,
       tasks,
       counts: {
+        replies: replies.length,
         due: due.length,
         dormant: dormant.length,
         tasks: tasks.length,
@@ -1463,7 +1517,7 @@ export class LeadsService {
   private async findTaskForUser(taskId: string, currentUser: JwtPayload) {
     const task = await this.prisma.leadTask.findUnique({
       where: { id: taskId },
-      select: { id: true, leadId: true, review: { select: { id: true, status: true } } },
+      select: { id: true, leadId: true, dueDate: true, review: { select: { id: true, status: true } } },
     });
     if (!task) throw new NotFoundException('Task not found');
     // Reuse the lead's access check rather than inventing a second rule for tasks.
@@ -1474,11 +1528,13 @@ export class LeadsService {
   async updateTask(taskId: string, dto: UpdateLeadTaskDto, currentUser: JwtPayload) {
     const task = await this.findTaskForUser(taskId, currentUser);
     if (task.review) throw new BadRequestException('Use Lead Supervision to manage this correction task.');
+    if (dto.dueDate && new Date(dto.dueDate).getTime() !== task.dueDate.getTime() && (!dto.rescheduleReason || dto.rescheduleReason.trim().length < 3)) throw new BadRequestException('Explain why this follow-up is being rescheduled');
     return this.prisma.leadTask.update({
       where: { id: taskId },
       data: {
         title: dto.title,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        rescheduleReason: dto.rescheduleReason?.trim(),
         assignedToId: dto.assignedToId,
         // `completed` is a verb the client sends; the column stores when it happened. Undefined
         // leaves it alone so a rename does not silently reopen a finished task.

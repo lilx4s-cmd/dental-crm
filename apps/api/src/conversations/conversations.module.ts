@@ -1,3 +1,4 @@
+import { CoachingModule } from '../coaching/coaching.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
@@ -7,7 +8,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 // send outbound ones back through WhatsApp. The cycle is real and intentional — the alternative
 // is a third module that exists only to break it.
 @Module({
-  imports: [forwardRef(() => WhatsAppModule)],
+  imports: [CoachingModule, forwardRef(() => WhatsAppModule)],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

@@ -286,10 +286,10 @@ export function useUpdateLeadStage() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, stage, note, lostReason }: { id: string; stage: string; note?: string; lostReason?: string }) =>
+    mutationFn: ({ id, stage, note, lostReason, confirmSuspicious }: { id: string; stage: string; note?: string; lostReason?: string; confirmSuspicious?:boolean }) =>
       apiRequest(
         `/api/leads/${id}/stage`,
-        { method: 'PATCH', body: JSON.stringify({ stage, note, lostReason }) },
+        { method: 'PATCH', body: JSON.stringify({ stage, note, lostReason, confirmSuspicious }) },
         accessToken ?? undefined,
       ),
     onSuccess: () => {
@@ -475,6 +475,7 @@ export function useUpdateLeadTask() {
       dueDate?: string;
       assignedToId?: string;
       completed?: boolean;
+      rescheduleReason?: string;
     }) =>
       apiRequest(
         `/api/leads/tasks/${taskId}`,
@@ -483,6 +484,7 @@ export function useUpdateLeadTask() {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['coaching'] });
       qc.invalidateQueries({ queryKey: ['lead-tasks'] });
     },
   });

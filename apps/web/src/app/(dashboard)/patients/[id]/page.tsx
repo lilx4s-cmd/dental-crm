@@ -1,4 +1,5 @@
 'use client';
+import { LeadCoach } from '@/components/coaching/lead-coach';
 
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -556,6 +557,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Tabs */}
+      {patient.convertedFromLeadId && <LeadCoach leadId={patient.convertedFromLeadId}/>}
       <Tabs defaultValue="planning">
         <TabsList>
           <TabsTrigger value="planning" className="gap-2"><ClipboardList className="h-4 w-4" />Planning</TabsTrigger>

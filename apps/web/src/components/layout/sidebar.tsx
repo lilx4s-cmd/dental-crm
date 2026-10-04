@@ -12,9 +12,9 @@ import { useUnreadSummary } from '@/hooks/use-conversations';
 import { cn } from '@/lib/utils';
 
 const navItems = [
+  { href: '/my-day', label: 'My Day', icon: Sunrise },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/patients', label: 'Patients', icon: Users },
-  { href: '/my-day', label: 'My Day', icon: Sunrise },
   { href: '/pipeline', label: 'Deals', icon: GitBranch },
   { href: '/supervision', label: 'Lead Supervision', icon: BarChart2 },
   { href: '/access', label: 'Access Control', icon: Users },

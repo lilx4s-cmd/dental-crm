@@ -1,8 +1,9 @@
 import { hasPermission, canSeeAllLeads, canSupervise } from '@dental-crm/shared';
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Optional, Logger, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { JwtPayload, Role } from '@dental-crm/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { CoachingService } from '../coaching/coaching.service';
 import { OUTBOUND_SENDER, type OutboundSender } from './outbound-sender';
 import { ConversationsQueryDto } from './dto/conversations-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -88,6 +89,7 @@ export class ConversationsService {
     // Injected by token, not by class — see outbound-sender.ts for why that matters here.
     @Inject(OUTBOUND_SENDER)
     private readonly sender: OutboundSender,
+    @Optional() private readonly coaching?: CoachingService,
   ) {}
 
   private scope(user?: JwtPayload): Prisma.ConversationWhereInput {
@@ -460,6 +462,8 @@ export class ConversationsService {
       channel: $Enums.ConversationChannel;
       externalThreadId: string | null;
       whatsappSessionId?: string;
+      leadId?: string | null;
+      patientId?: string | null;
       lead: { phone: string | null; whatsappNumber: string | null } | null;
       patient: { phone: string | null; whatsappNumber: string | null } | null;
     },
@@ -492,11 +496,16 @@ export class ConversationsService {
     try {
       const transport = await this.sender.sendText(phone, content, conv.whatsappSessionId ?? 'default');
       this.logger.log(`Sent message ${messageId} via ${transport}`);
-      return this.prisma.message.update({
+      const sent = await this.prisma.message.update({
         where: { id: messageId },
         data: { status: $Enums.MessageStatus.SENT, sentAt: new Date(), failureReason: null },
         select: MESSAGE_SELECT,
       });
+      try { if (this.coaching) {
+        const leadId = conv.leadId ?? (conv.patientId ? (await this.prisma.patient.findUnique({where:{id:conv.patientId},select:{convertedFromLeadId:true}}))?.convertedFromLeadId : null);
+        if (leadId) await this.coaching.evaluateLead(leadId).catch(()=>this.logger.warn('Coaching refresh queued for reconciliation'));
+      } } catch { this.logger.warn('Coaching refresh queued for reconciliation'); }
+      return sent;
     } catch (e) {
       const reason = e instanceof Error ? e.message : 'WhatsApp rejected the message';
       this.logger.warn(`Message ${messageId} failed to send: ${reason}`);

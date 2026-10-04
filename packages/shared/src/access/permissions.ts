@@ -13,6 +13,16 @@ export const ACCESS_MODULES = [
   ['settings', 'Clinic settings'],
 ] as const;
 export const SPECIAL_PERMISSIONS = [
+  ['supervision.view', 'View team supervision'],
+  ['supervision.manage', 'Send instructions and manage supervised issues'],
+  ['supervision.dismiss', 'Dismiss supervised warnings with a reason'],
+  ['supervision.reassign', 'Reassign supervised leads'],
+  ['sales_rules.view', 'View sales rule settings'],
+  ['sales_rules.edit', 'Edit sales rule settings'],
+  ['issues.view_own', 'View own coaching issues'],
+  ['issues.view_team', 'View supervised team issues'],
+  ['assessments.review', 'Complete assigned clinical assessments'],
+  ['quotes.approve_discount', 'Approve reduced treatment offers'],
   ['leads.all', 'See all salespeople’s leads'],
   ['leads.assign', 'Reassign leads'],
   ['leads.review', 'Supervise leads and review corrections'],

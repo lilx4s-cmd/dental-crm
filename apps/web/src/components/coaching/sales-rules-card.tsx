@@ -1,0 +1,30 @@
+'use client';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { hasPermission } from '@dental-crm/shared';
+import { useAuth } from '@/context/auth-context';
+import { useCoaching,useCoachAction } from '@/hooks/use-coaching';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { QueryError } from '@/components/ui/query-state';
+type Rule={ id:string;key:string;name:string;enabled:boolean;thresholdMinutes:number|null;warningMinutes:number|null;escalationMinutes:number;severity:string;settings:Record<string,unknown> };
+function RuleRow({ rule,editable }:{ rule:Rule;editable:boolean }) {
+  const action=useCoachAction();
+  const [editing,setEditing]=useState(false);
+  return <div className="border-t py-3"><div className="flex items-center justify-between gap-2"><div><p className="text-sm font-medium">{rule.name}</p><p className="text-xs text-muted-foreground">{rule.enabled?'Enabled':'Disabled'} · Target {rule.thresholdMinutes ?? '—'} min · Escalate after {rule.escalationMinutes} min red</p></div>{editable && <Button size="sm" variant="outline" onClick={() => setEditing(!editing)}>Edit</Button>}</div>
+  {editing && <form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault();const f=new FormData(e.currentTarget);const settings={...rule.settings};if ('count' in settings) settings.count=Number(f.get('count'));if (settings.stageMinutes) settings.stageMinutes=Object.fromEntries(Object.keys(settings.stageMinutes as Record<string,number>).map(stage=>[stage,Number(f.get(`stage-${stage}`))]));action.mutate({ path:`sales-rules/${rule.id}`,method:'PATCH',body:{ enabled:f.get('enabled')==='on',thresholdMinutes:Number(f.get('threshold')),warningMinutes:f.get('warning')?Number(f.get('warning')):null,escalationMinutes:Number(f.get('escalation')),severity:f.get('severity'),settings } },{ onSuccess:() => { toast.success('Sales rule saved');setEditing(false); },onError:(err) => toast.error(err.message) }); }}>
+  <label className="text-xs">SLA / threshold (minutes)<Input name="threshold" type="number" min="0" max="525600" defaultValue={rule.thresholdMinutes ?? 0} required/></label><label className="text-xs">Earlier warning (optional minutes)<Input name="warning" type="number" min="0" max="525600" defaultValue={rule.warningMinutes ?? ''}/></label><label className="text-xs">Supervisor escalation after red (minutes)<Input name="escalation" type="number" min="0" max="10080" defaultValue={rule.escalationMinutes} required/></label><label className="text-xs">Issue priority<select name="severity" defaultValue={rule.severity} className="mt-1 h-9 w-full rounded border bg-background px-2">{['YELLOW','ORANGE','RED'].map((s) => <option key={s}>{s}</option>)}</select></label><label className="flex items-center gap-2 text-sm"><input name="enabled" type="checkbox" defaultChecked={rule.enabled}/>Enabled</label>{'count' in rule.settings && <label className="text-xs">Occurrences before supervisor warning<Input name="count" type="number" min="1" max="100" defaultValue={Number(rule.settings.count)} required/></label>}{!!rule.settings.stageMinutes && Object.entries(rule.settings.stageMinutes as Record<string,number>).map(([stage,minutes])=><label key={stage} className="text-xs">{stage.replaceAll('_',' ')} — maximum minutes<Input name={`stage-${stage}`} type="number" min="1" max="525600" defaultValue={minutes} required/></label>)}<Button size="sm" disabled={action.isPending}>Save rule</Button></form>}
+  </div>;
+}
+export function SalesRulesCard() {
+  const { user }=useAuth();
+  const visible=hasPermission(user,'sales_rules.view',hasPermission(user,'leads.review',user?.role==='SUPER_ADMIN') || user?.role==='CLINIC_MANAGER');
+  const editable=hasPermission(user,'sales_rules.edit',user?.role==='SUPER_ADMIN');
+  const rules=useCoaching<Rule[]>('sales-rules',visible);
+  const requirements=useCoaching<Array<{ id:string;category:string;key:string;label:string;required:boolean }>>('requirements',visible);
+  const action=useCoachAction();
+  if (!visible) return null;
+  return <section aria-label="Sales Rules" className="rounded-lg border p-5"><h2 className="text-lg font-semibold">Sales Rules</h2><p className="my-2 text-sm text-muted-foreground">Targets and escalation times apply to recorded CRM activity. Changes re-evaluate active leads.</p>{rules.isError?<QueryError error={rules.error} onRetry={rules.refetch}/>:rules.data?.map((r) => <RuleRow key={`${r.id}:${r.enabled}:${r.thresholdMinutes}:${r.warningMinutes}:${r.escalationMinutes}:${r.severity}:${JSON.stringify(r.settings)}`} rule={r} editable={editable}/>)}
+  <details className="mt-4"><summary className="cursor-pointer text-sm font-medium">Assessment requirements</summary><div className="mt-3 space-y-2">{requirements.data?.map((r) => <div key={r.id} className="flex items-center justify-between gap-2 text-sm"><span>{r.category}: {r.label}</span>{editable?<label className="flex gap-2"><input type="checkbox" checked={r.required} disabled={action.isPending} onChange={(e) => action.mutate({ path:'requirements',body:{ category:r.category,key:r.key,label:r.label,required:e.target.checked } },{ onError:(err) => toast.error(err.message) })}/>Required</label>:<span>{r.required?'Required':'Optional'}</span>}</div>)}{editable && <form className="space-y-2 border-t pt-3" onSubmit={(e) => { e.preventDefault();const f=new FormData(e.currentTarget);action.mutate({ path:'requirements',body:{ category:String(f.get('category')).toUpperCase(),key:String(f.get('key')).toUpperCase(),label:f.get('label'),required:true } },{ onError:(err) => toast.error(err.message),onSuccess:() => toast.success('Requirement saved') }); }}><Input name="category" required placeholder="Category: DENTAL / HAIR / AESTHETIC" aria-label="Requirement category"/><Input name="key" required placeholder="Key: XRAY" aria-label="Requirement key"/><Input name="label" required placeholder="Label: Requested panoramic X-ray" aria-label="Requirement label"/><Button size="sm" disabled={action.isPending}>Add required item</Button></form>}</div></details>
+  </section>;
+}

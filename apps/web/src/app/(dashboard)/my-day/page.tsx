@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, RefreshCcw, Sparkles } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ListTodo,
+  MessageCircle,
+  RefreshCcw,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { STAGE_LABELS } from '@dental-crm/shared';
 
@@ -14,7 +21,7 @@ import { useWorkList, type WorkItem, type WorkTask } from '@/hooks/use-work-list
 import { useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai';
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
-import { AssistantPanel } from '@/components/ai/assistant-panel';
+import { MyDayCoach } from '@/components/coaching/my-day-coach';
 import { QueryError } from '@/components/ui/query-state';
 import { useLead, useUpdateLeadTask, type Lead } from '@/hooks/use-leads';
 
@@ -51,10 +58,16 @@ function WorkRow({
             toast.error('No WhatsApp number on file for this deal');
             return;
           }
-          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+          window.open(
+            `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+            '_blank',
+            'noopener,noreferrer',
+          );
         },
         onError: (err) =>
-          toast.error(isAiNotConfiguredError(err) ? AI_NOT_CONFIGURED : 'Could not draft a message'),
+          toast.error(
+            isAiNotConfiguredError(err) ? AI_NOT_CONFIGURED : 'Could not draft a message',
+          ),
         onSettled: () => setDrafting(false),
       },
     );
@@ -62,11 +75,7 @@ function WorkRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 border-t px-4 py-3 first:border-t-0">
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={() => onOpen(lead)}
-      >
+      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(lead)}>
         <p className="truncate text-sm font-medium">
           {lead.firstName} {lead.lastName ?? ''}
         </p>
@@ -76,9 +85,7 @@ function WorkRow({
       </button>
 
       <Badge
-        variant={
-          recycling ? 'secondary' : action.urgency === 'overdue' ? 'destructive' : 'warning'
-        }
+        variant={recycling ? 'secondary' : action.urgency === 'overdue' ? 'destructive' : 'warning'}
         className="shrink-0"
       >
         {recycling
@@ -180,7 +187,11 @@ function TaskRow({ task, onOpen }: { task: WorkTask; onOpen: (leadId: string) =>
         <CheckCircle2 className="h-5 w-5" />
       </button>
 
-      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onOpen(task.lead.id)}>
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={() => onOpen(task.lead.id)}
+      >
         <p className="truncate text-sm font-medium">{task.title}</p>
         <p className="truncate text-xs text-muted-foreground">
           {name} · {STAGE_LABELS[task.lead.stage] ?? task.lead.stage}
@@ -203,7 +214,7 @@ function TaskRow({ task, onOpen }: { task: WorkTask; onOpen: (leadId: string) =>
  * has sat in a stage is a fact, and guessing at it would be slower and sometimes wrong. The model
  * writes the message, once the rules have decided who needs one.
  */
-export default function MyDayPage() {
+function PipelineFollowUps() {
   const workList = useWorkList();
   const { data, isLoading } = workList;
   const [detail, setDetail] = useState<Lead | null>(null);
@@ -220,15 +231,6 @@ export default function MyDayPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">My Day</h1>
-        <p className="mt-1 text-muted-foreground">
-          Your reminders, deals that need chasing, and cold ones worth another try.
-        </p>
-      </div>
-
-      <AssistantPanel />
-
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
@@ -240,73 +242,75 @@ export default function MyDayPage() {
         // failed to load — it is the sentence that sends them home.
         <QueryError error={workList.error} onRetry={workList.refetch} variant="page" />
       ) : (
-        <Tabs defaultValue={data?.counts.tasks ? 'tasks' : 'due'}>
-          <TabsList>
-            {/* First, and the default. What somebody committed to outranks what a cadence rule
+        <div className="space-y-4">
+          <Tabs defaultValue={data?.counts.tasks ? 'tasks' : 'due'}>
+            <TabsList>
+              {/* First, and the default. What somebody committed to outranks what a cadence rule
                 inferred — and until this tab existed, a reminder set on a deal appeared nowhere
                 at all while also removing that deal from the list below. */}
-            <TabsTrigger value="tasks" className="gap-2">
-              <ListTodo className="h-4 w-4" />
-              My tasks{data?.counts.tasks ? ` (${data.counts.tasks})` : ''}
-            </TabsTrigger>
-            <TabsTrigger value="due" className="gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              To contact{data?.counts.due ? ` (${data.counts.due})` : ''}
-            </TabsTrigger>
-            <TabsTrigger value="recycle" className="gap-2">
-              <RefreshCcw className="h-4 w-4" />
-              Recycle{data?.counts.dormant ? ` (${data.counts.dormant})` : ''}
-            </TabsTrigger>
-          </TabsList>
+              <TabsTrigger value="tasks" className="gap-2">
+                <ListTodo className="h-4 w-4" />
+                My tasks{data?.counts.tasks ? ` (${data.counts.tasks})` : ''}
+              </TabsTrigger>
+              <TabsTrigger value="due" className="gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                To contact{data?.counts.due ? ` (${data.counts.due})` : ''}
+              </TabsTrigger>
+              <TabsTrigger value="recycle" className="gap-2">
+                <RefreshCcw className="h-4 w-4" />
+                Recycle{data?.counts.dormant ? ` (${data.counts.dormant})` : ''}
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="tasks" className="mt-4">
-            {(data?.tasks?.length ?? 0) === 0 ? (
-              <div className="rounded-lg border border-dashed py-12 text-center">
-                <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
-                <p className="mt-2 font-medium">Nothing on your list</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Reminders you set on a deal show up here — including on deals already won, which
-                  the two lists beside this one leave out.
-                </p>
-              </div>
-            ) : (
-              <ul className="overflow-hidden rounded-lg border">
-                {data!.tasks.map((task) => (
-                  <TaskRow key={task.id} task={task} onOpen={setDetailLeadId} />
-                ))}
-              </ul>
-            )}
-          </TabsContent>
+            <TabsContent value="tasks" className="mt-4">
+              {(data?.tasks?.length ?? 0) === 0 ? (
+                <div className="rounded-lg border border-dashed py-12 text-center">
+                  <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
+                  <p className="mt-2 font-medium">Nothing on your list</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Reminders you set on a deal show up here — including on deals already won, which
+                    the two lists beside this one leave out.
+                  </p>
+                </div>
+              ) : (
+                <ul className="overflow-hidden rounded-lg border">
+                  {data!.tasks.map((task) => (
+                    <TaskRow key={task.id} task={task} onOpen={setDetailLeadId} />
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
 
-          <TabsContent value="due" className="mt-4">
-            <List
-              items={data?.due ?? []}
-              onOpen={setDetail}
-              emptyTitle="Nothing overdue"
-              emptyBody="Every open deal has been touched within its follow-up window. Deals with a task already on them are left off this list."
-            />
-          </TabsContent>
+            <TabsContent value="due" className="mt-4">
+              <List
+                items={data?.due ?? []}
+                onOpen={setDetail}
+                emptyTitle="Nothing overdue"
+                emptyBody="Every open deal has been touched within its follow-up window. Deals with a task already on them are left off this list."
+              />
+            </TabsContent>
 
-          <TabsContent value="recycle" className="mt-4 space-y-3">
-            <Card>
-              <CardHeader className="py-3">
-                <CardTitle className="text-sm">Cold deals</CardTitle>
-                <CardDescription>
-                  Gone quiet long enough that the normal follow-up has stopped. Worth one different
-                  approach rather than another chase — the drafted message uses an angle suited to
-                  how far each one got.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <List
-              items={data?.dormant ?? []}
-              recycling
-              onOpen={setDetail}
-              emptyTitle="Nothing gone cold"
-              emptyBody="No open deal has been sitting untouched past its stage's limit."
-            />
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="recycle" className="mt-4 space-y-3">
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Cold deals</CardTitle>
+                  <CardDescription>
+                    Gone quiet long enough that the normal follow-up has stopped. Worth one
+                    different approach rather than another chase — the drafted message uses an angle
+                    suited to how far each one got.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+              <List
+                items={data?.dormant ?? []}
+                recycling
+                onOpen={setDetail}
+                emptyTitle="Nothing gone cold"
+                emptyBody="No open deal has been sitting untouched past its stage's limit."
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
       )}
 
       {data && (
@@ -326,4 +330,9 @@ export default function MyDayPage() {
       />
     </div>
   );
+}
+
+export default function MyDayPage() {
+  const [showPipeline,setShowPipeline] = useState(false);
+  return <div className="max-w-4xl space-y-6"><MyDayCoach/><Button variant="ghost" onClick={()=>setShowPipeline(!showPipeline)}>{showPipeline?'Hide':'Show'} pipeline follow-ups and cold leads</Button>{showPipeline && <PipelineFollowUps/>}</div>;
 }

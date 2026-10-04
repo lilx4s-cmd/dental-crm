@@ -33,8 +33,11 @@ import { ImportLeadsDialog } from '@/components/pipeline/import-leads-dialog';
 import { DuplicatesDialog } from '@/components/pipeline/duplicates-dialog';
 import { useAuth } from '@/context/auth-context';
 import { LostReasonDialog } from '@/components/pipeline/lost-reason-dialog';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { LeadDetailSheet } from '@/components/pipeline/lead-detail-sheet';
 import {
+  useLead,
   useLeadsByStage,
   useUpdateLeadStage,
   type Lead,
@@ -204,8 +207,14 @@ export default function PipelinePage() {
 
   const [localGroups, setLocalGroups] = useState<PipelineGroup[]>([]);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [pendingConfirmation,setPendingConfirmation]=useState<{lead:Lead;stage:string;message:string}|null>(null);
+  const [confirmationReason,setConfirmationReason]=useState('');
   const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
+  const [linkedLeadId,setLinkedLeadId] = useState('');
+  const linkedLead = useLead(linkedLeadId);
+  useEffect(() => { setLinkedLeadId(new URLSearchParams(window.location.search).get('leadId') ?? ''); }, []);
+  useEffect(() => { if (linkedLead.data) setDetailLead(linkedLead.data); }, [linkedLead.data]);
   const selection = useBoardSelection();
   const exportLeads = useExportLeads();
   /**
@@ -258,7 +267,7 @@ export default function PipelinePage() {
   // Optimistically moves `lead` to `toStage` and persists it, reverting to the
   // last known-good server state on failure. Shared by the plain drag-and-drop
   // path and the lost-reason-confirmed path below.
-  async function commitMove(lead: Lead, toStage: string, extra?: { lostReason?: string; note?: string }) {
+  async function commitMove(lead: Lead, toStage: string, extra?: { lostReason?: string; note?: string; confirmSuspicious?:boolean }) {
     if (!canWrite) { toast.error('Your profile has read-only access to deals.'); return; }
     const fromStage = lead.stage;
     setLocalGroups((prev) =>
@@ -282,7 +291,8 @@ export default function PipelinePage() {
       // The API's reason is the useful part. A blanket "Failed to move deal" hid the two things
       // that actually go wrong here — the user's role cannot move cards, or the lead belongs to a
       // colleague — leaving people to guess why the card kept snapping back.
-      toast.error(moveErrorMessage(e));
+      if (e instanceof Error && e.message.startsWith('PIPELINE_CONFIRMATION_REQUIRED:')) setPendingConfirmation({lead,stage:toStage,message:e.message.replace('PIPELINE_CONFIRMATION_REQUIRED:','')});
+      else toast.error(moveErrorMessage(e));
       if (groups) setLocalGroups(groups);
     }
   }
@@ -586,6 +596,9 @@ export default function PipelinePage() {
         }}
       />
 
+      <Dialog open={!!pendingConfirmation} onOpenChange={(open)=>{if(!open){setPendingConfirmation(null);setConfirmationReason('');}}}>
+        <DialogContent><DialogTitle>Review this pipeline move</DialogTitle><p className="text-sm">{pendingConfirmation?.message}</p><Input aria-label="Pipeline exception reason" placeholder="Explain why this move is appropriate" value={confirmationReason} onChange={(e)=>setConfirmationReason(e.target.value)}/><Button disabled={confirmationReason.trim().length<3 || updateStage.isPending} onClick={()=>{if(pendingConfirmation){const move=pendingConfirmation;setPendingConfirmation(null);void commitMove(move.lead,move.stage,{confirmSuspicious:true,note:confirmationReason});setConfirmationReason('');}}}>Confirm move with reason</Button></DialogContent>
+      </Dialog>
       <LeadDetailSheet
         lead={detailLead}
         open={!!detailLead}

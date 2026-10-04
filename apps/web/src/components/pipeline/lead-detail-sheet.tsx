@@ -1,4 +1,5 @@
 'use client';
+import { LeadCoach } from '@/components/coaching/lead-coach';
 import { hasPermission } from '@dental-crm/shared';
 
 import { toast } from 'sonner';
@@ -336,7 +337,8 @@ export function LeadDetailSheet({
 
             <Separator className="my-4" />
 
-            <LeadTasksSection leadId={lead.id} />
+            <LeadCoach leadId={lead.id} />
+              <LeadTasksSection leadId={lead.id} />
 
             <Separator className="my-4" />
 
