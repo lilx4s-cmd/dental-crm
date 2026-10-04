@@ -420,6 +420,11 @@ model User {
 
   @@index([role])
   @@map("users")
+  coachingIssues              CoachingIssue[]          @relation("IssueAssignee")
+  coachingEscalations         CoachingIssue[]          @relation("IssueSupervisor")
+  instructionsReceived        SupervisorInstruction[]  @relation("InstructionRecipient")
+  instructionsSent            SupervisorInstruction[]  @relation("InstructionAuthor")
+  assessments                 ClinicalAssessment[]     @relation("AssessmentReviewer")
 }
 
 model RefreshToken {
@@ -809,6 +814,23 @@ model Lead {
   @@index([createdAt])
   @@index([campaignId])
   @@map("leads")
+  assignedAt               DateTime                  @default(now())
+  temperature              String                    @default("WARM")
+  waitingReason            String?
+  reviewAt                 DateTime?
+  lostReasonCode           String?
+  lostReasonDetail         String?
+  competitorName           String?
+  competitorPrice          Decimal?                  @db.Decimal(12, 2)
+  coachingIssues           CoachingIssue[]
+  coachingDirty            CoachingDirty?
+  instructions             SupervisorInstruction[]
+  assessment               ClinicalAssessment?
+  quoteVersions            QuoteVersion[]
+  paymentPromises          PaymentPromise[]
+  contactEvidence          ContactEvidence?
+  responseObservations     ResponseObservation[]
+  firstContactObservations FirstContactObservation[]
 }
 
 // What a prospective patient filled in on the public intake form, kept exactly as they wrote it.
@@ -962,6 +984,10 @@ model LeadTask {
   @@index([dueDate])
   @@index([assignedToId])
   @@map("lead_tasks")
+  rescheduleCount  Int         @default(0)
+  rescheduleReason String?
+  quoteVersionId   String?     @unique
+  @@index([assignedToId, completedAt, dueDate])
 }
 
 model LeadActivity {
@@ -1098,6 +1124,7 @@ model TreatmentPlan {
   @@index([assignedCoordinatorId])
   @@index([patientId])
   @@map("treatment_plans")
+  quoteVersions QuoteVersion[]
 }
 
 // Travel and accommodation for a patient coming in from abroad. One per plan — a trip is the
@@ -1726,4 +1753,229 @@ model LeadReview {
   @@index([leadId, status])
   @@index([status, dueAt])
   @@map("lead_reviews")
+}
+
+
+model SalesRule {
+  id                String   @id @default(uuid())
+  clinicId          String   @default("singleton")
+  key               String
+  name              String
+  description       String
+  enabled           Boolean  @default(true)
+  thresholdMinutes  Int?
+  warningMinutes    Int?
+  escalationMinutes Int      @default(30)
+  severity          String   @default("ORANGE")
+  settings          Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([clinicId, key])
+  @@map("sales_rules")
+}
+
+model CoachingIssue {
+  id                   String               @id @default(uuid())
+  clinicId             String               @default("singleton")
+  leadId               String
+  lead                 Lead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  patientId            String?
+  assignedUserId       String?
+  assignedUser         User?                @relation("IssueAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  supervisorUserId     String?
+  supervisorUser       User?                @relation("IssueSupervisor", fields: [supervisorUserId], references: [id], onDelete: SetNull)
+  ruleKey              String
+  category             String
+  severity             String
+  priority             Int                  @default(0)
+  title                String
+  description          String
+  recommendedAction    String
+  actionPath           String?
+  status               String               @default("OPEN")
+  detectedAt           DateTime             @default(now())
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+  escalatedAt          DateTime?
+  redSince             DateTime?
+  dueAt                DateTime?
+  firstViolationAt     DateTime
+  lastViolationAt      DateTime
+  autoResolved         Boolean              @default(false)
+  resolutionReason     String?
+  dismissedFingerprint String?
+  fingerprint          String
+  metadata             Json                 @default("{}")
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  events               CoachingIssueEvent[]
+
+  @@index([clinicId, assignedUserId, status, severity])
+  @@index([leadId, ruleKey])
+  @@index([clinicId, status, priority, detectedAt])
+  @@index([detectedAt])
+  @@map("coaching_issues")
+}
+
+model CoachingIssueEvent {
+  id        String        @id @default(uuid())
+  issueId   String
+  issue     CoachingIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  kind      String
+  actorId   String?
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@index([issueId, createdAt])
+  @@map("coaching_issue_events")
+}
+
+model CoachingDirty {
+  leadId    String   @id
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  revision  Int      @default(1)
+  updatedAt DateTime @default(now())
+  attempts  Int      @default(0)
+  retryAt   DateTime @default(now())
+  lastError String?
+
+  @@index([retryAt, updatedAt])
+  @@map("coaching_dirty")
+}
+
+model SupervisorInstruction {
+  id            String    @id @default(uuid())
+  leadId        String
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  salespersonId String
+  salesperson   User      @relation("InstructionRecipient", fields: [salespersonId], references: [id])
+  supervisorId  String
+  supervisor    User      @relation("InstructionAuthor", fields: [supervisorId], references: [id])
+  message       String
+  priority      String    @default("ORANGE")
+  status        String    @default("OPEN")
+  readAt        DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([salespersonId, status, createdAt])
+  @@map("supervisor_instructions")
+}
+
+model AssessmentRequirement {
+  id       String  @id @default(uuid())
+  clinicId String  @default("singleton")
+  category String
+  key      String
+  label    String
+  required Boolean @default(true)
+
+  @@unique([clinicId, category, key])
+  @@map("assessment_requirements")
+}
+
+model ClinicalAssessment {
+  id                String    @id @default(uuid())
+  leadId            String    @unique
+  lead              Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  treatmentCategory String    @default("DENTAL")
+  status            String    @default("COLLECTING_INFORMATION")
+  requestedById     String?
+  reviewerId        String?
+  reviewer          User?     @relation("AssessmentReviewer", fields: [reviewerId], references: [id])
+  requestedAt       DateTime?
+  completedAt       DateTime?
+  clinicalNotes     String?
+  checklist         Json      @default("{}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("clinical_assessments")
+}
+
+model QuoteVersion {
+  id              String        @id @default(uuid())
+  leadId          String
+  lead            Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id])
+  version         Int
+  status          String        @default("SENT")
+  currency        String
+  total           Decimal       @db.Decimal(12, 2)
+  snapshot        Json
+  createdById     String
+  approvedById    String?
+  sentAt          DateTime?
+  changeReason    String
+  createdAt       DateTime      @default(now())
+
+  @@unique([leadId, version])
+  @@index([leadId, sentAt])
+  @@map("quote_versions")
+}
+
+model PaymentPromise {
+  id                String   @id @default(uuid())
+  leadId            String
+  lead              Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dueAt             DateTime
+  amount            Decimal  @db.Decimal(12, 2)
+  currency          String
+  responsibleUserId String
+  createdById       String
+  status            String   @default("EXPECTED")
+  createdAt         DateTime @default(now())
+
+  @@index([leadId, status, dueAt])
+  @@map("payment_promises")
+}
+
+model ContactEvidence {
+  leadId                    String    @id
+  lead                      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  firstContactAt            DateTime?
+  firstContactUserId        String?
+  firstContactChannel       String?
+  lastInboundAt             DateTime?
+  lastOutboundAt            DateTime?
+  lastMeaningfulActivityAt  DateTime?
+  lastContactedByUserId     String?
+  firstResponseTimeSeconds  Int?
+  latestResponseTimeSeconds Int?
+  updatedAt                 DateTime  @updatedAt
+
+  @@map("contact_evidence")
+}
+
+model ResponseObservation {
+  id               String    @id @default(uuid())
+  leadId           String
+  lead             Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  inboundMessageId String    @unique
+  assignedUserId   String?
+  inboundAt        DateTime
+  respondedAt      DateTime?
+  responseSeconds  Int?
+  slaSeconds       Int
+  createdAt        DateTime  @default(now())
+
+  @@index([assignedUserId, inboundAt])
+  @@map("response_observations")
+}
+
+model FirstContactObservation {
+  id              String    @id @default(uuid())
+  leadId          String
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUserId  String?
+  assignedAt      DateTime
+  contactedAt     DateTime?
+  responseSeconds Int?
+  slaSeconds      Int
+
+  @@unique([leadId, assignedAt])
+  @@index([assignedUserId, assignedAt])
+  @@map("first_contact_observations")
 }

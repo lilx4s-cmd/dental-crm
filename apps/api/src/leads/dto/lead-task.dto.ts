@@ -39,4 +39,8 @@ export class UpdateLeadTaskDto {
   @IsBoolean()
   @IsOptional()
   completed?: boolean;
+
+  @IsString()
+  @IsOptional()
+  rescheduleReason?: string;
 }

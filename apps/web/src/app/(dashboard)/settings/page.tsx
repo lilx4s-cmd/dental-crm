@@ -1,4 +1,5 @@
 'use client';
+import { SalesRulesCard } from '@/components/coaching/sales-rules-card';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -226,7 +227,8 @@ export default function SettingsPage() {
 
       {/* First, because it is the only section on this page every role can act on — everything
           below is clinic-wide configuration that most staff can only read. */}
-      <AccountSecurityCard />
+      <SalesRulesCard />
+<AccountSecurityCard />
 
       <Separator />
 

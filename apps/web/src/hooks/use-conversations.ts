@@ -152,6 +152,7 @@ export function useSendMessage(conversationId: string) {
       qc.invalidateQueries({ queryKey: ['conversations', conversationId] });
       // The list shows the last message and its timestamp, so it is stale the moment one is sent.
       qc.invalidateQueries({ queryKey: ['conversations'] });
+      qc.invalidateQueries({ queryKey: ['coaching'] });
     },
   });
 }
@@ -231,6 +232,7 @@ export function useMarkConversationRead() {
       apiRequest(`/api/conversations/${id}/read`, { method: 'PATCH' }, accessToken ?? undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conversations'] });
+      qc.invalidateQueries({ queryKey: ['coaching'] });
     },
   });
 }

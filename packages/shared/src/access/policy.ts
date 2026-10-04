@@ -161,7 +161,7 @@ export function canAccessFilesFor(ownerType: string, role: string | undefined, p
  */
 export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
   '/dashboard': MANAGEMENT,
-  '/my-day': PIPELINE_WRITE,
+  '/my-day': ALL_STAFF,
   '/patients': CLINICAL,
   '/pipeline': PIPELINE,
   '/team': CLINIC_ADMIN,
@@ -195,6 +195,8 @@ export function canAccessRoute(path: string, role: string | undefined, permissio
  * they cannot load. Each role starts on the first page it can actually use.
  */
 export function landingRoute(role: string | undefined): string {
+  if (role === 'SALES_CONSULTANT') return '/my-day';
+  if (role === 'DENTIST') return '/appointments';
   const order = ['/dashboard', '/my-day', '/pipeline', '/appointments', '/patients', '/inbox', '/settings'];
   return order.find((r) => canAccessRoute(r, role)) ?? '/settings';
 }

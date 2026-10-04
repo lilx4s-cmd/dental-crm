@@ -6,19 +6,38 @@ exports.canSupervise = canSupervise;
 exports.canSeeAllLeads = canSeeAllLeads;
 const enums_1 = require("../enums");
 exports.ACCESS_MODULES = [
-    ['leads', 'Deals and follow-ups'], ['conversations', 'Conversations'],
-    ['patients', 'Patient records'], ['appointments', 'Appointments'],
-    ['plans', 'Treatment plans'], ['finance', 'Finance'], ['reports', 'Reports'],
-    ['campaigns', 'Campaigns'], ['settings', 'Clinic settings'],
+    ['leads', 'Deals and follow-ups'],
+    ['conversations', 'Conversations'],
+    ['patients', 'Patient records'],
+    ['appointments', 'Appointments'],
+    ['plans', 'Treatment plans'],
+    ['finance', 'Finance'],
+    ['reports', 'Reports'],
+    ['campaigns', 'Campaigns'],
+    ['settings', 'Clinic settings'],
 ];
 exports.SPECIAL_PERMISSIONS = [
-    ['leads.all', 'See all salespeople’s leads'], ['leads.assign', 'Reassign leads'],
+    ['supervision.view', 'View team supervision'],
+    ['supervision.manage', 'Send instructions and manage supervised issues'],
+    ['supervision.dismiss', 'Dismiss supervised warnings with a reason'],
+    ['supervision.reassign', 'Reassign supervised leads'],
+    ['sales_rules.view', 'View sales rule settings'],
+    ['sales_rules.edit', 'Edit sales rule settings'],
+    ['issues.view_own', 'View own coaching issues'],
+    ['issues.view_team', 'View supervised team issues'],
+    ['assessments.review', 'Complete assigned clinical assessments'],
+    ['quotes.approve_discount', 'Approve reduced treatment offers'],
+    ['leads.all', 'See all salespeople’s leads'],
+    ['leads.assign', 'Reassign leads'],
     ['leads.review', 'Supervise leads and review corrections'],
     ['conversations.all', 'See all work-account conversations'],
     ['conversations.supervise', 'Inspect and disconnect team WhatsApp sessions'],
     ['conversations.send', 'Send and retry WhatsApp messages'],
 ];
-exports.PERMISSION_KEYS = [...exports.ACCESS_MODULES.flatMap(([key]) => [`${key}.read`, `${key}.write`]), ...exports.SPECIAL_PERMISSIONS.map(([key]) => key)];
+exports.PERMISSION_KEYS = [
+    ...exports.ACCESS_MODULES.flatMap(([key]) => [`${key}.read`, `${key}.write`]),
+    ...exports.SPECIAL_PERMISSIONS.map(([key]) => key),
+];
 function hasPermission(user, key, fallback = false) {
     if (!user)
         return false;
@@ -32,9 +51,18 @@ function canSeeAllLeads(user) {
     return hasPermission(user, 'leads.all', user?.role === enums_1.Role.SUPER_ADMIN);
 }
 exports.ROUTE_PERMISSIONS = {
-    '/team': 'leads.assign', '/dashboard': 'reports.read', '/pipeline': 'leads.read', '/my-day': 'leads.read', '/patients': 'patients.read',
-    '/inbox': 'conversations.read', '/whatsapp': 'conversations.read',
-    '/appointments': 'appointments.read', '/finance': 'finance.read', '/reports': 'reports.read',
-    '/campaigns': 'campaigns.read', '/settings': 'settings.read', '/supervision': 'leads.read',
+    '/team': 'leads.assign',
+    '/dashboard': 'reports.read',
+    '/pipeline': 'leads.read',
+    '/my-day': 'leads.read',
+    '/patients': 'patients.read',
+    '/inbox': 'conversations.read',
+    '/whatsapp': 'conversations.read',
+    '/appointments': 'appointments.read',
+    '/finance': 'finance.read',
+    '/reports': 'reports.read',
+    '/campaigns': 'campaigns.read',
+    '/settings': 'settings.read',
+    '/supervision': 'leads.read',
 };
 //# sourceMappingURL=permissions.js.map

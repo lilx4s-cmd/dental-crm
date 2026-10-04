@@ -37,6 +37,14 @@ export interface WorkTask {
 }
 
 export interface WorkList {
+  replies?: Array<{
+    lead: Lead;
+    severity: 'RED' | 'ORANGE';
+    waitingMinutes: number;
+    title: string;
+    reason: string;
+    recommendedAction: string;
+  }>;
   due: WorkItem[];
   dormant: WorkItem[];
   tasks: WorkTask[];
@@ -54,8 +62,6 @@ export function useWorkList() {
   return useQuery<WorkList>({
     queryKey: ['work-list'],
     queryFn: () => apiRequest('/api/leads/work-list', {}, accessToken ?? undefined),
-    // The list is a morning routine, not a live feed — refetching on every focus would reshuffle
-    // it under someone mid-call.
     refetchOnWindowFocus: false,
   });
 }

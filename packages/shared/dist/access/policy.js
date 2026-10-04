@@ -155,7 +155,7 @@ function canAccessFilesFor(ownerType, role, permissions, write = false) {
  */
 exports.ROUTE_ACCESS = {
     '/dashboard': exports.MANAGEMENT,
-    '/my-day': exports.PIPELINE_WRITE,
+    '/my-day': exports.ALL_STAFF,
     '/patients': exports.CLINICAL,
     '/pipeline': exports.PIPELINE,
     '/team': exports.CLINIC_ADMIN,
@@ -190,6 +190,10 @@ function canAccessRoute(path, role, permissions) {
  * they cannot load. Each role starts on the first page it can actually use.
  */
 function landingRoute(role) {
+    if (role === 'SALES_CONSULTANT')
+        return '/my-day';
+    if (role === 'DENTIST')
+        return '/appointments';
     const order = ['/dashboard', '/my-day', '/pipeline', '/appointments', '/patients', '/inbox', '/settings'];
     return order.find((r) => canAccessRoute(r, role)) ?? '/settings';
 }

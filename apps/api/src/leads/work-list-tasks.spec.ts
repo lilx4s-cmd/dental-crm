@@ -60,6 +60,31 @@ describe('LeadsService — the task list behind My Day', () => {
 
   const whereOf = () => mockPrisma.leadTask.findMany.mock.calls[0][0].where;
 
+  it('prioritizes a waiting patient even when a future task exists', async () => {
+    mockPrisma.lead.findMany.mockResolvedValue([
+      {
+        id: 'l1',
+        stage: 'NEW_DEAL',
+        stageChangedAt: new Date(),
+        tasks: [{ id: 'future' }],
+        conversations: [
+          { messages: [{ direction: 'INBOUND', createdAt: new Date(Date.now() - 11 * 60_000) }] },
+        ],
+      },
+    ]);
+    const result = await service.workList(sales);
+    expect(result.replies).toHaveLength(1);
+    expect(result.replies[0].severity).toBe('RED');
+    expect(result.due).toHaveLength(0);
+    const query = mockPrisma.lead.findMany.mock.calls[0][0];
+    expect(query.where.assignedToId).toBe(sales.sub);
+    expect(query.select.conversations.select.messages.where.OR[1].status.in).toEqual([
+      'SENT',
+      'DELIVERED',
+      'READ',
+    ]);
+  });
+
   it('returns open tasks alongside the cadence lists', async () => {
     mockPrisma.leadTask.findMany.mockResolvedValue([task()]);
 
@@ -127,7 +152,9 @@ describe('LeadsService — the task list behind My Day', () => {
     });
 
     it('calls yesterday overdue', async () => {
-      mockPrisma.leadTask.findMany.mockResolvedValue([task({ dueDate: new Date(Date.now() - DAY) })]);
+      mockPrisma.leadTask.findMany.mockResolvedValue([
+        task({ dueDate: new Date(Date.now() - DAY) }),
+      ]);
 
       const result = await service.workList(admin);
 

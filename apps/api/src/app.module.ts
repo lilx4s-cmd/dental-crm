@@ -1,3 +1,4 @@
+import { CoachingModule } from './coaching/coaching.module';
 import { AccessModule } from './access/access.module';
 import { SupervisionModule } from './supervision/supervision.module';
 import { Module } from '@nestjs/common';
@@ -53,6 +54,7 @@ import { HealthController } from './health/health.controller';
     UsersModule,
     AccessModule,
     SupervisionModule,
+    CoachingModule,
     // Registered once for the whole app. Per-module registration starts a second scheduler.
     ScheduleModule.forRoot(),
     TagsModule,

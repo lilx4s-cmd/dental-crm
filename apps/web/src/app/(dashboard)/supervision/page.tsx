@@ -1,4 +1,5 @@
 'use client';
+import { TeamAttention } from '@/components/coaching/team-attention';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -92,6 +93,7 @@ export default function SupervisionPage() {
             : 'Correct issues raised by your supervisor and submit them for review.'}
         </p>
       </div>
+      <TeamAttention expanded />
       {queue.isError ? (
         <QueryError error={queue.error} onRetry={queue.refetch} />
       ) : queue.isLoading ? (

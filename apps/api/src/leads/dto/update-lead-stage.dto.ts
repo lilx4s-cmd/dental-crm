@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { PipelineStage } from '@dental-crm/shared';
 
 export class UpdateLeadStageDto {
@@ -16,4 +16,8 @@ export class UpdateLeadStageDto {
   @IsString()
   @IsOptional()
   lostReason?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  confirmSuspicious?: boolean;
 }

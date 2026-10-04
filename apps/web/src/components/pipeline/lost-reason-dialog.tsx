@@ -11,11 +11,13 @@ import { Textarea } from '@/components/ui/textarea';
 // migration/data/stage-dict.json's Category 2 stage names) so historical
 // reporting concepts carry over instead of inventing generic new categories.
 const LOST_REASONS = [
-  { value: 'CHANGED_MIND', label: 'Changed his mind' },
-  { value: 'NOT_QUALIFIED', label: 'Not qualified' },
-  { value: 'NO_CONTACT', label: 'No call / no WhatsApp response' },
-  { value: 'BUDGET', label: 'Not enough budget' },
-  { value: 'OTHER', label: 'Other' },
+  {value:'PRICE',label:'Price'}, {value:'NO_RESPONSE',label:'No response'},
+  {value:'COMPETITOR',label:'Competitor'}, {value:'TRAVEL_PROBLEM',label:'Travel problem'},
+  {value:'FINANCING',label:'Financing'}, {value:'NOT_ELIGIBLE',label:'Not clinically eligible'},
+  {value:'NOT_READY',label:'Not ready'}, {value:'TRUST_CONCERN',label:'Trust concern'},
+  {value:'LANGUAGE',label:'Language'}, {value:'FAKE_LEAD',label:'Fake lead'},
+  {value:'DUPLICATE',label:'Duplicate'}, {value:'BOOKED_ELSEWHERE',label:'Booked elsewhere'},
+  {value:'OTHER',label:'Other'},
 ];
 
 export function LostReasonDialog({
@@ -48,7 +50,7 @@ export function LostReasonDialog({
     const label = LOST_REASONS.find((r) => r.value === reason)?.label ?? reason;
     setSubmitting(true);
     try {
-      await onConfirm(label, note.trim() || undefined);
+      await onConfirm(reason, note.trim() || undefined);
       reset();
     } finally {
       setSubmitting(false);
@@ -80,13 +82,13 @@ export function LostReasonDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Note (optional)</Label>
+            <Label>{reason === 'OTHER' ? 'Explanation (required)' : 'Note (optional)'}</Label>
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Any extra detail…" rows={3} />
           </div>
         </div>
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!reason || submitting}>
+          <Button onClick={handleConfirm} disabled={!reason || (reason === 'OTHER' && note.trim().length < 3) || submitting}>
             {submitting ? 'Moving…' : 'Move to Lost'}
           </Button>
         </DialogFooter>

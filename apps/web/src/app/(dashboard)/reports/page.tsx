@@ -1,4 +1,5 @@
 'use client';
+import { CoachingReport } from '@/components/coaching/coaching-report';
 
 import dynamic from 'next/dynamic';
 import { TrendingUp, Users, Calendar, DollarSign, AlertCircle, CheckCircle } from 'lucide-react';
@@ -96,6 +97,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      <CoachingReport />
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
