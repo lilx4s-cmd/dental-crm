@@ -3,7 +3,7 @@ import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CoachingService } from './coaching.service';
-import { leadScope, mayManage, teamLeadScope } from './access';
+import { mayManage } from './access';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 @Injectable()
 export class CoachingWorkflowService {
@@ -61,7 +61,7 @@ export class CoachingWorkflowService {
     return { assessment,requirements };
   }
   async checklist(leadId: string,dto: { category: string; checklist: Record<string,boolean>; evidence?: Record<string,string> },user: JwtPayload) {
-    const lead = await this.coaching.assertLead(leadId,user);
+    await this.coaching.assertLead(leadId,user);
     if (!hasPermission(user,'leads.write',user.role!=='DENTIST')) throw new ForbiddenException('Lead edit permission required');
     const existing = await this.prisma.clinicalAssessment.findUnique({ where: { leadId } });
     if (existing?.status==='COMPLETED') throw new BadRequestException('Completed clinical assessments cannot be overwritten');

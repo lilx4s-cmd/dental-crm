@@ -1,11 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Cron, Interval } from '@nestjs/schedule';
-import { JwtPayload, Role, canSeeAllLeads, hasPermission } from '@dental-crm/shared';
+import { JwtPayload, hasPermission } from '@dental-crm/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_RULES, DEFAULT_REQUIREMENTS, evaluateRules, issuePriority, RuleConfig, RuleContext, Finding } from './rules';
 import { allocatePayments } from './payments';
-import { issueScope, leadScope, mayEditRules, mayManage, mayViewTeam, teamLeadScope } from './access';
+import { issueScope, leadScope, mayEditRules, mayManage, teamLeadScope } from './access';
 const ACTIVE = ['OPEN', 'ACKNOWLEDGED', 'ESCALATED'];
 const PERSON = { id: true, firstName: true, lastName: true };
 const ISSUE_INCLUDE = { lead: { select: { id: true, firstName: true, lastName: true, stage: true, country: true, source: true, temperature: true, assignedToId: true, supervisorId: true } }, assignedUser: { select: PERSON }, supervisorUser: { select: PERSON } };

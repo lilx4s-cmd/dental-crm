@@ -6,7 +6,6 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CoachingService } from './coaching.service';
 import { CoachingWorkflowService } from './workflow.service';
 import { CoachingViewsService } from './views.service';
-import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ALL_STAFF } from '../common/access-policy';
 class IssueQuery {

@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { useAuth } from '@/context/auth-context';
 import { useCoaching,useCoachAction,CoachIssue,CoachLead } from '@/hooks/use-coaching';
 import { useUpdateLeadTask } from '@/hooks/use-leads';
 import { LeadCoach } from './lead-coach';
@@ -23,7 +22,6 @@ function TaskItem({ task }:{ task:Task }) {
   </div>;
 }
 export function MyDayCoach() {
-  const { user } = useAuth();
   const query = useCoaching<Day>('my-day');
   const action = useCoachAction();
   const [clinicalLead,setClinicalLead] = useState<string|null>(null);

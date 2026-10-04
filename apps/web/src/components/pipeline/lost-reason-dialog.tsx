@@ -47,7 +47,6 @@ export function LostReasonDialog({
 
   async function handleConfirm() {
     if (!reason) return;
-    const label = LOST_REASONS.find((r) => r.value === reason)?.label ?? reason;
     setSubmitting(true);
     try {
       await onConfirm(reason, note.trim() || undefined);

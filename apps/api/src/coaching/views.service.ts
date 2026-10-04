@@ -1,8 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
+import { JwtPayload, hasPermission } from '@dental-crm/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { CoachingService } from './coaching.service';
-import { issueScope, leadScope, mayManage, mayViewTeam, teamLeadScope } from './access';
+import { issueScope, mayManage, mayViewTeam, teamLeadScope } from './access';
 import { issuePriority } from './rules';
 import { Prisma } from '@prisma/client';
 const LEAD = { id:true,firstName:true,lastName:true,stage:true,temperature:true };
@@ -51,8 +51,8 @@ export class CoachingViewsService {
       this.prisma.user.findMany({ where: { isActive:true },select: { ...PERSON,role:true,accessProfile: { select: { permissions:true } } } }),
     ]);
     issues.sort((a,b) => issuePriority(b)-issuePriority(a));
-    const reviewers = users.filter((u) => hasPermission({ role:u.role,permissions:u.accessProfile?.permissions as Record<string,boolean>|undefined },'assessments.review',['DENTIST','CLINIC_MANAGER','SUPER_ADMIN'].includes(u.role))).map(({ accessProfile,...u }) => u);
-    const assignees = users.filter((u) => hasPermission({ role:u.role,permissions:u.accessProfile?.permissions as Record<string,boolean>|undefined },'leads.read',u.role!=='DENTIST')).map(({ accessProfile,...u })=>u);
+    const reviewers = users.filter((u) => hasPermission({ role:u.role,permissions:u.accessProfile?.permissions as Record<string,boolean>|undefined },'assessments.review',['DENTIST','CLINIC_MANAGER','SUPER_ADMIN'].includes(u.role))).map(({ accessProfile:_accessProfile,...u }) => u);
+    const assignees = users.filter((u) => hasPermission({ role:u.role,permissions:u.accessProfile?.permissions as Record<string,boolean>|undefined },'leads.read',u.role!=='DENTIST')).map(({ accessProfile:_accessProfile,...u })=>u);
     return { issues,instructions,lead,requirements,quotes,plans,reviewers,assignees,health:issues.some((i) => i.severity==='RED')?'CRITICAL':issues.length?'NEEDS_ATTENTION':'ON_TRACK' };
   }
   async summary(user:JwtPayload) {

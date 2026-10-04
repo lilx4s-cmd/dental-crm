@@ -5,7 +5,6 @@ import { JwtModule,JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import request = require('supertest');
-import { randomUUID } from 'crypto';
 import { Role,JwtPayload } from '@dental-crm/shared';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CoachingService } from '../src/coaching/coaching.service';
