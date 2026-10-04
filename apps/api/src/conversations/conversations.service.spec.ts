@@ -173,6 +173,21 @@ describe('Starting a conversation', () => {
 });
 
 describe('Work account delivery', () => {
+  it('preserves imported timestamps without moving a newer conversation backwards', async () => {
+    const deps = build(); const service = await make(deps);
+    const originalDate = new Date('2024-01-01');
+    deps.prisma.conversation.findFirst.mockResolvedValue({ id: 'c1', lastMessageAt: new Date('2025-01-01') } as never);
+    await service.createInboundMessage('WHATSAPP', '905551112233', 'History', 'old-message', undefined, undefined, 'user:u1', 'u1', true, originalDate);
+    expect(deps.prisma.conversation.update).not.toHaveBeenCalled();
+    expect(deps.prisma.message.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ createdAt: originalDate, sentAt: originalDate }) }));
+  });
+  it('never treats an unresolved alternate contact ID as a phone number', async () => {
+    const deps = build({ conversation: { id: 'c1', ...WHATSAPP, externalThreadId: '123456789012345@lid', whatsappSessionId: 'user:u1' } });
+    const service = await make(deps);
+    await service.sendMessage('c1', { content: 'Hello' }, 'u1');
+    expect(deps.send).not.toHaveBeenCalled();
+    expect(deps.updates).toContainEqual(expect.objectContaining({ status: 'FAILED', failureReason: expect.stringContaining('phone number') }));
+  });
   it('uses the conversation account instead of the shared number', async () => {
     const deps = build({ conversation: { id: 'c1', ...WHATSAPP, whatsappSessionId: 'user:u1' } });
     const service = await make(deps);

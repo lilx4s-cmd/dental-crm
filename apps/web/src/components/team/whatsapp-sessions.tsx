@@ -92,7 +92,7 @@ export function WhatsAppSessions() {
             <Button variant="outline" onClick={() => mine.refetch()} disabled={mine.isFetching} aria-label="Refresh connection status"><RefreshCw className="h-4 w-4" /></Button>
             <Button variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(data.sessionId)}`}>My conversations</Link></Button>
           </div>
-          <p className="text-xs text-muted-foreground">Only messages delivered after linking are captured. Text sent from the work phone or its linked devices is also recorded. This shows conversations, not an employee’s screen or which device typed a message. Use a work account; personal chats on that number will also sync.</p>
+          <p className="text-xs text-muted-foreground">Available chat history syncs when you pair the phone. New text from the work phone and its linked devices is also recorded. If you paired before history sync was added, disconnect and scan again once. Use a work account; personal chats on that number will also sync.</p>
         </>}
       </CardContent>
     </Card>}

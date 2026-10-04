@@ -476,6 +476,7 @@ export class ConversationsService {
       return fail(`Sending on ${conv.channel} is not connected yet`);
     }
 
+    if (conv.externalThreadId?.endsWith('@lid')) return fail('WhatsApp has not shared this contact’s phone number yet. Reply from the linked work phone.');
     const phone = whatsappAddress(
       conv.externalThreadId ??
         conv.patient?.whatsappNumber ??
@@ -521,6 +522,7 @@ export class ConversationsService {
     sessionId = 'default',
     ownerUserId?: string,
     outbound = false,
+    messageAt?: Date,
   ) {
     const duplicate = await this.prisma.message.findFirst({ where: { externalMessageId } });
     if (duplicate) return duplicate;
@@ -530,12 +532,12 @@ export class ConversationsService {
 
     if (!conversation) {
       conversation = await this.prisma.conversation.create({
-        data: { channel, externalThreadId, leadId, patientId, whatsappSessionId: sessionId, assignedToId: ownerUserId, lastMessageAt: new Date() },
+        data: { channel, externalThreadId, leadId, patientId, whatsappSessionId: sessionId, assignedToId: ownerUserId, lastMessageAt: messageAt ?? new Date() },
       });
-    } else {
+    } else if (!messageAt || !conversation.lastMessageAt || conversation.lastMessageAt < messageAt) {
       await this.prisma.conversation.update({
         where: { id: conversation.id },
-        data: { lastMessageAt: new Date() },
+        data: { lastMessageAt: messageAt ?? new Date() },
       });
     }
 
@@ -544,7 +546,8 @@ export class ConversationsService {
         conversationId: conversation.id,
         direction: outbound ? $Enums.MessageDirection.OUTBOUND : $Enums.MessageDirection.INBOUND,
         senderUserId: outbound ? ownerUserId : undefined,
-        sentAt: outbound ? new Date() : undefined,
+        sentAt: outbound ? messageAt ?? new Date() : undefined,
+        createdAt: messageAt,
         content,
         externalMessageId,
         status: outbound ? $Enums.MessageStatus.SENT : $Enums.MessageStatus.DELIVERED,

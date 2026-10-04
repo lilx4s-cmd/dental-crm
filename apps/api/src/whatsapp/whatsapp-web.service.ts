@@ -88,6 +88,8 @@ class WhatsAppConnection {
   private stopped = false;
   private generation = 0;
   private sentIds = new Set<string>();
+  private phoneJids = new Map<string, string>();
+  private ingestionQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly config: ConfigService,
@@ -168,9 +170,8 @@ class WhatsAppConnection {
         // Identifies the linked device in the patient's WhatsApp app, so staff can see what it is
         // and revoke it from the phone if they ever need to.
         browser: ['Dental CRM', 'Chrome', '1.0.0'],
-        // Without this Baileys re-downloads the entire message history on every reconnect, which
-        // on a busy number is a large, slow and pointless transfer.
-        syncFullHistory: false,
+        // Request the history WhatsApp makes available during pairing; deduplicate replayed IDs.
+        syncFullHistory: true,
       });
       this.socket = sock;
 
@@ -261,16 +262,22 @@ class WhatsAppConnection {
         }
       });
 
-      sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // 'notify' is genuinely new traffic; 'append' is history being backfilled, which would
-        // otherwise replay old conversations into the CRM as if they had just arrived.
-        if (this.stopped || this.socket !== sock || type !== 'notify') return;
-        for (const msg of messages) {
-          await this.ingest(msg).catch((e) =>
-            this.logger.error(`Failed to store inbound message: ${(e as Error).message}`),
-          );
+      const rememberContacts = (contacts: Array<{ id?: string | null; lid?: string | null; jid?: string | null; pnJid?: string | null; lidJid?: string | null }>) => {
+        for (const contact of contacts) {
+          const phone = contact.pnJid ?? contact.jid ?? (contact.id?.endsWith('@s.whatsapp.net') ? contact.id : undefined);
+          const lid = contact.lidJid ?? contact.lid ?? (contact.id?.endsWith('@lid') ? contact.id : undefined);
+          if (phone && lid) this.phoneJids.set(lid, phone);
         }
+      };
+      sock.ev.on('contacts.upsert', rememberContacts);
+      sock.ev.on('contacts.update', rememberContacts);
+      sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => { this.phoneJids.set(lid, jid); });
+      sock.ev.on('messaging-history.set', ({ messages, contacts = [], chats = [] }) => {
+        rememberContacts(contacts);
+        rememberContacts(chats);
+        return this.queueMessages(messages, sock);
       });
+      sock.ev.on('messages.upsert', ({ messages }) => this.queueMessages(messages, sock));
     } catch (e) {
       this.state = 'disconnected';
       this.lastError = e instanceof Error ? e.message : 'Failed to connect';
@@ -361,7 +368,7 @@ class WhatsAppConnection {
     if (this.state !== 'connected' || !this.socket) {
       throw new ServiceUnavailableException('WhatsApp Web is not connected');
     }
-    const jid = `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`;
+    const jid = /^\d+(?::\d+)?@lid$/.test(toPhone) ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`;
     const messageId = generateMessageID();
     this.sentIds.add(messageId);
     if (this.sentIds.size > 1000) this.sentIds.delete(this.sentIds.values().next().value!);
@@ -374,12 +381,23 @@ class WhatsAppConnection {
    *
    * Work-phone outgoing messages are captured as OUTBOUND. CRM send echoes are skipped.
    */
-  private async ingest(msg: { key: { remoteJid?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; pushName?: string | null }) {
+  private queueMessages(messages: Parameters<WhatsAppConnection['ingest']>[0][], sock: WASocket) {
+    this.ingestionQueue = this.ingestionQueue.then(async () => {
+      for (const msg of messages) {
+        if (this.stopped || this.socket !== sock) return;
+        await this.ingest(msg).catch((e) => this.logger.error(`Failed to capture WhatsApp message: ${(e as Error).message}`));
+      }
+    });
+    return this.ingestionQueue;
+  }
+
+  private async ingest(msg: { key: { remoteJid?: string | null; remoteJidAlt?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; messageTimestamp?: unknown; pushName?: string | null }) {
     if (msg.key.id && this.sentIds.has(msg.key.id)) return;
 
-    const jid = msg.key.remoteJid ?? '';
+    const rawJid = msg.key.remoteJid ?? '';
+    const jid = rawJid.endsWith('@lid') ? msg.key.remoteJidAlt ?? this.phoneJids.get(rawJid) ?? rawJid : rawJid;
     // Groups and status broadcasts are not patient conversations.
-    if (!jid.endsWith('@s.whatsapp.net')) return;
+    if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
 
     const body = this.extractText(msg.message);
     if (!body) return;
@@ -387,13 +405,20 @@ class WhatsAppConnection {
     // Without an id the message cannot be deduplicated, so a reconnect would store it again.
     if (!msg.key.id) return;
 
-    const phone = jid.split('@')[0];
-    await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe);
+    // An unmapped LID is retained as a chat address, never guessed to be a patient's phone number.
+    const phone = jid.endsWith('@lid') ? jid : jid.split('@')[0].split(':')[0];
+    const seconds = Number(msg.messageTimestamp);
+    const messageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
+    await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe, messageAt);
     await this.onUpdate({ lastMessageAt: new Date() });
   }
 
   /** Captures text and meaningful media placeholders without exposing private media URLs. */
-  private extractText(message: unknown): string | null {
+  private extractText(message: unknown, depth = 0): string | null {
+    if (depth > 6) return null;
+    const wrapper = message as Record<string, { message?: unknown } | undefined> | undefined;
+    const inner = wrapper?.ephemeralMessage?.message ?? wrapper?.viewOnceMessage?.message ?? wrapper?.viewOnceMessageV2?.message ?? wrapper?.documentWithCaptionMessage?.message;
+    if (inner) return this.extractText(inner, depth + 1);
     const m = message as Record<string, { text?: string; caption?: string } | undefined> | undefined;
     if (!m) return null;
     return (

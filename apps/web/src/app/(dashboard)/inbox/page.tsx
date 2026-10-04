@@ -507,7 +507,7 @@ function InboxView() {
                       <>
                         No conversations yet.
                         <br />
-                        Connect your work WhatsApp to capture new messages, or open a conversation from an assigned deal.
+                        Link your work WhatsApp to sync available chat history and capture new messages. If you linked before history sync was added, disconnect and scan again once in <Link href="/whatsapp" className="text-primary underline">Work WhatsApp</Link>.
                       </>
                     )}
                   </div>

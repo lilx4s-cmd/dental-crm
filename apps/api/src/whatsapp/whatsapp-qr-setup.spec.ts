@@ -16,14 +16,16 @@ describe('QR-only work-account setup', () => {
   let service: WhatsAppWebService;
   let handlers: Record<string, (value: unknown) => Promise<void>>;
   let values: Record<string, string>;
+  let storeSessionMessage: jest.Mock;
   beforeEach(() => {
     handlers = {};
     values = {};
+    storeSessionMessage = jest.fn().mockResolvedValue({});
     (makeWASocket as jest.Mock).mockImplementation(() => ({ ev: { on: (name: string, fn: (value: unknown) => Promise<void>) => { handlers[name] = fn; } }, end: jest.fn() }));
     service = new WhatsAppWebService({ get: (key: string) => values[key] } as never, {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'staff', isActive: true, role: Role.SALES_CONSULTANT }) },
       whatsAppAccount: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
-    } as never, {} as never);
+    } as never, { storeSessionMessage } as never);
   });
   afterEach(() => service.onModuleDestroy());
 
@@ -45,5 +47,28 @@ describe('QR-only work-account setup', () => {
   it('only exposes the QR in the waiting-for-scan state', async () => {
     await service.connectOwn(user);
     expect(await service.ownStatus(user)).toMatchObject({ state: 'connecting', qrDataUrl: null });
+  });
+  it('imports pairing history with original dates and mapped alternate contact IDs', async () => {
+    await service.connectOwn(user);
+    await handlers['messaging-history.set']({ contacts: [{ id: '905550000001@s.whatsapp.net', lid: '999@lid' }], messages: [{ key: { remoteJid: '999@lid', id: 'old-1' }, message: { conversation: 'Previous patient reply' }, messageTimestamp: 1700000000 }] });
+    expect(storeSessionMessage).toHaveBeenCalledWith('905550000001', 'Previous patient reply', 'old-1', 'user:staff', 'staff', false, new Date(1700000000000));
+  });
+  it('captures append events and wrapped work-phone outgoing messages', async () => {
+    await service.connectOwn(user);
+    await handlers['messages.upsert']({ type: 'append', messages: [{ key: { remoteJid: '905550000001@s.whatsapp.net', fromMe: true, id: 'out-1' }, message: { ephemeralMessage: { message: { extendedTextMessage: { text: 'Follow-up' } } } } }] });
+    expect(storeSessionMessage).toHaveBeenCalledWith('905550000001', 'Follow-up', 'out-1', 'user:staff', 'staff', true, undefined);
+  });
+  it('retains an unmapped alternate-ID conversation without inventing a phone number', async () => {
+    await service.connectOwn(user);
+    await handlers['messages.upsert']({ type: 'notify', messages: [{ key: { remoteJid: '888@lid', id: 'lid-1' }, message: { conversation: 'Hello' } }] });
+    expect(storeSessionMessage).toHaveBeenCalledWith('888@lid', 'Hello', 'lid-1', 'user:staff', 'staff', false, undefined);
+  });
+  it('serializes simultaneous history and live captures and excludes group chats', async () => {
+    await service.connectOwn(user);
+    await Promise.all([
+      handlers['messaging-history.set']({ contacts: [], messages: [{ key: { remoteJid: '905550000001@s.whatsapp.net', id: 'history' }, message: { conversation: 'Old' } }] }),
+      handlers['messages.upsert']({ type: 'notify', messages: [{ key: { remoteJid: 'group@g.us', id: 'group' }, message: { conversation: 'Group' } }, { key: { remoteJid: '905550000001@s.whatsapp.net', id: 'live' }, message: { conversation: 'New' } }] }),
+    ]);
+    expect(storeSessionMessage.mock.calls.map(call => call[2])).toEqual(['history', 'live']);
   });
 });
