@@ -2,6 +2,7 @@ jest.mock('@whiskeysockets/baileys', () => ({
   __esModule: true,
   default: jest.fn(),
   fetchLatestBaileysVersion: jest.fn().mockResolvedValue({ version: [2, 3000, 1] }),
+  Browsers: { macOS: (name: string) => ['Mac OS', name, '14.4.1'] },
   DisconnectReason: { loggedOut: 401, connectionReplaced: 440, badSession: 500, forbidden: 403, multideviceMismatch: 411, restartRequired: 515 },
 }));
 jest.mock('./baileys-auth-state', () => ({ usePrismaAuthState: jest.fn().mockResolvedValue({ state: {}, saveCreds: jest.fn(), clear: jest.fn() }) }));
@@ -25,6 +26,8 @@ describe('QR-only work-account setup', () => {
     service = new WhatsAppWebService({ get: (key: string) => values[key] } as never, {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'staff', isActive: true, role: Role.SALES_CONSULTANT }) },
       whatsAppAccount: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}) },
+      conversation: { count: jest.fn().mockResolvedValue(0) },
+      message: { count: jest.fn().mockResolvedValue(0) },
     } as never, { storeSessionMessage } as never);
   });
   afterEach(() => service.onModuleDestroy());
@@ -32,6 +35,7 @@ describe('QR-only work-account setup', () => {
   it('prepares a QR for an authenticated work account without cloud tokens or server setup', async () => {
     expect(await service.ownStatus(user)).toMatchObject({ enabled: true, needsSetup: true, state: 'disconnected' });
     await service.connectOwn(user);
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ browser: ['Mac OS', 'Desktop', '14.4.1'], syncFullHistory: true }));
     await handlers['connection.update']({ qr: 'internal-test-pairing-code' });
     expect(await service.ownStatus(user)).toMatchObject({ state: 'awaiting_scan', qrDataUrl: expect.stringMatching(/^data:image\/png;base64,/) });
   });
@@ -70,5 +74,14 @@ describe('QR-only work-account setup', () => {
       handlers['messages.upsert']({ type: 'notify', messages: [{ key: { remoteJid: 'group@g.us', id: 'group' }, message: { conversation: 'Group' } }, { key: { remoteJid: '905550000001@s.whatsapp.net', id: 'live' }, message: { conversation: 'New' } }] }),
     ]);
     expect(storeSessionMessage.mock.calls.map(call => call[2])).toEqual(['history', 'live']);
+  });
+  it('reports a capture failure separately from connection status without leaking database errors', async () => {
+    await service.connectOwn(user);
+    storeSessionMessage.mockRejectedValue(new Error('private database detail'));
+    await handlers['messages.upsert']({ messages: [{ key: { remoteJid: '905550000001@s.whatsapp.net', id: 'failed' }, message: { conversation: 'Test' } }] });
+    const status = await service.ownStatus(user);
+    expect(status.messageEventsSeen).toBe(1);
+    expect(status.captureError).toContain('could not save');
+    expect(status.captureError).not.toContain('private database');
   });
 });

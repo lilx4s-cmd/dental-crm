@@ -21,6 +21,11 @@ type Session = {
   uncontactedLeads?: number;
   enabled: boolean;
   needsSetup?: boolean;
+  storedConversations?: number;
+  storedMessages?: number;
+  historyReceived?: boolean;
+  messageEventsSeen?: number;
+  captureError?: string | null;
   state: 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
   linkedNumber: string | null;
   qrDataUrl?: string | null;
@@ -79,6 +84,8 @@ export function WhatsAppSessions() {
       <CardContent className="space-y-4">
         {mine.isError ? <QueryError error={mine.error} onRetry={mine.refetch} /> : mine.isLoading ? <p role="status">Checking your session…</p> : data && <>
           <div className="flex items-center gap-3"><Badge variant={data.state === 'connected' ? 'success' : 'secondary'}>{stateLabels[data.state]}</Badge>{data.linkedNumber && <span>+{data.linkedNumber}</span>}</div>
+          <div className="rounded-lg border p-3 text-sm"><strong>Saved chats: {data.storedConversations ?? 0}</strong> · Messages: {data.storedMessages ?? 0}<p className="mt-1 text-xs text-muted-foreground">{data.historyReceived ? 'WhatsApp chat history received.' : data.state === 'connected' ? 'Phone linked. Waiting for WhatsApp to provide chat history or new messages.' : 'Chat capture starts after the phone is linked.'}{typeof data.messageEventsSeen === 'number' && ` ${data.messageEventsSeen} message events received since this connection started.`}</p></div>
+          {data.captureError && <p className="text-sm text-destructive" role="alert">{data.captureError}</p>}
           {!data.enabled && <p className="text-sm text-muted-foreground">Your administrator has disabled work WhatsApp linking.</p>}
           {data.state === 'connecting' && <p role="status" className="text-sm">Preparing your QR code… Keep this page open.</p>}
           {data.state === 'awaiting_scan' && data.qrDataUrl && <div className="space-y-3">

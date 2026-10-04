@@ -7,6 +7,7 @@ import makeWASocket, {
   type WASocket,
   type WAVersion,
   generateMessageID,
+  Browsers,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 
@@ -90,6 +91,9 @@ class WhatsAppConnection {
   private sentIds = new Set<string>();
   private phoneJids = new Map<string, string>();
   private ingestionQueue: Promise<void> = Promise.resolve();
+  private historyReceived = false;
+  private messageEventsSeen = 0;
+  private captureError: string | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -121,6 +125,9 @@ class WhatsAppConnection {
       qrDataUrl: this.state === 'awaiting_scan' ? this.qrDataUrl : null,
       linkedNumber: this.linkedNumber,
       error: this.lastError,
+      historyReceived: this.historyReceived,
+      messageEventsSeen: this.messageEventsSeen,
+      captureError: this.captureError,
     };
   }
 
@@ -169,7 +176,7 @@ class WhatsAppConnection {
         printQRInTerminal: false,
         // Identifies the linked device in the patient's WhatsApp app, so staff can see what it is
         // and revoke it from the phone if they ever need to.
-        browser: ['Dental CRM', 'Chrome', '1.0.0'],
+        browser: Browsers.macOS('Desktop'),
         // Request the history WhatsApp makes available during pairing; deduplicate replayed IDs.
         syncFullHistory: true,
       });
@@ -273,6 +280,7 @@ class WhatsAppConnection {
       sock.ev.on('contacts.update', rememberContacts);
       sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => { this.phoneJids.set(lid, jid); });
       sock.ev.on('messaging-history.set', ({ messages, contacts = [], chats = [] }) => {
+        this.historyReceived = true;
         rememberContacts(contacts);
         rememberContacts(chats);
         return this.queueMessages(messages, sock);
@@ -382,10 +390,14 @@ class WhatsAppConnection {
    * Work-phone outgoing messages are captured as OUTBOUND. CRM send echoes are skipped.
    */
   private queueMessages(messages: Parameters<WhatsAppConnection['ingest']>[0][], sock: WASocket) {
+    this.messageEventsSeen += messages.length;
     this.ingestionQueue = this.ingestionQueue.then(async () => {
       for (const msg of messages) {
         if (this.stopped || this.socket !== sock) return;
-        await this.ingest(msg).catch((e) => this.logger.error(`Failed to capture WhatsApp message: ${(e as Error).message}`));
+        await this.ingest(msg).catch((e) => {
+          this.captureError = 'WhatsApp delivered a message, but the CRM could not save it. Retry linking or contact support.';
+          this.logger.error(`Failed to capture WhatsApp message: ${(e as Error).message}`);
+        });
       }
     });
     return this.ingestionQueue;
@@ -410,6 +422,7 @@ class WhatsAppConnection {
     const seconds = Number(msg.messageTimestamp);
     const messageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
     await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe, messageAt);
+    this.captureError = null;
     await this.onUpdate({ lastMessageAt: new Date() });
   }
 
@@ -502,8 +515,12 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
   async ownStatus(user: JwtPayload) {
     const { sessionId, ownerId } = await this.resolveSession(user);
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { sessionId } });
+    const [storedConversations, storedMessages] = await Promise.all([
+      this.prisma.conversation.count({ where: { whatsappSessionId: sessionId } }),
+      this.prisma.message.count({ where: { conversation: { whatsappSessionId: sessionId } } }),
+    ]);
     const status = this.connection(sessionId, ownerId).status();
-    return { sessionId, needsSetup: !account, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null };
+    return { sessionId, needsSetup: !account, storedConversations, storedMessages, lastMessageAt: account?.lastMessageAt ?? null, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null };
   }
   async connectOwn(user: JwtPayload) {
     const { sessionId, ownerId } = await this.resolveSession(user);
