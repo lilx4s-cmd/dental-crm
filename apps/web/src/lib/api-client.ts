@@ -107,7 +107,12 @@ function readCsrfToken(): string | null {
   return csrfToken;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+let refreshPromise: Promise<string | null> | null = null;
+export function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+async function performRefresh(): Promise<string | null> {
   try {
     const token = readCsrfToken();
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
@@ -120,6 +125,10 @@ async function refreshAccessToken(): Promise<string | null> {
     // Rotated with the refresh token, so the next refresh presents the pair that matches the
     // cookies the browser now holds.
     setCsrfToken(data.csrfToken);
+    if (typeof document !== 'undefined') {
+      document.cookie = `access_token=${data.accessToken}; path=/; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`;
+      window.dispatchEvent(new CustomEvent('crm:session-refreshed', { detail: data.accessToken }));
+    }
     return data.accessToken;
   } catch {
     return null;

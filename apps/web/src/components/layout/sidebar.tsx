@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, GitBranch, Calendar, DollarSign,
-  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone, ArrowLeftRight, Sunrise,
+  MessageSquare, BarChart2, Settings, Stethoscope, Megaphone, ArrowLeftRight, Sunrise, Smartphone,
 } from 'lucide-react';
 import { canAccessRoute } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
@@ -18,7 +18,8 @@ const navItems = [
   { href: '/pipeline', label: 'Deals', icon: GitBranch },
   { href: '/team', label: 'Sales Team', icon: ArrowLeftRight },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/inbox', label: 'Inbox', icon: MessageSquare },
+  { href: '/inbox', label: 'Conversations', icon: MessageSquare },
+  { href: '/whatsapp', label: 'Work WhatsApp', icon: Smartphone },
   { href: '/appointments', label: 'Appointments', icon: Calendar },
   { href: '/finance', label: 'Finance', icon: DollarSign },
   { href: '/reports', label: 'Reports', icon: BarChart2 },

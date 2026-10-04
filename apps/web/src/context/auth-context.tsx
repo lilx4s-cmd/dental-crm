@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { apiRequest, clearCsrfToken, setCsrfToken } from '@/lib/api-client';
+import { apiRequest, clearCsrfToken, setCsrfToken, refreshAccessToken } from '@/lib/api-client';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 import {
   JwtPayload,
@@ -13,6 +13,7 @@ import {
 } from '@dental-crm/shared';
 
 interface AuthContextValue {
+  ready: boolean;
   user: JwtPayload | null;
   accessToken: string | null;
   login: (email: string, password: string) => Promise<LoginResult>;
@@ -50,6 +51,7 @@ function decodeJwt(token: string): JwtPayload | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<JwtPayload | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -60,17 +62,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // strand the user with no way to sign out. Decoding the cookie restores `user` so the
   // UI matches the real auth state, with no dependency on the (cold-starting) API.
   useEffect(() => {
-    const token = readCookie('access_token');
-    if (!token) return;
-    const payload = decodeJwt(token);
-    if (payload && (!payload.exp || payload.exp * 1000 > Date.now())) {
-      setUser(payload);
-      setAccessToken(token);
-    } else {
-      // Expired or malformed cookie: clear it so the login page is reachable again
-      // (middleware redirects authenticated users away from /login).
-      document.cookie = 'access_token=; path=/; max-age=0';
-    }
+    let cancelled = false;
+    const restore = async () => {
+      let token = readCookie('access_token');
+      let payload = token ? decodeJwt(token) : null;
+      if ((!token && readCookie('csrf_token')) || (token && (!payload || !payload.exp || payload.exp * 1000 <= Date.now()))) {
+        token = await refreshAccessToken();
+        payload = token ? decodeJwt(token) : null;
+      }
+      if (cancelled) return;
+      if (token && payload) {
+        setUser(payload);
+        setAccessToken(token);
+      } else {
+        document.cookie = 'access_token=; path=/; max-age=0';
+      }
+      setReady(true);
+    };
+    void restore();
+    const refreshed = (event: Event) => {
+      const token = (event as CustomEvent<string>).detail;
+      const payload = decodeJwt(token);
+      if (payload) { setUser(payload); setAccessToken(token); }
+    };
+    window.addEventListener('crm:session-refreshed', refreshed);
+    return () => { cancelled = true; window.removeEventListener('crm:session-refreshed', refreshed); };
   }, []);
 
   // Client-side fallback for route protection, checked on every navigation.
@@ -80,14 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // visitor can land here with a 200 and no session. Catch that case here instead
   // of leaving them staring at an empty shell with every data fetch failing silently.
   useEffect(() => {
+    if (!ready) return;
     if (!matchesPrefix(pathname, PROTECTED_PATH_PREFIXES)) return;
-    const token = readCookie('access_token');
-    const payload = token ? decodeJwt(token) : null;
-    const valid = !!payload && (!payload.exp || payload.exp * 1000 > Date.now());
-    if (!valid) {
+    if (!accessToken || !user) {
       router.replace(`/login?from=${encodeURIComponent(pathname)}`);
     }
-  }, [pathname, router]);
+  }, [pathname, router, ready, accessToken, user]);
 
   const setAuth = useCallback((u: JwtPayload, token: string) => {
     setUser(u);
@@ -99,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await apiRequest<JwtPayload>('/api/auth/me', {}, token);
     setUser(me);
     setAccessToken(token);
-    document.cookie = `access_token=${token}; path=/; SameSite=Strict`;
+    document.cookie = `access_token=${token}; path=/; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`;
     // The dashboard is management's, so sending everyone there greeted half the clinic with a page
     // they are not allowed to load. Each role lands on the first page it can actually use.
     router.push(landingRoute(me.role));
@@ -142,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, router]);
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, completeTwoFactor, logout, setAuth }}>
+    <AuthContext.Provider value={{ ready, user, accessToken, login, completeTwoFactor, logout, setAuth }}>
       {children}
     </AuthContext.Provider>
   );

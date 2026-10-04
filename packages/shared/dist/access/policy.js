@@ -156,6 +156,7 @@ exports.ROUTE_ACCESS = {
     '/team': exports.CLINIC_ADMIN,
     '/campaigns': exports.PIPELINE,
     '/inbox': exports.PATIENT_FACING,
+    '/whatsapp': exports.PATIENT_FACING,
     '/appointments': exports.SCHEDULING,
     '/finance': exports.FINANCE,
     '/reports': exports.MANAGEMENT,

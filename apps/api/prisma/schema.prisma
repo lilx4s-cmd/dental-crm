@@ -412,6 +412,7 @@ model User {
   messageTemplatesCreated     MessageTemplate[]        @relation("MessageTemplateCreator")
   leadTagsAssigned            LeadTag[]                @relation("LeadTagAssigner")
   leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
+  whatsAppAccount             WhatsAppAccount?
 
   @@index([role])
   @@map("users")
@@ -901,6 +902,21 @@ model IntakeAttachment {
 //
 // Baileys stores its state as many small keyed blobs (the credentials themselves, plus per-device
 // pre-key and session records), so this is a key-value table rather than typed columns.
+model WhatsAppAccount {
+  sessionId      String   @id
+  ownerUserId    String?  @unique
+  owner          User?    @relation(fields: [ownerUserId], references: [id])
+  linkedNumber   String?
+  autoReconnect  Boolean @default(false)
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  lastMessageAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("whatsapp_accounts")
+}
+
 model WhatsAppSession {
   id        String   @id @default(uuid())
   // Which linked number this belongs to. One row set per session; "default" until the clinic ever
@@ -1352,6 +1368,8 @@ model Conversation {
   leadId           String?
   lead             Lead?               @relation(fields: [leadId], references: [id])
   externalThreadId String?
+  /// Keeps two salespeople's conversations with the same patient on the correct sending number.
+  whatsappSessionId String @default("default")
   assignedToId     String?
   assignedTo       User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
   lastMessageAt    DateTime?
@@ -1378,6 +1396,7 @@ model Conversation {
   messages Message[]
 
   @@index([channel])
+  @@index([whatsappSessionId, externalThreadId])
   // The board reads each deal's most recent thread to show the last message on its card. Without
   // this that is a sequential scan of every conversation, once per card, on a 1005-deal pipeline.
   @@index([leadId, lastMessageAt])

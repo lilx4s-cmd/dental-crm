@@ -1,3 +1,4 @@
+import { landingRoute, type Role } from '@dental-crm/shared';
 import { NextRequest, NextResponse } from 'next/server';
 import { PUBLIC_PATHS, PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 
@@ -30,10 +31,12 @@ export function middleware(req: NextRequest) {
   const isAuthenticated = !!payload && !isTokenExpired(payload);
 
   if (isAuthenticated && isPublic) {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+    return NextResponse.redirect(new URL(landingRoute(payload.role as Role), req.url));
   }
 
-  if (!isAuthenticated && isDashboard) {
+  // A refresh cookie is validated by the API; let the client restore it before fetching data.
+  const canRestore = !!req.cookies.get('csrf_token')?.value;
+  if (!isAuthenticated && !canRestore && isDashboard) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);

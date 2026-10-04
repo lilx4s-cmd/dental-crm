@@ -30,6 +30,7 @@ export const PROTECTED_PATH_PREFIXES = [
   '/finance',
   '/settings',
   '/inbox',
+  '/whatsapp',
   '/reports',
 ];
 

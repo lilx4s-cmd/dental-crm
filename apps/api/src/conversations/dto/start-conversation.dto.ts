@@ -1,4 +1,4 @@
-import { IsUUID, ValidateIf } from 'class-validator';
+import { IsUUID, ValidateIf, IsOptional, IsString, Matches } from 'class-validator';
 
 /**
  * Opens a thread with a lead or a patient.
@@ -8,6 +8,8 @@ import { IsUUID, ValidateIf } from 'class-validator';
  * and creating a conversation attached to nobody.
  */
 export class StartConversationDto {
+  @IsOptional() @IsString() @Matches(/^(default|user:[0-9a-f-]{36})$/i)
+  whatsappSessionId?: string;
   @ValidateIf((o: StartConversationDto) => !o.patientId)
   @IsUUID()
   leadId?: string;

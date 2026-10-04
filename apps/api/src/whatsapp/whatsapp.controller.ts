@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Param,
   Query,
   Req,
   Res,
@@ -15,7 +16,9 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role } from '@dental-crm/shared';
+import { Role, JwtPayload } from '@dental-crm/shared';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { PATIENT_FACING, MANAGEMENT } from '../common/access-policy';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppWebService } from './whatsapp-web.service';
 import { EvolutionService } from './evolution.service';
@@ -28,6 +31,31 @@ export class WhatsAppController {
     private readonly webService: WhatsAppWebService,
     private readonly evolution: EvolutionService,
   ) {}
+
+  @Get('sessions/me')
+  @Roles(...PATIENT_FACING)
+  ownSession(@CurrentUser() user: JwtPayload) { return this.webService.ownStatus(user); }
+
+  @Post('sessions/me/connect')
+  @Roles(...PATIENT_FACING)
+  @HttpCode(HttpStatus.OK)
+  connectOwnSession(@CurrentUser() user: JwtPayload) { return this.webService.connectOwn(user); }
+
+  @Post('sessions/me/logout')
+  @Roles(...PATIENT_FACING)
+  @HttpCode(HttpStatus.OK)
+  logoutOwnSession(@CurrentUser() user: JwtPayload) { return this.webService.logoutOwn(user); }
+
+  @Get('sessions')
+  @Roles(...MANAGEMENT)
+  teamSessions() { return this.webService.teamStatus(); }
+
+  @Post('sessions/:ownerId/logout')
+  @Roles(...MANAGEMENT)
+  @HttpCode(HttpStatus.OK)
+  logoutTeamSession(@Param('ownerId') ownerId: string, @CurrentUser() user: JwtPayload) {
+    return this.webService.logoutOwn(user, ownerId);
+  }
 
   // ── Self-hosted Evolution API gateway ──
 

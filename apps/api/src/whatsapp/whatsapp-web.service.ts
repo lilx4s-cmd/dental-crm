@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, ForbiddenException, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Boom } from '@hapi/boom';
 import makeWASocket, {
@@ -6,12 +6,14 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
   type WAVersion,
+  generateMessageID,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { usePrismaAuthState } from './baileys-auth-state';
 import { WhatsAppService } from './whatsapp.service';
+import { JwtPayload, Role } from '@dental-crm/shared';
 
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
@@ -63,9 +65,8 @@ const RECONNECT_MAX_ATTEMPTS = 6;
  * Off unless WHATSAPP_WEB_ENABLED is set. An unofficial client that starts itself on every boot is
  * not something that should arrive by surprise in a deploy.
  */
-@Injectable()
-export class WhatsAppWebService {
-  private readonly logger = new Logger(WhatsAppWebService.name);
+class WhatsAppConnection {
+  private readonly logger = new Logger(WhatsAppConnection.name);
   private readonly enabled: boolean;
 
   private socket: WASocket | null = null;
@@ -85,16 +86,22 @@ export class WhatsAppWebService {
   private reconnectAttempts = 0;
   /** Set when a person, or WhatsApp itself, has ended the session. Cleared by an explicit connect. */
   private stopped = false;
+  private generation = 0;
+  private sentIds = new Set<string>();
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     // Reuses the Cloud API service's storage path so both transports record a message identically.
     private readonly whatsapp: WhatsAppService,
+    private readonly sessionId: string,
+    private readonly ownerUserId: string | null,
+    private readonly onUpdate: (update: { linkedNumber?: string | null; connectedAt?: Date; disconnectedAt?: Date; autoReconnect?: boolean; lastMessageAt?: Date }) => Promise<void>,
+    private readonly numberInUse: (number: string) => boolean,
   ) {
     // Refuses to run alongside Evolution. Two WhatsApp clients on one number would each ingest
     // every inbound message, so every patient reply would appear twice in the CRM.
-    const evolutionConfigured = !!this.config.get<string>('evolution.url');
+    const evolutionConfigured = sessionId === 'default' && !!this.config.get<string>('evolution.url');
     this.enabled = this.config.get<string>('whatsapp.webEnabled') === 'true' && !evolutionConfigured;
     if (evolutionConfigured) {
       this.logger.log('Evolution API is configured — the in-process WhatsApp session stays off.');
@@ -138,17 +145,20 @@ export class WhatsAppWebService {
   private async connectInternal(): Promise<void> {
     if (!this.enabled || this.connecting || this.state === 'connected') return;
 
+    const generation = this.generation;
     this.connecting = true;
     this.lastError = null;
     this.state = 'connecting';
 
     try {
-      const { state, saveCreds, clear } = await usePrismaAuthState(this.prisma);
+      const { state, saveCreds, clear } = await usePrismaAuthState(this.prisma, this.sessionId);
 
+      const version = await this.currentWebVersion();
+      if (this.stopped || generation !== this.generation) return;
       const sock = makeWASocket({
         // Announcing a stale protocol version gets the connection refused with 405 before any QR
         // is issued — see currentWebVersion below.
-        version: await this.currentWebVersion(),
+        version,
         auth: state,
         // Nothing renders a terminal here; the QR goes to the browser instead.
         printQRInTerminal: false,
@@ -164,6 +174,7 @@ export class WhatsAppWebService {
       sock.ev.on('creds.update', saveCreds);
 
       sock.ev.on('connection.update', async (update) => {
+        if (this.stopped || this.socket !== sock) return;
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -172,11 +183,21 @@ export class WhatsAppWebService {
         }
 
         if (connection === 'open') {
+          const number = sock.user?.id?.split(':')[0]?.split('@')[0] ?? null;
+          if (number && this.numberInUse(number)) {
+            this.stopped = true;
+            this.lastError = 'This number is already connected to another CRM account. Use a separate work number.';
+            await sock.logout().catch(() => undefined);
+            await clear();
+            await this.onUpdate({ autoReconnect: false });
+            return;
+          }
           this.state = 'connected';
           this.qrDataUrl = null;
           this.reconnectAttempts = 0;
-          this.linkedNumber = sock.user?.id?.split(':')[0] ?? null;
-          this.logger.log(`WhatsApp Web linked as ${this.linkedNumber ?? 'unknown'}`);
+          this.linkedNumber = sock.user?.id?.split(':')[0]?.split('@')[0] ?? null;
+          await this.onUpdate({ linkedNumber: this.linkedNumber, connectedAt: new Date(), autoReconnect: true });
+          this.logger.log(`WhatsApp Web connected (${this.sessionId})`);
         }
 
         if (connection === 'close') {
@@ -185,6 +206,7 @@ export class WhatsAppWebService {
           this.socket = null;
           this.qrDataUrl = null;
           this.state = 'disconnected';
+          await this.onUpdate({ disconnectedAt: new Date() });
 
           // A person pressed unlink while this drop was in flight. Honour that over any retry.
           if (this.stopped) return;
@@ -197,6 +219,7 @@ export class WhatsAppWebService {
               this.linkedNumber = null;
             }
             this.stopped = true;
+            await this.onUpdate({ autoReconnect: false });
             this.lastError = TERMINAL_MESSAGES[code] ?? 'The session ended. Scan the QR again to reconnect.';
             this.logger.warn(`WhatsApp Web session ended (${code}): ${this.lastError}`);
             return;
@@ -238,7 +261,7 @@ export class WhatsAppWebService {
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
         // 'notify' is genuinely new traffic; 'append' is history being backfilled, which would
         // otherwise replay old conversations into the CRM as if they had just arrived.
-        if (type !== 'notify') return;
+        if (this.stopped || this.socket !== sock || type !== 'notify') return;
         for (const msg of messages) {
           await this.ingest(msg).catch((e) =>
             this.logger.error(`Failed to store inbound message: ${(e as Error).message}`),
@@ -305,10 +328,11 @@ export class WhatsAppWebService {
     // Order matters: stop first. A drop arriving mid-logout would otherwise schedule a retry that
     // relinks the device seconds after somebody deliberately unlinked it.
     this.stopped = true;
+    this.generation += 1;
     this.cancelReconnect();
     this.reconnectAttempts = 0;
 
-    const { clear } = await usePrismaAuthState(this.prisma);
+    const { clear } = await usePrismaAuthState(this.prisma, this.sessionId);
     try {
       await this.socket?.logout();
     } catch {
@@ -322,23 +346,33 @@ export class WhatsAppWebService {
     this.lastError = null;
   }
 
+  close(): void {
+    this.stopped = true;
+    this.generation += 1;
+    this.cancelReconnect();
+    this.socket?.end(undefined);
+    this.socket = null;
+  }
+
   async sendText(toPhone: string, text: string): Promise<void> {
     if (this.state !== 'connected' || !this.socket) {
       throw new ServiceUnavailableException('WhatsApp Web is not connected');
     }
     const jid = `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`;
-    await this.socket.sendMessage(jid, { text });
+    const messageId = generateMessageID();
+    this.sentIds.add(messageId);
+    if (this.sentIds.size > 1000) this.sentIds.delete(this.sentIds.values().next().value!);
+    await this.socket.sendMessage(jid, { text }, { messageId });
+    await this.onUpdate({ lastMessageAt: new Date() });
   }
 
   /**
    * Stores an inbound message against the right lead.
    *
-   * Outbound messages are skipped: `fromMe` covers anything the clinic sent from the phone itself,
-   * and recording those as patient replies would corrupt both the thread and the follow-up timing
-   * that My Day derives from it.
+   * Work-phone outgoing messages are captured as OUTBOUND. CRM send echoes are skipped.
    */
   private async ingest(msg: { key: { remoteJid?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; pushName?: string | null }) {
-    if (msg.key.fromMe) return;
+    if (msg.key.id && this.sentIds.has(msg.key.id)) return;
 
     const jid = msg.key.remoteJid ?? '';
     // Groups and status broadcasts are not patient conversations.
@@ -351,20 +385,129 @@ export class WhatsAppWebService {
     if (!msg.key.id) return;
 
     const phone = jid.split('@')[0];
-    await this.whatsapp.storeInbound(phone, body, msg.key.id);
+    await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe);
+    await this.onUpdate({ lastMessageAt: new Date() });
   }
 
-  /** Plain text only for now; media arrives as a caption or is ignored. */
+  /** Captures text and meaningful media placeholders without exposing private media URLs. */
   private extractText(message: unknown): string | null {
     const m = message as Record<string, { text?: string; caption?: string } | undefined> | undefined;
     if (!m) return null;
     return (
       m.conversation?.toString?.() ??
       m.extendedTextMessage?.text ??
-      m.imageMessage?.caption ??
-      m.videoMessage?.caption ??
-      m.documentMessage?.caption ??
+      (m.imageMessage ? m.imageMessage.caption || "[Photo — view on work WhatsApp]" : undefined) ??
+      (m.videoMessage ? m.videoMessage.caption || "[Video — view on work WhatsApp]" : undefined) ??
+      (m.documentMessage ? m.documentMessage.caption || "[Document — view on work WhatsApp]" : undefined) ??
+      (m.audioMessage ? "[Voice message — listen on work WhatsApp]" : undefined) ??
+      (m.stickerMessage ? "[Sticker]" : undefined) ??
       null
     );
+  }
+}
+
+
+/** Each staff member links a work number; management can inspect status without seeing pairing secrets. */
+@Injectable()
+export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
+  private readonly sessions = new Map<string, WhatsAppConnection>();
+  private readonly logger = new Logger(WhatsAppWebService.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly whatsapp: WhatsAppService,
+  ) {}
+
+  private connection(sessionId = 'default', ownerUserId: string | null = sessionId.startsWith('user:') ? sessionId.slice(5) : null) {
+    let connection = this.sessions.get(sessionId);
+    if (!connection) {
+      connection = new WhatsAppConnection(this.config, this.prisma, this.whatsapp, sessionId, ownerUserId,
+        async (update) => {
+          await this.prisma.whatsAppAccount.upsert({
+            where: { sessionId }, create: { sessionId, ownerUserId, ...update }, update,
+          }).catch(() => this.logger.warn(`Could not persist WhatsApp session status ${sessionId}`));
+        },
+        (number) => [...this.sessions.entries()].some(([id, s]) =>
+          id !== sessionId && s.status().state === 'connected' && s.status().linkedNumber === number),
+      );
+      this.sessions.set(sessionId, connection);
+    }
+    return connection;
+  }
+
+  async onModuleInit() {
+    // Only restore sessions a person explicitly connected. Never create or pair a new one on boot.
+    const accounts = await this.prisma.whatsAppAccount.findMany({
+      where: { autoReconnect: true, OR: [{ ownerUserId: null }, { owner: { isActive: true } }] },
+    });
+    for (const account of accounts) {
+      void this.connection(account.sessionId, account.ownerUserId).connect().catch(() =>
+        this.logger.warn(`Could not restore WhatsApp session ${account.sessionId}`));
+    }
+  }
+
+  onModuleDestroy() { for (const session of this.sessions.values()) session.close(); }
+
+  status(sessionId = 'default') { return this.connection(sessionId).status(); }
+  async connect() { await this.connection().connect(); }
+  async logout() {
+    await this.connection().logout();
+    await this.prisma.whatsAppAccount.updateMany({ where: { sessionId: 'default' }, data: { autoReconnect: false, linkedNumber: null } });
+  }
+  async sendText(toPhone: string, text: string, sessionId = 'default') {
+    await this.connection(sessionId).sendText(toPhone, text);
+  }
+
+  async resolveSession(user: JwtPayload, ownerUserId?: string) {
+    const ownerId = ownerUserId ?? user.sub;
+    if (ownerId !== user.sub && user.role !== Role.SUPER_ADMIN && user.role !== Role.CLINIC_MANAGER) {
+      throw new ForbiddenException('You can only manage your own WhatsApp session.');
+    }
+    const owner = await this.prisma.user.findUnique({ where: { id: ownerId }, select: { id: true, isActive: true, role: true } });
+    if (!owner?.isActive || !([Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION] as Role[]).includes(owner.role as Role)) {
+      throw new NotFoundException('Active sales or reception account not found.');
+    }
+    return { sessionId: `user:${ownerId}`, ownerId };
+  }
+
+  async ownStatus(user: JwtPayload) {
+    const { sessionId, ownerId } = await this.resolveSession(user);
+    const account = await this.prisma.whatsAppAccount.findUnique({ where: { sessionId } });
+    const status = this.connection(sessionId, ownerId).status();
+    return { sessionId, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null };
+  }
+  async connectOwn(user: JwtPayload) {
+    const { sessionId, ownerId } = await this.resolveSession(user);
+    await this.connection(sessionId, ownerId).connect();
+    return this.ownStatus(user);
+  }
+  async logoutOwn(user: JwtPayload, ownerUserId?: string) {
+    const { sessionId, ownerId } = await this.resolveSession(user, ownerUserId);
+    await this.connection(sessionId, ownerId).logout();
+    await this.prisma.whatsAppAccount.updateMany({ where: { sessionId }, data: { autoReconnect: false, linkedNumber: null } });
+    return { sessionId, ...this.connection(sessionId, ownerId).status(), qrDataUrl: null };
+  }
+
+  async teamStatus() {
+    const [users, accounts] = await Promise.all([
+      this.prisma.user.findMany({ where: { isActive: true, role: { in: ['SALES_CONSULTANT', 'RECEPTION'] } },
+        select: { id: true, firstName: true, lastName: true, role: true }, orderBy: { firstName: 'asc' } }),
+      this.prisma.whatsAppAccount.findMany(),
+    ]);
+    return Promise.all(users.map(async (user) => {
+      const sessionId = `user:${user.id}`;
+      const account = accounts.find((a) => a.sessionId === sessionId);
+      const contactFilter = { conversations: { some: { whatsappSessionId: sessionId, messages: { some: { direction: 'OUTBOUND' as const, status: { in: ['SENT' as const, 'DELIVERED' as const, 'READ' as const] } } } } } };
+      const [assignedLeads, contactedLeads] = await Promise.all([
+        this.prisma.lead.count({ where: { assignedToId: user.id } }),
+        this.prisma.lead.count({ where: { assignedToId: user.id, ...contactFilter } }),
+      ]);
+      const { enabled, state, linkedNumber, error } = this.connection(sessionId, user.id).status();
+      const status = { enabled, state, linkedNumber, error };
+      return { sessionId, user, assignedLeads, contactedLeads, uncontactedLeads: assignedLeads - contactedLeads, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null,
+        connectedAt: account?.connectedAt ?? null, disconnectedAt: account?.disconnectedAt ?? null,
+        lastMessageAt: account?.lastMessageAt ?? null };
+    }));
   }
 }

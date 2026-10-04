@@ -143,6 +143,17 @@ export class WhatsAppService {
     );
   }
 
+  async storeSessionMessage(phone: string, content: string, externalMessageId: string, sessionId: string, ownerUserId: string | null, outbound: boolean) {
+    const [lead, patient] = await Promise.all([
+      this.prisma.lead.findFirst({ where: { OR: [{ phone }, { whatsappNumber: phone }] }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.patient.findFirst({ where: { OR: [{ phone }, { whatsappNumber: phone }] } }),
+    ]);
+    return this.conversations.createInboundMessage(
+      $Enums.ConversationChannel.WHATSAPP, phone, content, `${sessionId}:${externalMessageId}`,
+      lead?.id, patient?.id, sessionId, ownerUserId ?? undefined, outbound,
+    );
+  }
+
   /**
    * Sends via the Cloud API.
    *

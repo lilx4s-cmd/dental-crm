@@ -1,7 +1,12 @@
+'use client';
+
+import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { ready, user } = useAuth();
+  if (!ready || !user) return <div className="flex min-h-screen items-center justify-center text-muted-foreground" role="status">Loading your workspace…</div>;
   return (
     <div className="flex min-h-screen">
       <Sidebar />

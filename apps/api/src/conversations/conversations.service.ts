@@ -1,5 +1,6 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
+import { JwtPayload, Role } from '@dental-crm/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { OUTBOUND_SENDER, type OutboundSender } from './outbound-sender';
 import { ConversationsQueryDto } from './dto/conversations-query.dto';
@@ -56,6 +57,7 @@ const MESSAGE_SELECT = {
 } as const;
 
 const CONVERSATION_SELECT = {
+  whatsappSessionId: true,
   id: true,
   channel: true,
   externalThreadId: true,
@@ -86,8 +88,31 @@ export class ConversationsService {
     private readonly sender: OutboundSender,
   ) {}
 
-  async findAll(query: ConversationsQueryDto) {
-    const where: Prisma.ConversationWhereInput = {};
+  private scope(user?: JwtPayload): Prisma.ConversationWhereInput {
+    if (!user || user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER) return {};
+    return { AND: [{ OR: [{ whatsappSessionId: 'default' }, { whatsappSessionId: `user:${user.sub}` }] }] };
+  }
+
+  async assertAccess(id: string, user: JwtPayload) {
+    const conversation = await this.prisma.conversation.findFirst({ where: { id, ...this.scope(user) }, select: { id: true } });
+    if (!conversation) throw new NotFoundException('Conversation not found');
+  }
+
+  async assertStartAccess(dto: StartConversationDto, user: JwtPayload) {
+    if (!!dto.leadId === !!dto.patientId) throw new BadRequestException('Choose exactly one lead or patient.');
+    if (dto.whatsappSessionId && dto.whatsappSessionId !== 'default' && dto.whatsappSessionId !== `user:${user.sub}`) {
+      throw new ForbiddenException('Start conversations using your own work number or the shared clinic number.');
+    }
+    if (dto.leadId && user.role !== Role.SUPER_ADMIN) {
+      const lead = await this.prisma.lead.findFirst({ where: { id: dto.leadId, assignedToId: user.sub }, select: { id: true } });
+      if (!lead) throw new NotFoundException('Lead not found');
+    }
+  }
+
+  async findAll(query: ConversationsQueryDto, user?: JwtPayload) {
+    const where: Prisma.ConversationWhereInput = this.scope(user);
+    if (query.whatsappSessionId) where.whatsappSessionId = query.whatsappSessionId;
+    if (query.leadId) where.leadId = query.leadId;
     if (query.channel) where.channel = query.channel as $Enums.ConversationChannel;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
     if (query.unassignedOnly) where.assignedToId = null;
@@ -185,9 +210,9 @@ export class ConversationsService {
    * Deliberately counts threads, not messages: "6" meaning six conversations needing an answer is
    * actionable, where "137" meaning message lines is only alarming.
    */
-  async unreadSummary() {
+  async unreadSummary(user?: JwtPayload) {
     const conversations = await this.prisma.conversation.findMany({
-      where: { isArchived: false },
+      where: { isArchived: false, ...this.scope(user) },
       select: { id: true, lastReadAt: true },
     });
 
@@ -228,8 +253,8 @@ export class ConversationsService {
   }
 
   /** Whether a reply typed right now could actually leave the building, and by which route. */
-  sendingStatus() {
-    return this.sender.status();
+  sendingStatus(sessionId = 'default') {
+    return this.sender.status(sessionId);
   }
 
   /**
@@ -254,6 +279,9 @@ export class ConversationsService {
     // however it was come by. Scoped to this conversation rather than merely to files the caller
     // could read, because a file being readable is not the same as it belonging in this thread.
     const fileIds = [...new Set(dto.fileIds ?? [])];
+    if (fileIds.length || dto.mediaUrl || dto.templateName) {
+      throw new BadRequestException('This WhatsApp transport supports text only. Send files from the linked work phone.');
+    }
     const attachable = fileIds.length
       ? await this.prisma.file.findMany({
           where: {
@@ -373,7 +401,8 @@ export class ConversationsService {
    * reply but never start — which is backwards for a sales pipeline where reaching out first is
    * the entire job.
    */
-  async startConversation(dto: StartConversationDto) {
+  async startConversation(dto: StartConversationDto, userId?: string) {
+    const sessionId = dto.whatsappSessionId ?? 'default';
     const channel = $Enums.ConversationChannel.WHATSAPP;
 
     const contact = dto.leadId
@@ -395,7 +424,7 @@ export class ConversationsService {
     // Matching on the number, not on the lead, keeps one thread per person: an inbound message
     // arriving later finds this same conversation rather than opening a second one beside it.
     const existing = await this.prisma.conversation.findFirst({
-      where: { channel, externalThreadId: phone },
+      where: { channel, externalThreadId: phone, whatsappSessionId: sessionId },
       select: CONVERSATION_SELECT,
     });
     if (existing) return existing;
@@ -404,6 +433,8 @@ export class ConversationsService {
       data: {
         channel,
         externalThreadId: phone,
+        whatsappSessionId: sessionId,
+        assignedToId: userId,
         leadId: dto.leadId,
         patientId: dto.patientId,
         lastMessageAt: new Date(),
@@ -418,6 +449,7 @@ export class ConversationsService {
     conv: {
       channel: $Enums.ConversationChannel;
       externalThreadId: string | null;
+      whatsappSessionId?: string;
       lead: { phone: string | null; whatsappNumber: string | null } | null;
       patient: { phone: string | null; whatsappNumber: string | null } | null;
     },
@@ -447,7 +479,7 @@ export class ConversationsService {
     if (!content.trim()) return fail('Nothing to send');
 
     try {
-      const transport = await this.sender.sendText(phone, content);
+      const transport = await this.sender.sendText(phone, content, conv.whatsappSessionId ?? 'default');
       this.logger.log(`Sent message ${messageId} via ${transport}`);
       return this.prisma.message.update({
         where: { id: messageId },
@@ -478,14 +510,19 @@ export class ConversationsService {
     externalMessageId: string,
     leadId?: string,
     patientId?: string,
+    sessionId = 'default',
+    ownerUserId?: string,
+    outbound = false,
   ) {
+    const duplicate = await this.prisma.message.findFirst({ where: { externalMessageId } });
+    if (duplicate) return duplicate;
     let conversation = await this.prisma.conversation.findFirst({
-      where: { channel, externalThreadId },
+      where: { channel, externalThreadId, whatsappSessionId: sessionId },
     });
 
     if (!conversation) {
       conversation = await this.prisma.conversation.create({
-        data: { channel, externalThreadId, leadId, patientId, lastMessageAt: new Date() },
+        data: { channel, externalThreadId, leadId, patientId, whatsappSessionId: sessionId, assignedToId: ownerUserId, lastMessageAt: new Date() },
       });
     } else {
       await this.prisma.conversation.update({
@@ -497,10 +534,12 @@ export class ConversationsService {
     return this.prisma.message.create({
       data: {
         conversationId: conversation.id,
-        direction: $Enums.MessageDirection.INBOUND,
+        direction: outbound ? $Enums.MessageDirection.OUTBOUND : $Enums.MessageDirection.INBOUND,
+        senderUserId: outbound ? ownerUserId : undefined,
+        sentAt: outbound ? new Date() : undefined,
         content,
         externalMessageId,
-        status: $Enums.MessageStatus.DELIVERED,
+        status: outbound ? $Enums.MessageStatus.SENT : $Enums.MessageStatus.DELIVERED,
       },
     });
   }

@@ -163,6 +163,7 @@ export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
   '/team': CLINIC_ADMIN,
   '/campaigns': PIPELINE,
   '/inbox': PATIENT_FACING,
+  '/whatsapp': PATIENT_FACING,
   '/appointments': SCHEDULING,
   '/finance': FINANCE,
   '/reports': MANAGEMENT,

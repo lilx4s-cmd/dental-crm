@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '@/context/auth-context';
 import { useUsers, type User } from '@/hooks/use-users';
 import { useSalesActivity, type SalesActivity } from '@/hooks/use-leads';
+import { WhatsAppSessions } from '@/components/team/whatsapp-sessions';
 import { TransferPanel } from '@/components/team/transfer-panel';
 import { QueryError } from '@/components/ui/query-state';
 import { STAGE_LABELS } from '@dental-crm/shared';
@@ -161,10 +162,12 @@ export default function TeamPage() {
           <TabsList>
             <TabsTrigger value="transfer">Transfer Deals</TabsTrigger>
             <TabsTrigger value="activity">Activity History</TabsTrigger>
+            <TabsTrigger value="whatsapp">WhatsApp Connections</TabsTrigger>
           </TabsList>
           <TabsContent value="transfer">
             {usersLoading ? <Skeleton className="h-64 w-full" /> : <TransferPanel users={assignees} />}
           </TabsContent>
+          <TabsContent value="whatsapp"><WhatsAppSessions /></TabsContent>
           <TabsContent value="activity">
             <ActivityFeed users={assignees} isAdmin />
           </TabsContent>
