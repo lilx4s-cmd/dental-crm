@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Save, UserPlus, Shield, KeyRound } from 'lucide-react';
 
@@ -243,11 +244,14 @@ export default function SettingsPage() {
 
       <StorageStatusCard />
 
-      <WhatsAppStatusCard />
-
-      <EvolutionCard />
-
-      <WhatsAppWebCard />
+      <Card>
+        <CardHeader><CardTitle>Work WhatsApp</CardTitle><CardDescription>Each staff member links their work number by scanning a QR code. Supervisors can check connections and captured conversations.</CardDescription></CardHeader>
+        <CardContent><Button asChild><Link href="/whatsapp">Open Work WhatsApp</Link></Button><p className="mt-3 text-sm text-muted-foreground">Staff open Work WhatsApp, then scan using WhatsApp → Linked devices → Link a device. No API tokens or webhook setup are needed for work accounts.</p></CardContent>
+      </Card>
+      <details className="rounded-lg border p-4">
+        <summary className="cursor-pointer text-sm font-medium">Advanced clinic messaging integrations</summary>
+        <div className="mt-4 space-y-4"><WhatsAppStatusCard /><EvolutionCard /><WhatsAppWebCard /></div>
+      </details>
 
       <Separator />
 
@@ -256,10 +260,7 @@ export default function SettingsPage() {
       <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
         <p>
-          Role changes and new staff accounts are managed via{' '}
-          <code className="bg-muted px-1 rounded text-xs">POST /api/users</code>.
-          WhatsApp, Facebook and SMS credentials go in{' '}
-          <code className="bg-muted px-1 rounded text-xs">apps/api/.env</code>.
+          Manage staff accounts above and edit their permissions in Access Control. Use Work WhatsApp for QR pairing and team contact oversight.
         </p>
       </div>
     </div>

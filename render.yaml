@@ -40,6 +40,8 @@ services:
         sync: false
       - key: WHATSAPP_WEB_ENABLED
         sync: false
+      - key: WHATSAPP_TEAM_WEB_ENABLED
+        value: "true"
       - key: EVOLUTION_API_URL
         sync: false
       - key: EVOLUTION_API_KEY

@@ -49,6 +49,8 @@ export default () => ({
     // prohibits and which risks the number, so it must never start itself just because the code
     // shipped.
     webEnabled: process.env.WHATSAPP_WEB_ENABLED,
+    // Staff work accounts pair only after an authenticated request. Ready for QR setup by default.
+    teamWebEnabled: process.env.WHATSAPP_TEAM_WEB_ENABLED ?? 'true',
   },
   // Self-hosted Evolution API gateway. Preferred over the in-process Baileys session, because the
   // WhatsApp connection then lives in a service that stays up independently of CRM deploys.

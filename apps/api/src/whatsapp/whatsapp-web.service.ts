@@ -102,7 +102,10 @@ class WhatsAppConnection {
     // Refuses to run alongside Evolution. Two WhatsApp clients on one number would each ingest
     // every inbound message, so every patient reply would appear twice in the CRM.
     const evolutionConfigured = sessionId === 'default' && !!this.config.get<string>('evolution.url');
-    this.enabled = this.config.get<string>('whatsapp.webEnabled') === 'true' && !evolutionConfigured;
+    const pairingEnabled = ownerUserId
+      ? this.config.get<string>('whatsapp.teamWebEnabled') !== 'false'
+      : this.config.get<string>('whatsapp.webEnabled') === 'true';
+    this.enabled = pairingEnabled && !evolutionConfigured;
     if (evolutionConfigured) {
       this.logger.log('Evolution API is configured — the in-process WhatsApp session stays off.');
     }
@@ -128,7 +131,7 @@ class WhatsAppConnection {
   async connect(): Promise<void> {
     if (!this.enabled) {
       throw new ServiceUnavailableException(
-        'WhatsApp Web is switched off. Set WHATSAPP_WEB_ENABLED=true to enable it.',
+        'WhatsApp linking has been disabled by your administrator.',
       );
     }
 
@@ -475,7 +478,7 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
     const { sessionId, ownerId } = await this.resolveSession(user);
     const account = await this.prisma.whatsAppAccount.findUnique({ where: { sessionId } });
     const status = this.connection(sessionId, ownerId).status();
-    return { sessionId, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null };
+    return { sessionId, needsSetup: !account, ...status, linkedNumber: status.linkedNumber ?? account?.linkedNumber ?? null };
   }
   async connectOwn(user: JwtPayload) {
     const { sessionId, ownerId } = await this.resolveSession(user);
