@@ -4,7 +4,7 @@ import { hasPermission } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import {
   MessageSquare,
@@ -395,6 +395,7 @@ function InboxView() {
   // ?c=<id> lets the pipeline hand a coordinator straight into the right thread after opening one
   // from a lead, instead of dropping them at an inbox they then have to search.
   const params = useSearchParams();
+  const router = useRouter();
   const [channel, setChannel] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -498,6 +499,9 @@ function InboxView() {
                             setSearch('');
                             setUnreadOnly(false);
                             setUnassignedOnly(false);
+                            setChannel(undefined);
+                            setSelectedId(null);
+                            router.replace('/inbox');
                           }}
                         >
                           Clear them
