@@ -135,6 +135,7 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   // stored server-side), so it's used opportunistically to embed a working QR in the PDF.
   const [lastShareToken, setLastShareToken] = useState<string | null>(null);
   const [editingItinerary, setEditingItinerary] = useState(false);
+  const [revising, setRevising] = useState(false);
   // The itinerary line waiting to be turned into a booking.
   const [bookingItem, setBookingItem] = useState<BookableScheduleItem | null>(null);
 
@@ -202,7 +203,7 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 px-4 py-3">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-medium">{plan.title}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -221,12 +222,15 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleDownloadPdf}>
             <Download className="mr-1 h-3.5 w-3.5" /> PDF
           </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setRevising(true)}>
+            Revise proposal
+          </Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4 px-4 pb-4 pt-0">
         {/* Assignment */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Dentist</label>
             <Select value={plan.assignedDentistId ?? ''} onValueChange={(v) => update.mutate({ id: plan.id, assignedDentistId: v })}>
@@ -376,6 +380,7 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           </div>
         )}
       </CardContent>
+      {revising && <NewTreatmentPlanDialog patientId={patientId} open initialPlan={plan} onClose={() => setRevising(false)} />}
     </Card>
   );
 }

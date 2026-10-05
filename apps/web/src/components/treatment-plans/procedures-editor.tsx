@@ -232,6 +232,7 @@ function PhaseBlock({
               <Input
                 className="col-span-2 h-8 text-xs"
                 placeholder="Tooth #"
+                title="FDI tooth numbers, e.g. 11, 12 or a quadrant range 11–16"
                 value={item.toothNumber}
                 onChange={(e) => onUpdateItem(idx, { toothNumber: e.target.value })}
               />

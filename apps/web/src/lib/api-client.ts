@@ -1,7 +1,13 @@
 // NEXT_PUBLIC_API_URL is the bare API origin (no /api suffix) — every call site
 // below is responsible for including the `/api` prefix itself, matching the
 // NestJS app's global prefix (see apps/api/src/main.ts's setGlobalPrefix('api')).
+import { writeAccessCookie, writeSessionCookie } from './session-cookies';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+// Authentication stays on the app's origin so refresh cookies also work in browsers that block
+// third-party cookies. Other endpoints keep using the existing API and its access controls.
+const requestUrl = (path: string) => path.startsWith('/api/auth/') ? path : `${API_URL}${path}`;
 
 /**
  * A failed request, with the status kept.
@@ -56,7 +62,7 @@ async function toApiError(res: Response, path: string): Promise<ApiError> {
 /** fetch, but a transport failure becomes an ApiError with status 0 rather than a raw TypeError. */
 async function send(path: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(`${API_URL}${path}`, { ...init, credentials: 'include' });
+    return await fetch(requestUrl(path), { ...init, credentials: 'include' });
   } catch {
     throw new ApiError('Could not reach the server. Check your connection.', 0, path);
   }
@@ -73,11 +79,9 @@ function processQueue(token: string | null) {
 /**
  * The CSRF token for `/auth/refresh`, kept where this app can actually read it.
  *
- * The API holds the matching value in an httpOnly cookie on its own domain. This app is served
- * from a different registrable domain, so it cannot read that cookie — the token arrives in the
- * sign-in response body instead, and lives here plus in a same-site cookie so it survives a page
- * reload. An attacker on another origin can cause the API's cookie to be sent but cannot read this
- * value, which is the whole mechanism.
+ * The same-origin auth proxy forwards the matching httpOnly cookie to the API. The readable
+ * token arrives in the response body and survives reloads in an app cookie. Another origin
+ * cannot read that value or pass the proxy's origin check.
  */
 const CSRF_STORAGE_KEY = 'csrf_token';
 let csrfToken: string | null = null;
@@ -86,9 +90,7 @@ export function setCsrfToken(token: string | undefined | null): void {
   if (!token) return;
   csrfToken = token;
   if (typeof document !== 'undefined') {
-    // Strict, because this cookie is only ever read by this app on its own origin — unlike the
-    // API's refresh cookie, which has to be None to cross domains at all.
-    document.cookie = `${CSRF_STORAGE_KEY}=${token}; path=/; SameSite=Strict; max-age=${7 * 24 * 60 * 60}`;
+    writeSessionCookie(CSRF_STORAGE_KEY, token);
   }
 }
 
@@ -100,8 +102,9 @@ export function clearCsrfToken(): void {
 }
 
 function readCsrfToken(): string | null {
-  if (csrfToken) return csrfToken;
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') return csrfToken;
+  // Another tab can rotate the session. Read the cookie again instead of presenting a stale
+  // in-memory token alongside the browser's new refresh cookie.
   const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_STORAGE_KEY}=([^;]*)`));
   csrfToken = match ? decodeURIComponent(match[1]) : null;
   return csrfToken;
@@ -109,13 +112,18 @@ function readCsrfToken(): string | null {
 
 let refreshPromise: Promise<string | null> | null = null;
 export function refreshAccessToken(): Promise<string | null> {
-  if (!refreshPromise) refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
+  if (!refreshPromise) {
+    const refresh = typeof navigator !== 'undefined' && navigator.locks
+      ? navigator.locks.request('crm-session-refresh', performRefresh).then(token => token)
+      : performRefresh();
+    refreshPromise = refresh.finally(() => { refreshPromise = null; });
+  }
   return refreshPromise;
 }
 async function performRefresh(): Promise<string | null> {
   try {
     const token = readCsrfToken();
-    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+    const res = await fetch(requestUrl('/api/auth/refresh'), {
       method: 'POST',
       credentials: 'include',
       headers: token ? { 'X-CSRF-Token': token } : undefined,
@@ -126,7 +134,7 @@ async function performRefresh(): Promise<string | null> {
     // cookies the browser now holds.
     setCsrfToken(data.csrfToken);
     if (typeof document !== 'undefined') {
-      document.cookie = `access_token=${data.accessToken}; path=/; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`;
+      writeAccessCookie(data.accessToken);
       window.dispatchEvent(new CustomEvent('crm:session-refreshed', { detail: data.accessToken }));
     }
     return data.accessToken;

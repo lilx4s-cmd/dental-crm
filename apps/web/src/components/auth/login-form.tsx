@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 export function LoginForm() {
   const { login, completeTwoFactor } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
   // Held only for the seconds between the password step and the code step. Nothing is signed in
   // while this exists — the token proves the password checked out and grants nothing else.
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
@@ -27,7 +28,7 @@ export function LoginForm() {
   const onSubmit = async (data: LoginDto) => {
     setLoading(true);
     try {
-      const result = await login(data.email, data.password);
+      const result = await login(data.email, data.password, remember);
       if (isTwoFactorChallenge(result)) setChallengeToken(result.challengeToken);
       // Otherwise the context has already redirected.
     } catch (err) {
@@ -109,7 +110,7 @@ export function LoginForm() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="you@clinic.com" {...register('email')} />
+            <Input id="email" type="email" autoComplete="username" placeholder="you@clinic.com" {...register('email')} />
             {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
           </div>
           <div className="space-y-1.5">
@@ -124,9 +125,13 @@ export function LoginForm() {
                 Forgot password?
               </Link>
             </div>
-            <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+            <Input id="password" type="password" autoComplete="current-password" placeholder="••••••••" {...register('password')} />
             {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="h-4 w-4 accent-primary" />
+            Remember me on this device for 7 days
+          </label>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign In'}
           </Button>

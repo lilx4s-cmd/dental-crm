@@ -63,7 +63,7 @@ export function QuickPlanPicker({
 }: {
   categories?: TreatmentCategory[];
   hasExistingWork: boolean;
-  onApply: (forms: { items: ItemForm[]; phases: PhaseForm[] }) => void;
+  onApply: (forms: { items: ItemForm[]; phases: PhaseForm[]; title?: string }) => void;
 }) {
   const [selected, setSelected] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -71,7 +71,7 @@ export function QuickPlanPicker({
 
   const apply = () => {
     if (!preset) return;
-    onApply(presetToForms(preset, categories));
+    onApply({ ...presetToForms(preset, categories), title: preset.name });
     setConfirming(false);
   };
 

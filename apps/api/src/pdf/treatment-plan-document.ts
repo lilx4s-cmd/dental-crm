@@ -220,6 +220,9 @@ export interface ClinicBranding {
   address?: string | null;
   city?: string | null;
   country?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
 }
 
 // Accepts Prisma Decimal instances as well as plain numbers.
@@ -239,6 +242,8 @@ export interface PlanDocumentInput {
   diagnosisSnapshot?: string | null;
   aiSummary?: string | null;
   createdAt?: Date | string | null;
+  assignedDentist?: { firstName: string; lastName: string } | null;
+  assignedCoordinator?: { firstName: string; lastName: string } | null;
   patient: {
     firstName: string;
     lastName: string;
@@ -256,6 +261,7 @@ export interface PlanDocumentInput {
     toothCondition?: ToothCondition | null;
     material?: string | null;
     brand?: string | null;
+    clinicalNotes?: string | null;
     quantity: number;
     unitPrice?: Numeric | null;
     cost: Numeric;
@@ -1093,7 +1099,7 @@ function AftercarePage(
   );
 }
 
-export function TreatmentPlanDocument(
+export function LegacyTreatmentPlanDocument(
   plan: PlanDocumentInput,
   branding: ClinicBranding,
   qrDataUrl?: string,
@@ -1168,3 +1174,5 @@ export function TreatmentPlanDocument(
   // later cannot forget.
   return el(Document, {}, ...pages);
 }
+
+export { TreatmentPlanDocument } from './patient-proposal-document';

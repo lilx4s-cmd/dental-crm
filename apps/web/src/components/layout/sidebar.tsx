@@ -41,19 +41,21 @@ export function Sidebar() {
   const visible = navItems.filter((item) => canAccessRoute(item.href, user?.role, user?.permissions));
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
+    <aside className="flex min-h-0 w-16 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border md:w-64">
+      <div className="flex shrink-0 items-center justify-center gap-3 px-2 py-5 border-b border-sidebar-border md:justify-start md:px-6">
         <Stethoscope className="h-7 w-7 text-primary" />
-        <span className="text-lg font-bold tracking-tight">Dental CRM</span>
+        <span className="hidden text-lg font-bold tracking-tight md:inline">Dental CRM</span>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav aria-label="Main navigation" className="min-h-0 flex-1 px-2 py-4 space-y-1 overflow-y-auto md:px-3">
         {visible.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
               key={href}
               href={href}
+              aria-label={href === '/inbox' && unread?.conversations ? `${label}, ${unread.conversations} conversations need a reply` : label}
+              title={label}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 active
@@ -62,11 +64,11 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{label}</span>
+              <span className="hidden flex-1 md:inline">{label}</span>
               {href === '/inbox' && !!unread?.conversations && (
                 <span
                   className={cn(
-                    'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                    'hidden shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums md:inline',
                     active ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary text-primary-foreground',
                   )}
                   aria-label={`${unread.conversations} conversations need a reply`}

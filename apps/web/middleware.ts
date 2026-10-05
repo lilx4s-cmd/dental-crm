@@ -1,6 +1,5 @@
-import { landingRoute, type Role } from '@dental-crm/shared';
 import { NextRequest, NextResponse } from 'next/server';
-import { PUBLIC_PATHS, PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
+import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
 
 function getTokenFromCookie(req: NextRequest): string | null {
   return req.cookies.get('access_token')?.value ?? null;
@@ -23,16 +22,14 @@ function isTokenExpired(payload: { exp?: number }): boolean {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const isPublic = matchesPrefix(pathname, PUBLIC_PATHS);
   const isDashboard = matchesPrefix(pathname, PROTECTED_PATH_PREFIXES);
 
   const token = getTokenFromCookie(req);
   const payload = token ? decodeJwtPayload(token) : null;
   const isAuthenticated = !!payload && !isTokenExpired(payload);
 
-  if (isAuthenticated && isPublic) {
-    return NextResponse.redirect(new URL(landingRoute(payload.role as Role), req.url));
-  }
+  // The client redirects from /login only after /auth/me validates the session. Trusting an
+  // unverified cookie here created a login/dashboard loop for revoked or malformed sessions.
 
   // A refresh cookie is validated by the API; let the client restore it before fetching data.
   const canRestore = !!req.cookies.get('csrf_token')?.value;

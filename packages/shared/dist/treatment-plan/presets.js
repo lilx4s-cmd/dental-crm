@@ -32,22 +32,20 @@ exports.TREATMENT_PRESETS = [
     {
         id: 'all-on-4-both',
         name: 'All-on-4 — both jaws',
-        summary: '4 upper implants, then 4 lower, then 24 zirconia crowns after 3 months of healing.',
+        summary: 'Visit 1: 4 upper and 4 lower implants. Visit 2: 24 zirconia crowns after approximately 3 months of healing.',
         phases: [
             {
                 phaseNumber: 1,
-                name: 'Upper implants',
-                items: [{ description: 'Implant', categoryName: 'Implant', teeth: UPPER_ALL_ON_4 }],
+                name: 'Surgical visit',
+                healingPeriodMonths: 3,
+                items: [
+                    { description: 'Upper implants', categoryName: 'Implant', teeth: UPPER_ALL_ON_4 },
+                    { description: 'Lower implants', categoryName: 'Implant', teeth: LOWER_ALL_ON_4 },
+                ],
             },
             {
                 phaseNumber: 2,
-                name: 'Lower implants',
-                healingPeriodMonths: 3,
-                items: [{ description: 'Implant', categoryName: 'Implant', teeth: LOWER_ALL_ON_4 }],
-            },
-            {
-                phaseNumber: 3,
-                name: 'Prosthetics',
+                name: 'Final restorations',
                 items: [{ ...ZIRCONIA, teeth: [...UPPER_12, ...LOWER_12] }],
             },
         ],
@@ -113,9 +111,11 @@ exports.TREATMENT_PRESETS = [
         name: 'All-on-6 — both jaws',
         summary: 'Six implants per arch, then twelve zirconia crowns per arch after healing.',
         phases: [
-            { phaseNumber: 1, name: 'Upper implants', items: [{ ...IMPLANT, teeth: UPPER_6 }] },
-            { phaseNumber: 2, name: 'Lower implants', healingPeriodMonths: 3, items: [{ ...IMPLANT, teeth: LOWER_6 }] },
-            { phaseNumber: 3, name: 'Prosthetics', items: [{ ...ZIRCONIA, teeth: [...UPPER_12, ...LOWER_12] }] },
+            { phaseNumber: 1, name: 'Surgical visit', healingPeriodMonths: 3, items: [
+                    { ...IMPLANT, description: 'Upper implants', teeth: UPPER_6 },
+                    { ...IMPLANT, description: 'Lower implants', teeth: LOWER_6 },
+                ] },
+            { phaseNumber: 2, name: 'Final restorations', items: [{ ...ZIRCONIA, teeth: [...UPPER_12, ...LOWER_12] }] },
         ],
     },
     {

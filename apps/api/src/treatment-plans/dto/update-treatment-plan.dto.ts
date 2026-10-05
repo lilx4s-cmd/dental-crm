@@ -53,10 +53,10 @@ export class UpdateTreatmentPlanDto {
   @IsOptional() @IsArray() @IsString({ each: true })
   packageIncludes?: string[];
 
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) depositAmount?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) cardFeePercent?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) cashDiscountPercent?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() flightRefundNote?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() paymentTerms?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) depositAmount?: number | null;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) cardFeePercent?: number | null;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) cashDiscountPercent?: number | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() flightRefundNote?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() paymentTerms?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() language?: string;
 }

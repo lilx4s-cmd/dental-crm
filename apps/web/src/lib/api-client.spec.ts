@@ -117,7 +117,7 @@ describe('apiRequest — expired access token', () => {
 
     await expect(apiRequest('/api/patients/p1', {}, 'stale')).resolves.toEqual({ id: 'p1' });
 
-    expect(fetchMock.mock.calls[1][0]).toBe(`${API}/api/auth/refresh`);
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/refresh');
     const replayHeaders = fetchMock.mock.calls[2][1]?.headers as Record<string, string>;
     expect(replayHeaders.Authorization).toBe('Bearer fresh');
   });
@@ -233,6 +233,14 @@ describe('apiRequest — expired access token', () => {
 
     const secondRefresh = fetchMock.mock.calls[4][1]?.headers as Record<string, string>;
     expect(secondRefresh['X-CSRF-Token']).toBe('csrf-rotated');
+  });
+
+  it('reads the CSRF cookie again when another tab rotates the session', async () => {
+    setCsrfToken('original-tab-token');
+    document.cookie = 'csrf_token=rotated-by-other-tab; path=/';
+    fetchMock.mockResolvedValueOnce(res(200, { accessToken: 'fresh', csrfToken: 'next' }));
+    await refreshAccessToken();
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({ 'X-CSRF-Token': 'rotated-by-other-tab' });
   });
 
   it('still attempts the refresh when no CSRF token is known', async () => {

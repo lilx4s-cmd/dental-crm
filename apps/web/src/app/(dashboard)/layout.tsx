@@ -15,11 +15,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const readOnly = readKey?.endsWith('.read') && user.permissions?.[readKey.replace('.read', '.write')] === false;
   const allowed = !route || canAccessRoute(route, user.role, user.permissions);
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6 bg-muted/30">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto p-6 bg-muted/30">
           {allowed && readOnly && <p className="mb-4 rounded border bg-background p-3 text-sm text-muted-foreground">Your access to this workspace is read-only. Editing is disabled for your profile.</p>}
           {allowed ? children : <p role="alert">This page is not enabled for your access profile. Choose an available workspace page or contact your administrator.</p>}
         </main>

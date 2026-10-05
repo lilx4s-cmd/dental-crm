@@ -115,6 +115,9 @@ export class TreatmentPlansController {
         address: clinicSettings?.address,
         city: clinicSettings?.city,
         country: clinicSettings?.country,
+        phone: clinicSettings?.phone,
+        email: clinicSettings?.email,
+        website: clinicSettings?.website,
       },
       portalUrl,
     );

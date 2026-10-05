@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { apiRequest, clearCsrfToken, setCsrfToken, refreshAccessToken } from '@/lib/api-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { PROTECTED_PATH_PREFIXES, matchesPrefix } from '@/lib/route-config';
+import { clearSessionCookies, setRememberSession, writeAccessCookie } from '@/lib/session-cookies';
 import {
   JwtPayload,
   AuthTokens,
@@ -17,7 +18,7 @@ interface AuthContextValue {
   ready: boolean;
   user: JwtPayload | null;
   accessToken: string | null;
-  login: (email: string, password: string) => Promise<LoginResult>;
+  login: (email: string, password: string, remember?: boolean) => Promise<LoginResult>;
   completeTwoFactor: (challengeToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   setAuth: (user: JwtPayload, token: string) => void;
@@ -115,6 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // of leaving them staring at an empty shell with every data fetch failing silently.
   useEffect(() => {
     if (!ready) return;
+    if (pathname === '/login' && accessToken && user) {
+      router.replace(landingRoute(user.role));
+      return;
+    }
     if (!matchesPrefix(pathname, PROTECTED_PATH_PREFIXES)) return;
     if (!accessToken || !user) {
       router.replace(`/login?from=${encodeURIComponent(pathname)}`);
@@ -131,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await apiRequest<JwtPayload>('/api/auth/me', {}, token);
     setUser(me);
     setAccessToken(token);
-    document.cookie = `access_token=${token}; path=/; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`;
+    writeAccessCookie(token);
     // The dashboard is management's, so sending everyone there greeted half the clinic with a page
     // they are not allowed to load. Each role lands on the first page it can actually use.
     router.push(landingRoute(me.role));
@@ -143,7 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * The caller has to handle that branch — `isTwoFactorChallenge` makes ignoring it a type error
    * rather than a silent half-login.
    */
-  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+  const login = useCallback(async (email: string, password: string, remember = true): Promise<LoginResult> => {
+    setRememberSession(remember);
     const result = await apiRequest<LoginResult>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -169,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiRequest('/api/auth/logout', { method: 'POST' }, accessToken ?? undefined).catch(() => {});
     setUser(null);
     setAccessToken(null);
-    document.cookie = 'access_token=; path=/; max-age=0';
+    clearSessionCookies();
     clearCsrfToken();
     router.push('/login');
   }, [accessToken, router, queryClient]);

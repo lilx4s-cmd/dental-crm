@@ -1,4 +1,17 @@
-import { ALL_TEETH, PLAN_CONDITIONS, buildTooth, type ToothCondition } from '@dental-crm/shared';
+import { ALL_TEETH, PLAN_CONDITIONS, buildTooth, parseToothNumbers, type ToothCondition } from '@dental-crm/shared';
+
+describe('tooth numbers in treatment proposals', () => {
+  it('expands the four quadrant ranges of a 24-unit restoration', () => {
+    expect(parseToothNumbers('11-16, 21–26, 31-36, 41—46')).toHaveLength(24);
+    expect(parseToothNumbers('11-16')).toEqual(['11', '12', '13', '14', '15', '16']);
+  });
+  it('supports reverse ranges, separated lists and duplicate teeth', () => {
+    expect(parseToothNumbers('16 – 13; 14 / 21 | 22')).toEqual(['16', '15', '14', '13', '21', '22']);
+  });
+  it('ignores invalid FDI numbers without guessing a range across quadrants', () => {
+    expect(parseToothNumbers('19, 89, invalid, 11-21')).toEqual(['11', '21']);
+  });
+});
 
 // The chart is the one place a patient sees what is actually being proposed, and it is drawn from
 // these ops in two renderers that never compare notes — DOM SVG in the browser and @react-pdf in

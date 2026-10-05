@@ -26,16 +26,31 @@ function isUpperTooth(fdi) {
 /**
  * Reads the tooth numbers out of a line item's free-text tooth field. One procedure routinely
  * covers many teeth — a full-arch bridge is one price across twelve units — so the field accepts a
- * separated list and every chart resolves it through here. A plain "16" yields a single entry, which
- * keeps every plan written before multi-tooth items existed working unchanged.
+ * separated list or a range within one quadrant, such as "11–16". Invalid FDI numbers are ignored
+ * and duplicates count once. Ranges across quadrants retain their explicit endpoints; staff must
+ * list those teeth individually to avoid implying an ambiguous treatment span.
  */
 function parseToothNumbers(value) {
     if (!value)
         return [];
-    return value
-        .split(/[\s,;|/]+/)
-        .map((t) => t.trim())
-        .filter(Boolean);
+    const teeth = new Set();
+    for (const match of value.matchAll(/\b([1-4][1-8])(?:\s*[-–—]\s*([1-4][1-8]))?\b/g)) {
+        const [, first, last] = match;
+        if (last && first[0] === last[0]) {
+            const step = Number(last[1]) >= Number(first[1]) ? 1 : -1;
+            for (let digit = Number(first[1]);; digit += step) {
+                teeth.add(first[0] + digit);
+                if (digit === Number(last[1]))
+                    break;
+            }
+        }
+        else {
+            teeth.add(first);
+            if (last)
+                teeth.add(last);
+        }
+    }
+    return [...teeth];
 }
 function toothType(fdi) {
     switch (fdi[1]) {

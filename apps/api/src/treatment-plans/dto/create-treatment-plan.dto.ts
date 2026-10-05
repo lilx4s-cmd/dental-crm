@@ -18,7 +18,7 @@ export class CreateTreatmentPlanItemDto {
   @IsOptional() @IsString() treatmentCategoryId?: string;
   @IsOptional() @IsString() toothNumber?: string;
   @IsString() @IsNotEmpty() description: string;
-  @IsNumber() @Min(1) quantity: number;
+  @IsInt() @Min(1) quantity: number;
   // `cost` is the authoritative line total (flows into TreatmentPlan.totalCost + InvoiceItem).
   // The frontend computes cost = unitPrice * quantity - discount and submits it; unitPrice/discount
   // are additive input-convenience fields that get persisted for reference/editing.

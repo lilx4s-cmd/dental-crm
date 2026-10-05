@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSRF_COOKIE } from '../common/guards/csrf.guard';
 import { TwoFactorService } from './two-factor.service';
@@ -148,7 +148,7 @@ export class AuthService {
   ): Promise<AuthTokens> {
     const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.signAccessToken(payload);
-    const refreshToken = await this.createRefreshToken(user.id, ip, userAgent);
+    const { rawToken: refreshToken } = await this.createRefreshToken(user.id, ip, userAgent);
 
     const csrfToken = this.setRefreshCookie(res, refreshToken);
 
@@ -262,7 +262,7 @@ export class AuthService {
         ...session,
         // Marked rather than filtered out, so the list is complete and it is still obvious which
         // row belongs to the browser doing the asking.
-        current: currentRawToken ? await bcrypt.compare(currentRawToken, tokenHash) : false,
+        current: currentRawToken ? await this.matchesRefreshToken(currentRawToken, tokenHash) : false,
       })),
     );
   }
@@ -315,22 +315,16 @@ export class AuthService {
   }
 
   async refresh(userId: string, rawToken: string, res: Response): Promise<AuthTokens> {
-    // A `const tokenHash = await bcrypt.hash(rawToken, …)` stood here, computed and then never
-    // read — the comparison below uses bcrypt.compare against the stored hash instead. It cost a
-    // full bcrypt round, about 80ms, on every refresh: once per user per fifteen minutes, for
-    // nothing. Lint would have found it years ago; nothing was running lint on this package.
-    const stored = await this.prisma.refreshToken.findFirst({
+    const sessions = await this.prisma.refreshToken.findMany({
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     });
-
-    if (!stored) {
-      await this.revokeAllUserTokens(userId);
-      throw new ForbiddenException('Refresh token reuse detected');
+    // Match this browser's session, not simply the newest sign-in from any device.
+    let stored: (typeof sessions)[number] | undefined;
+    for (const session of sessions) {
+      if (await this.matchesRefreshToken(rawToken, session.tokenHash)) { stored = session; break; }
     }
-
-    const isValid = await bcrypt.compare(rawToken, stored.tokenHash);
-    if (!isValid) {
+    if (!stored) {
       await this.revokeAllUserTokens(userId);
       throw new ForbiddenException('Refresh token reuse detected');
     }
@@ -338,8 +332,12 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) throw new UnauthorizedException('User inactive');
 
-    const newRawToken = await this.createRefreshToken(user.id);
-    const newHash = await bcrypt.hash(newRawToken, BCRYPT_ROUNDS);
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { id: stored.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new ForbiddenException('This session was refreshed in another request. Please retry.');
+    const { rawToken: newRawToken, tokenHash: newHash } = await this.createRefreshToken(user.id, stored.createdByIp ?? undefined, stored.userAgent ?? undefined);
 
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
@@ -356,18 +354,17 @@ export class AuthService {
   }
 
   async logout(userId: string, rawToken: string, res: Response): Promise<void> {
-    const stored = await this.prisma.refreshToken.findFirst({
+    const sessions = await this.prisma.refreshToken.findMany({
       where: { userId, revokedAt: null },
       orderBy: { createdAt: 'desc' },
     });
-
-    if (stored) {
-      const isValid = await bcrypt.compare(rawToken, stored.tokenHash);
-      if (isValid) {
+    for (const stored of sessions ?? []) {
+      if (await this.matchesRefreshToken(rawToken, stored.tokenHash)) {
         await this.prisma.refreshToken.update({
           where: { id: stored.id },
           data: { revokedAt: new Date() },
         });
+        break;
       }
     }
 
@@ -385,16 +382,16 @@ export class AuthService {
     });
   }
 
-  private async createRefreshToken(userId: string, ip?: string, userAgent?: string): Promise<string> {
+  private async createRefreshToken(userId: string, ip?: string, userAgent?: string): Promise<{ rawToken: string; tokenHash: string }> {
     const rawToken = this.jwtService.sign(
-      { sub: userId },
+      { jti: randomBytes(16).toString('hex'), sub: userId },
       {
         secret: this.config.get<string>('jwt.refreshSecret'),
         expiresIn: this.config.get<string>('jwt.refreshExpiresIn'),
       },
     );
 
-    const tokenHash = await bcrypt.hash(rawToken, BCRYPT_ROUNDS);
+    const tokenHash = await this.hashRefreshToken(rawToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -402,7 +399,20 @@ export class AuthService {
       data: { userId, tokenHash, expiresAt, createdByIp: ip, userAgent },
     });
 
-    return rawToken;
+    return { rawToken, tokenHash };
+  }
+
+  private async hashRefreshToken(raw: string): Promise<string> {
+    // bcrypt truncates at 72 bytes. Hashing the full JWT first makes otherwise identical token
+    // prefixes distinguishable, and the version prefix keeps existing sessions compatible.
+    const digest = createHash('sha256').update(raw).digest('hex');
+    return 'sha256:' + await bcrypt.hash(digest, BCRYPT_ROUNDS);
+  }
+
+  private matchesRefreshToken(raw: string, stored: string): Promise<boolean> {
+    return stored.startsWith('sha256:')
+      ? bcrypt.compare(createHash('sha256').update(raw).digest('hex'), stored.slice(7))
+      : bcrypt.compare(raw, stored);
   }
 
   private async revokeAllUserTokens(userId: string): Promise<void> {

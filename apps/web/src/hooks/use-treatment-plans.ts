@@ -186,6 +186,13 @@ export interface CreateTreatmentPlanInput {
   phases?: CreateTreatmentPlanPhaseInput[];
   stay?: CreateTreatmentPlanStayInput;
   scheduleItems?: CreateTreatmentPlanScheduleItemInput[];
+  packageIncludes?: string[];
+  depositAmount?: number;
+  cardFeePercent?: number;
+  cashDiscountPercent?: number;
+  flightRefundNote?: string;
+  paymentTerms?: string;
+  language?: string;
 }
 
 /** Travel, accommodation and transfers for a patient coming in from abroad. All optional — the
@@ -227,11 +234,11 @@ export interface UpdateTreatmentPlanInput {
   notes?: string;
   // Each independently optional, so saving the package cannot blank terms set from elsewhere.
   packageIncludes?: string[];
-  depositAmount?: number;
-  cardFeePercent?: number;
-  cashDiscountPercent?: number;
-  flightRefundNote?: string;
-  paymentTerms?: string;
+  depositAmount?: number | null;
+  cardFeePercent?: number | null;
+  cashDiscountPercent?: number | null;
+  flightRefundNote?: string | null;
+  paymentTerms?: string | null;
   language?: string;
 }
 

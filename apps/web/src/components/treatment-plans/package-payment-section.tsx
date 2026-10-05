@@ -55,24 +55,29 @@ export function PackagePaymentSection({ plan, patientId }: { plan: TreatmentPlan
   const toggle = (key: string) =>
     setIncluded((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
-  const save = () =>
+  const save = () => {
+    if (num(deposit) < 0 || num(deposit) > Number(plan.totalCost) || [cardFee, cashDiscount].some(value => num(value) < 0 || num(value) > 100)) {
+      toast.error('Check the deposit and payment percentages.');
+      return;
+    }
     update.mutate(
       {
         id: plan.id,
         packageIncludes: included,
         // An empty box means "not quoted", which is different from zero — sending 0 would print
         // "no deposit required" on a document the patient keeps.
-        depositAmount: deposit === '' ? undefined : num(deposit),
-        cardFeePercent: cardFee === '' ? undefined : num(cardFee),
-        cashDiscountPercent: cashDiscount === '' ? undefined : num(cashDiscount),
-        flightRefundNote: flightNote || undefined,
-        paymentTerms: terms || undefined,
+        depositAmount: deposit === '' ? null : num(deposit),
+        cardFeePercent: cardFee === '' ? null : num(cardFee),
+        cashDiscountPercent: cashDiscount === '' ? null : num(cashDiscount),
+        flightRefundNote: flightNote || null,
+        paymentTerms: terms || null,
       },
       {
         onSuccess: () => toast.success('Package and payment saved'),
         onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not save'),
       },
     );
+  };
 
   return (
     <Card>
@@ -89,6 +94,7 @@ export function PackagePaymentSection({ plan, patientId }: { plan: TreatmentPlan
                 <button
                   key={item.key}
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggle(item.key)}
                   className={cn(
                     'flex items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
@@ -138,7 +144,7 @@ export function PackagePaymentSection({ plan, patientId }: { plan: TreatmentPlan
           </div>
           {summary.deposit > 0 && (
             <div className="mt-1 flex items-center justify-between">
-              <span className="text-muted-foreground">Remaining on arrival</span>
+              <span className="text-muted-foreground">Remaining across planned visits</span>
               <span>{money(summary.remaining, plan.currency)}</span>
             </div>
           )}
@@ -155,7 +161,7 @@ export function PackagePaymentSection({ plan, patientId }: { plan: TreatmentPlan
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Flight note (optional)</Label>
           <Input
-            placeholder="If a card fee is applied, the clinic refunds the flight ticket."
+            placeholder="Confirmed flight or reimbursement terms, if agreed."
             value={flightNote}
             onChange={(e) => setFlightNote(e.target.value)}
           />
