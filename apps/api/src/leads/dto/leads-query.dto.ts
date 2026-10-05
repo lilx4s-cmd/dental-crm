@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { LeadSource, LeadStatus, PipelineStage, TaskDueFilter } from '@dental-crm/shared';
 
 export class LeadsQueryDto {
@@ -29,10 +29,20 @@ export class LeadsQueryDto {
   @IsOptional()
   stage?: string;
 
-  @ApiPropertyOptional({ enum: LeadStatus })
-  @IsEnum(LeadStatus)
+  @ApiPropertyOptional({ enum: [...Object.values(LeadStatus), 'ALL'] })
+  @IsIn([...Object.values(LeadStatus), 'ALL'])
   @IsOptional()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Leads created at or after this ISO date/time' })
+  @IsDateString()
+  @IsOptional()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Leads created before this ISO date/time (exclusive)' })
+  @IsDateString()
+  @IsOptional()
+  createdBefore?: string;
 
   @ApiPropertyOptional({ description: 'Filter by assigned user ID' })
   @IsString()

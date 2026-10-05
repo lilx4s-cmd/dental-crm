@@ -3,6 +3,9 @@ import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
 export interface DashboardStats {
+  todayStart: string;
+  todayEnd: string;
+  todayDate: string;
   leadsToday: number;
   leadsTotal: number;
   patientsTotal: number;

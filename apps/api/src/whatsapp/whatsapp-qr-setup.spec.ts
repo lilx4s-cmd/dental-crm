@@ -22,6 +22,7 @@ describe('QR-only work-account setup', () => {
   let storeSessionMessage: jest.Mock;
   let chats: Record<string, any>[];
   let conversation: { count: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
+  let accounts: { findUnique: jest.Mock; upsert: jest.Mock; updateMany: jest.Mock };
   beforeEach(() => {
     jest.clearAllMocks();
     (usePrismaAuthState as jest.Mock).mockResolvedValue({ state: { creds: {} }, saveCreds: jest.fn().mockResolvedValue(undefined), flush: jest.fn().mockResolvedValue(undefined), close: jest.fn().mockResolvedValue(undefined), clear: jest.fn().mockResolvedValue(undefined) });
@@ -36,9 +37,10 @@ describe('QR-only work-account setup', () => {
       update: jest.fn().mockImplementation(({ where, data }) => { const row = chats.find(c => c.id === where.id); Object.assign(row!, data); return Promise.resolve(row); }),
     };
     (makeWASocket as jest.Mock).mockImplementation(() => ({ ev: { on: (name: string, fn: (value: unknown) => Promise<void>) => { handlers[name] = fn; } }, end: jest.fn(), logout: jest.fn().mockResolvedValue(undefined), user: { id: '12025550100:1@s.whatsapp.net' }, authState: { creds: { myAppStateKeyId: 'test-key' }, keys: { set: jest.fn().mockResolvedValue(undefined), get: jest.fn().mockResolvedValue({ critical_unblock_low: { version: 2 } }) } }, resyncAppState: jest.fn().mockResolvedValue(undefined) }));
+    accounts = { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
     service = new WhatsAppWebService({ get: (key: string) => values[key] } as never, {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'staff', isActive: true, role: Role.SALES_CONSULTANT }) },
-      whatsAppAccount: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      whatsAppAccount: accounts,
       whatsAppSession: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn().mockResolvedValue({}) },
       conversation,
       message: { count: jest.fn().mockResolvedValue(0) },
@@ -216,6 +218,102 @@ describe('QR-only work-account setup', () => {
     expect(result).toMatchObject({ state: 'disconnected', linkedNumber: null, qrDataUrl: null });
     expect(conversation.update).not.toHaveBeenCalled();
     expect(conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('signs out without waiting for an in-progress chat import', async () => {
+    await service.connectOwn(user);
+    await handlers['connection.update']({ connection: 'open' });
+    let finish!: () => void;
+    storeSessionMessage.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+    const receiving = handlers['messages.upsert']({ messages: [{ key: { remoteJid: '12025550101@s.whatsapp.net', id: 'in-flight' }, message: { conversation: 'Synthetic test message' } }] });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    let signedOut = false;
+    const signingOut = service.logoutOwn(user).then(() => { signedOut = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const completedBeforeImport = signedOut;
+    finish();
+    await Promise.all([receiving, signingOut]);
+    expect(completedBeforeImport).toBe(true);
+    expect(await service.ownStatus(user)).toMatchObject({ state: 'disconnected', linkedNumber: null });
+  });
+
+  it('keeps a later sign-out disconnected when an older new-QR request finishes', async () => {
+    await service.connectOwn(user);
+    await handlers['connection.update']({ connection: 'open' });
+    const sock = (makeWASocket as jest.Mock).mock.results[0].value;
+    let finish!: () => void;
+    sock.logout.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+    const preparingQr = service.newQrOwn(user);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const signingOut = service.logoutOwn(user);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    finish();
+    await Promise.all([preparingQr, signingOut]);
+    expect(makeWASocket).toHaveBeenCalledTimes(1);
+    expect(await service.ownStatus(user)).toMatchObject({ state: 'disconnected', qrDataUrl: null, linkedNumber: null });
+  });
+
+  it('keeps the saved account disconnected when an old connected-status write finishes late', async () => {
+    await service.connectOwn(user);
+    let finish!: () => void;
+    let saved: Record<string, unknown> = {};
+    accounts.upsert.mockImplementation(async ({ update }) => {
+      if (update.autoReconnect) await new Promise<void>(resolve => { finish = resolve; });
+      saved = { ...saved, ...update };
+      return saved;
+    });
+    const opening = handlers['connection.update']({ connection: 'open' });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const signingOut = service.logoutOwn(user);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    finish();
+    await Promise.all([opening, signingOut]);
+    expect(saved).toMatchObject({ autoReconnect: false, linkedNumber: null });
+  });
+
+  it('does not let a late message-import failure corrupt the next connection', async () => {
+    await service.connectOwn(user);
+    let fail!: (error: Error) => void;
+    storeSessionMessage.mockReturnValueOnce(new Promise<void>((_resolve, reject) => { fail = reject; }));
+    const receiving = handlers['messages.upsert']({ messages: [{ key: { remoteJid: '12025550101@s.whatsapp.net', id: 'old-batch' }, message: { conversation: 'Synthetic old message' } }] });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    await service.logoutOwn(user);
+    await service.connectOwn(user);
+    fail(new Error('Synthetic old import failure'));
+    await receiving;
+    await handlers['messages.upsert']({ messages: [{ key: { remoteJid: '12025550101@s.whatsapp.net', id: 'new-batch' }, message: { conversation: 'Synthetic new message' } }] });
+    expect(await service.ownStatus(user)).toMatchObject({ captureError: null, messageEventsSeen: 1 });
+    expect(storeSessionMessage).toHaveBeenLastCalledWith('12025550101', 'Synthetic new message', 'new-batch', 'user:staff', 'staff', false, undefined);
+  });
+
+  it('resets an unresponsive linked socket and explains how to remove the device on the phone', async () => {
+    await service.connectOwn(user);
+    await handlers['connection.update']({ connection: 'open' });
+    const sock = (makeWASocket as jest.Mock).mock.results[0].value;
+    sock.logout.mockReturnValue(new Promise<void>(() => undefined));
+    jest.useFakeTimers();
+    const signingOut = service.logoutOwn(user);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(await signingOut).toMatchObject({ state: 'disconnected', linkedNumber: null, needsSetup: false, error: expect.stringContaining('Linked devices') });
+    const auth = await (usePrismaAuthState as jest.Mock).mock.results[0].value;
+    expect(auth.clear).toHaveBeenCalledTimes(1);
+    expect(sock.end).toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(120000);
+    expect(makeWASocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an unsuccessful saved reset so the caller can retry instead of showing success', async () => {
+    accounts.upsert.mockRejectedValue(new Error('Synthetic write failure'));
+    await expect(service.logoutOwn(user)).rejects.toThrow('reset could not be saved');
+    expect(service.status('user:staff')).toMatchObject({ state: 'disconnected', linkedNumber: null });
+  });
+
+  it('explains phone unlinking when a saved linked account has no active socket', async () => {
+    const auth = await (usePrismaAuthState as jest.Mock).mock.results[0]?.value;
+    expect(auth).toBeUndefined();
+    (usePrismaAuthState as jest.Mock).mockResolvedValue({ state: { creds: { registered: true, me: { id: '12025550100@s.whatsapp.net' } } }, clear: jest.fn().mockResolvedValue(undefined) });
+    expect(await service.logoutOwn(user)).toMatchObject({ state: 'disconnected', linkedNumber: null, error: expect.stringContaining('Linked devices') });
+    expect(makeWASocket).not.toHaveBeenCalled();
   });
 
   it('refuses contact sync while disconnected and while initial keys are still arriving', async () => {

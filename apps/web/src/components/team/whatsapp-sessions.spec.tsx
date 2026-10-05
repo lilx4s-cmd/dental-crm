@@ -51,12 +51,54 @@ describe('work WhatsApp setup', () => {
   });
 
   it('allows signing out and resetting a disconnected session before requesting a new QR', async () => {
-    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
     (apiRequest as jest.Mock).mockResolvedValue({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'disconnected', error: null });
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
+    expect(screen.getByRole('alertdialog', { name: 'Sign out of WhatsApp?' })).toBeInTheDocument();
+    expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/logout'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/logout', { method: 'POST' }, 'test-token'));
-    expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
+  });
+
+  it('can cancel sign-out in the in-app dialog without resetting the session', async () => {
+    (apiRequest as jest.Mock).mockResolvedValue({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'connected', error: null });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/logout'))).toBe(false);
+  });
+
+  it('keeps saved chat counts visible when sign-out returns a partial session status', async () => {
+    let signedOut = false;
+    let finishRefetch!: (value: unknown) => void;
+    (apiRequest as jest.Mock).mockImplementation(async (path: string) => {
+      if (path.endsWith('/logout')) { signedOut = true; return { sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'disconnected', linkedNumber: null, error: null }; }
+      if (signedOut) return new Promise(resolve => { finishRefetch = resolve; });
+      return { sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'connected', storedConversations: 12, storedMessages: 80, error: null };
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
+    expect(await screen.findByText('Disconnected')).toBeInTheDocument();
+    expect(screen.getByText('Saved chats: 12')).toBeInTheDocument();
+    expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/connect'))).toBe(false);
+    finishRefetch({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'disconnected', storedConversations: 12, storedMessages: 80, error: null });
+  });
+
+  it('confirms and disconnects the selected team member', async () => {
+    mockRole = 'CLINIC_MANAGER';
+    let signedOut = false;
+    (apiRequest as jest.Mock).mockImplementation(async (path: string) => {
+      const session = { sessionId: 'user:colleague', user: { id: 'colleague', firstName: 'Example', lastName: 'Staff' }, enabled: true, state: signedOut ? 'disconnected' : 'connected', error: null };
+      if (path.endsWith('/logout')) { signedOut = true; return { ...session, state: 'disconnected' }; }
+      return [session];
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/colleague/logout', { method: 'POST' }, 'test-token'));
+    expect(await screen.findByText('Disconnected')).toBeInTheDocument();
   });
 
   it('syncs missing names without requesting a new pairing code', async () => {

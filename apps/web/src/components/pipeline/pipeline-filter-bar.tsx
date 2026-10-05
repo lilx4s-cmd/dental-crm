@@ -53,7 +53,7 @@ function isSet(value: unknown) {
 
 /** Human-readable summary of one active filter, for the removable chips. */
 function chipLabel(
-  key: PipelineFilterKey,
+  key: keyof PipelineFilters,
   value: unknown,
   userName: (id: string) => string,
   tagName: (id: string) => string,
@@ -61,6 +61,12 @@ function chipLabel(
   switch (key) {
     case 'search':
       return `“${value}”`;
+    case 'status':
+      return value === 'ALL' ? 'All lead outcomes' : `Status: ${String(value).toLowerCase()}`;
+    case 'createdFrom':
+      return `Created from ${new Date(String(value)).toLocaleDateString()}`;
+    case 'createdBefore':
+      return `Created before ${new Date(String(value)).toLocaleDateString()}`;
     case 'assignedToId':
       return userName(String(value));
     case 'stage':
@@ -139,7 +145,8 @@ export function PipelineFilterBar({
 
   const tagName = (id: string) => tags?.find((t) => t.id === id)?.name ?? 'Tag';
 
-  const activeChips = (Object.keys(filters) as PipelineFilterKey[]).filter((k) => isSet(filters[k]));
+  const hasCreatedRange = !!filters.createdFrom && !!filters.createdBefore;
+  const activeChips = (Object.keys(filters) as (keyof PipelineFilters)[]).filter((k) => isSet(filters[k]) && !(hasCreatedRange && (k === 'createdFrom' || k === 'createdBefore')));
 
   const applyDraft = () => {
     onChange({ ...draft, search: searchText || undefined });
@@ -152,7 +159,7 @@ export function PipelineFilterBar({
     onChange(EMPTY);
   };
 
-  const removeChip = (key: PipelineFilterKey) => {
+  const removeChip = (key: keyof PipelineFilters) => {
     const next = { ...filters, [key]: undefined };
     if (key === 'search') setSearchText('');
     setDraft(next);
@@ -179,6 +186,11 @@ export function PipelineFilterBar({
           )}
         >
           <SlidersHorizontal className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+
+          {hasCreatedRange && <span className="flex items-center gap-1 rounded bg-primary/10 py-0.5 pl-2 pr-1 text-xs font-medium text-primary">
+            New leads · {new Date(filters.createdFrom!).toLocaleDateString()}
+            <button type="button" aria-label="Remove created date filter" className="rounded p-0.5 hover:bg-primary/20" onClick={() => onChange({ ...filters, createdFrom: undefined, createdBefore: undefined })}><X className="h-3 w-3" /></button>
+          </span>}
 
           {activeChips.map((key) => (
             <span
@@ -208,7 +220,7 @@ export function PipelineFilterBar({
             }}
           />
 
-          {activeChips.length > 0 && (
+          {(activeChips.length > 0 || hasCreatedRange) && (
             <button
               type="button"
               aria-label="Clear all filters"

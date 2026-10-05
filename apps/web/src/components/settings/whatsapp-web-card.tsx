@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Loader2, LogOut, QrCode, RefreshCw, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
+import { WhatsAppLogoutDialog } from '@/components/whatsapp/logout-dialog';
 
 type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
@@ -38,6 +40,7 @@ function prettyNumber(digits: string): string {
 export function WhatsAppWebCard() {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<WhatsAppWebStatus>({
     queryKey: ['whatsapp-web-status'],
@@ -68,8 +71,10 @@ export function WhatsAppWebCard() {
 
   const logout = useMutation({
     mutationFn: () => apiRequest<WhatsAppWebStatus>('/api/whatsapp/web/logout', { method: 'POST' }, accessToken ?? undefined),
+    onMutate: () => qc.cancelQueries({ queryKey: ['whatsapp-web-status'] }),
     onSuccess: (result) => {
-      toast.success('WhatsApp signed out and reset. You can now get a new QR code.');
+      if (result.error) toast.warning(result.error);
+      else toast.success('WhatsApp connection reset. You can request a new QR code.');
       qc.setQueryData(['whatsapp-web-status'], result);
       qc.invalidateQueries({ queryKey: ['whatsapp-web-status'] });
     },
@@ -84,6 +89,7 @@ export function WhatsAppWebCard() {
 
   return (
     <Card>
+      <WhatsAppLogoutDialog open={logoutOpen} onOpenChange={setLogoutOpen} onConfirm={() => logout.mutate()} />
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -157,9 +163,7 @@ export function WhatsAppWebCard() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={newQr.isPending || logout.isPending || connect.isPending || syncContacts.isPending} onClick={() => newQr.mutate()}><QrCode className="mr-2 h-4 w-4" />{newQr.isPending ? 'Preparing…' : 'Get a new QR code'}</Button>
             {data.state === 'connected' && <Button variant="outline" size="sm" disabled={data.syncingContacts || syncContacts.isPending || newQr.isPending || logout.isPending || connect.isPending} onClick={() => syncContacts.mutate()}>{data.syncingContacts || syncContacts.isPending ? 'Syncing names…' : 'Sync contact names'}</Button>}
-            <Button variant="outline" size="sm" disabled={logout.isPending || newQr.isPending || connect.isPending || syncContacts.isPending} onClick={() => {
-              if (window.confirm('Sign out of WhatsApp and reset this saved connection? Saved conversations will remain.')) logout.mutate();
-            }}><LogOut className="mr-2 h-4 w-4" />{logout.isPending ? 'Signing out…' : 'Sign out & reset'}</Button>
+            <Button variant="outline" size="sm" disabled={logout.isPending || newQr.isPending || connect.isPending || syncContacts.isPending} onClick={() => setLogoutOpen(true)}><LogOut className="mr-2 h-4 w-4" />{logout.isPending ? 'Signing out…' : 'Sign out & reset'}</Button>
           </div>
           <p className="text-xs text-muted-foreground">If the QR code does not appear, sign out and reset, then request a new code. For missing saved names, connect the phone and choose Sync contact names. Saved conversations remain.</p>
           {data.syncingContacts && <p role="status" className="text-sm">Syncing saved contact names… You can keep using the CRM.</p>}

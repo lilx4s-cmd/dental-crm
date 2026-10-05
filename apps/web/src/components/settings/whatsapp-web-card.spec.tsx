@@ -25,12 +25,11 @@ describe('shared clinic WhatsApp recovery', () => {
     expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/web/new-qr', { method: 'POST' }, 'test-token');
   });
   it('can sign out and reset a disconnected shared session', async () => {
-    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
     (apiRequest as jest.Mock).mockResolvedValue({ enabled: true, state: 'disconnected', qrDataUrl: null });
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/web/logout', { method: 'POST' }, 'test-token'));
-    confirm.mockRestore();
   });
   it('can start syncing names while the phone stays linked', async () => {
     (apiRequest as jest.Mock).mockResolvedValue({ enabled: true, state: 'connected', linkedNumber: '12025550100' });

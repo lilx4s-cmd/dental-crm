@@ -4,7 +4,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 // Loaded after the library's own stylesheet so it can override it.
 import './google-calendar.css';
 
-import { useState, useMemo, useCallback } from 'react';
+import { Suspense, useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Calendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar';
 import {
   format,
@@ -415,11 +416,24 @@ function NewAppointmentDialog({
 }
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
-export default function AppointmentsPage() {
+function AppointmentCalendar() {
+  const params = useSearchParams();
+  const requestedDate = params.get('date');
+  const dateFromLink = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+    ? new Date(`${requestedDate}T12:00:00`) : null;
+  const linkedDate = dateFromLink && Number.isFinite(dateFromLink.getTime()) ? dateFromLink : null;
   const { user } = useAuth();
   const mayBook = (APPOINTMENT_WRITE as readonly string[]).includes(user?.role ?? '');
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentView, setCurrentView] = useState<View>(Views.WEEK);
+  const [currentDate, setCurrentDate] = useState(linkedDate ?? new Date());
+  const [currentView, setCurrentView] = useState<View>(params.get('view') === 'day' ? Views.DAY : Views.WEEK);
+  useEffect(() => {
+    if (params.get('view') === 'day') setCurrentView(Views.DAY);
+    const date = params.get('date');
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const parsed = new Date(`${date}T12:00:00`);
+      if (Number.isFinite(parsed.getTime())) setCurrentDate(parsed);
+    }
+  }, [params]);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [newDialogDate, setNewDialogDate] = useState(new Date());
@@ -598,4 +612,8 @@ export default function AppointmentsPage() {
       />
     </div>
   );
+}
+
+export default function AppointmentsPage() {
+  return <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-lg" />}><AppointmentCalendar /></Suspense>;
 }

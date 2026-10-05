@@ -30,12 +30,16 @@ export async function usePrismaAuthState(
 
   // Drain in-flight writes before deletion; ignore late writes from a closed socket.
   let closed = false;
+  let clearing = false;
+  let cleared: Promise<void> | null = null;
   const pending = new Set<Promise<void>>();
   const writes = new Map<string, Promise<void>>();
   const enqueue = async (key: string, operation: () => Promise<void>) => {
     if (closed) return;
     // A slower old credential write must never overwrite a newer pairing or signal key.
-    const next = (writes.get(key) ?? Promise.resolve()).catch(() => undefined).then(operation);
+    const next = (writes.get(key) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      if (!clearing) await operation();
+    });
     writes.set(key, next);
     pending.add(next);
     try { await next; }
@@ -97,10 +101,15 @@ export async function usePrismaAuthState(
     close: async () => { closed = true; await Promise.allSettled([...pending]); },
     // Used on logout, and whenever WhatsApp tells us the session is dead — leaving stale
     // credentials behind would make the next connect fail in a way that looks like a bug.
-    clear: async () => {
+    clear: () => {
+      if (cleared) return cleared;
       closed = true;
-      await Promise.allSettled([...pending]);
-      await prisma.whatsAppSession.deleteMany({ where: { sessionId } });
+      clearing = true;
+      cleared = (async () => {
+        await Promise.allSettled([...pending]);
+        await prisma.whatsAppSession.deleteMany({ where: { sessionId } });
+      })();
+      return cleared;
     },
   };
 }

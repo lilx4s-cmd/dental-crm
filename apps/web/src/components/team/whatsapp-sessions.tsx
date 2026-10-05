@@ -1,7 +1,7 @@
 'use client';
 
 import { hasPermission } from '@dental-crm/shared';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { Smartphone, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
+import { WhatsAppLogoutDialog } from '@/components/whatsapp/logout-dialog';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +45,8 @@ export function WhatsAppSessions() {
   const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
   const canPair = !manager || user?.role === 'SUPER_ADMIN';
   const qc = useQueryClient();
+  const preparedFor = useRef<string | null>(null);
+  const [logoutPath, setLogoutPath] = useState<string | null>(null);
   const mine = useQuery<Session>({
     queryKey: ['whatsapp-session', user?.sub],
     queryFn: () => apiRequest('/api/whatsapp/sessions/me', {}, accessToken ?? undefined),
@@ -57,22 +60,29 @@ export function WhatsAppSessions() {
     refetchInterval: 15000,
   });
   const action = useMutation({
-    mutationFn: (path: string) => apiRequest(path, { method: 'POST' }, accessToken ?? undefined),
+    mutationFn: (path: string) => apiRequest<Session>(path, { method: 'POST' }, accessToken ?? undefined),
+    onMutate: async (path) => {
+      if (path === '/api/whatsapp/sessions/me/logout') preparedFor.current = user?.sub ?? null;
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['whatsapp-session'] }),
+        qc.cancelQueries({ queryKey: ['whatsapp-team'] }),
+      ]);
+    },
     onSuccess: (result, path) => {
-      if (path.startsWith('/api/whatsapp/sessions/me/') && result) qc.setQueryData(['whatsapp-session', user?.sub], result);
+      if (path.startsWith('/api/whatsapp/sessions/me/') && result) qc.setQueryData<Session>(['whatsapp-session', user?.sub], current => ({ ...current, ...result }));
+      if (result) qc.setQueryData<Session[]>(['whatsapp-team'], current => current?.map(session => session.sessionId === result.sessionId ? { ...session, ...result } : session));
       qc.invalidateQueries({ queryKey: ['whatsapp-session'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-team'] });
       qc.invalidateQueries({ queryKey: ['conversations'] });
       if (path.endsWith('/sync-contacts')) toast.success('Contact name sync started. Keep WhatsApp online on your phone.');
-      if (path === '/api/whatsapp/sessions/me/logout') toast.success('WhatsApp signed out and reset. You can now get a new QR code.');
+      if (path.endsWith('/logout')) {
+        if (result?.error) toast.warning(result.error);
+        else toast.success('WhatsApp connection reset. You can request a new QR code.');
+      }
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Session action failed'),
   });
-  function unlink(path: string) {
-    if (window.confirm('Sign out of this work WhatsApp and reset its saved connection? You will need to scan a new QR code. Saved conversations and patient records will remain.')) action.mutate(path);
-  }
   const data = mine.data;
-  const preparedFor = useRef<string | null>(null);
   const prepare = action.mutate;
   useEffect(() => {
     if (!canPair || !user?.sub || !data?.enabled || !data.needsSetup || data.state !== 'disconnected' || data.error || preparedFor.current === user.sub) return;
@@ -81,6 +91,7 @@ export function WhatsAppSessions() {
   }, [canPair, user?.sub, data?.enabled, data?.needsSetup, data?.state, data?.error, prepare]);
 
   return <div className="space-y-6">
+    <WhatsAppLogoutDialog open={!!logoutPath} onOpenChange={open => { if (!open) setLogoutPath(null); }} onConfirm={() => { if (logoutPath) action.mutate(logoutPath); }} />
     {canPair && <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Smartphone className="h-5 w-5" />{manager ? 'Clinic work WhatsApp' : 'My work WhatsApp'}</CardTitle>
@@ -104,7 +115,7 @@ export function WhatsAppSessions() {
             {data.enabled && <Button disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/new-qr')}>{action.isPending ? 'Preparing…' : 'Get a new QR code'}</Button>}
             {data.enabled && data.state === 'disconnected' && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/connect')}>Resume saved connection</Button>}
             {data.enabled && data.state === 'connected' && <Button variant="outline" disabled={action.isPending || data.syncingContacts} onClick={() => action.mutate('/api/whatsapp/sessions/me/sync-contacts')}>{data.syncingContacts || action.isPending && action.variables?.endsWith('/sync-contacts') ? 'Syncing names…' : 'Sync contact names'}</Button>}
-            {data.enabled && <Button variant="outline" disabled={action.isPending} onClick={() => unlink('/api/whatsapp/sessions/me/logout')}>{action.isPending && action.variables?.endsWith('/logout') ? 'Signing out…' : 'Sign out & reset'}</Button>}
+            {data.enabled && <Button variant="outline" disabled={action.isPending} onClick={() => setLogoutPath('/api/whatsapp/sessions/me/logout')}>{action.isPending && action.variables?.endsWith('/logout') ? 'Signing out…' : 'Sign out & reset'}</Button>}
             <Button variant="outline" onClick={() => mine.refetch()} disabled={mine.isFetching} aria-label="Refresh connection status"><RefreshCw className="h-4 w-4" /></Button>
             <Button variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(data.sessionId)}`}>My conversations</Link></Button>
           </div>
@@ -116,7 +127,7 @@ export function WhatsAppSessions() {
       <CardHeader><CardTitle>Team WhatsApp connections</CardTitle><CardDescription>See which work accounts are connected and open their conversations. Contact counts use successful outgoing messages captured on each work account for its currently assigned leads. Disconnected periods may leave gaps.</CardDescription></CardHeader>
       <CardContent>
         {team.isError ? <QueryError error={team.error} onRetry={team.refetch} /> : team.isLoading ? <p role="status">Loading team connections…</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">Team member</th><th className="p-3">Work number</th><th className="p-3">Connection</th><th className="p-3">Assigned / contacted / no contact recorded</th><th className="p-3">Last message captured</th><th className="p-3">Actions</th></tr></thead><tbody>
-          {team.data?.map((session) => <tr key={session.sessionId} className="border-b"><td className="p-3 font-medium">{session.user?.firstName} {session.user?.lastName}</td><td className="p-3">{session.linkedNumber ? `+${session.linkedNumber}` : 'Not linked'}</td><td className="p-3"><Badge variant={session.state === 'connected' ? 'success' : 'secondary'}>{stateLabels[session.state]}</Badge>{session.error && <p className="mt-1 text-xs text-destructive">{session.error}</p>}</td><td className="p-3">{session.assignedLeads} / {session.contactedLeads} / <strong>{session.uncontactedLeads}</strong></td><td className="p-3">{session.lastMessageAt ? new Date(session.lastMessageAt).toLocaleString() : 'No messages captured yet'}</td><td className="p-3"><div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(session.sessionId)}`}>View conversations</Link></Button>{session.state !== 'disconnected' && session.state !== 'disabled' && <Button size="sm" variant="outline" disabled={action.isPending} onClick={() => unlink(`/api/whatsapp/sessions/${session.user?.id}/logout`)}>Disconnect</Button>}</div></td></tr>)}
+          {team.data?.map((session) => <tr key={session.sessionId} className="border-b"><td className="p-3 font-medium">{session.user?.firstName} {session.user?.lastName}</td><td className="p-3">{session.linkedNumber ? `+${session.linkedNumber}` : 'Not linked'}</td><td className="p-3"><Badge variant={session.state === 'connected' ? 'success' : 'secondary'}>{stateLabels[session.state]}</Badge>{session.error && <p className="mt-1 text-xs text-destructive">{session.error}</p>}</td><td className="p-3">{session.assignedLeads} / {session.contactedLeads} / <strong>{session.uncontactedLeads}</strong></td><td className="p-3">{session.lastMessageAt ? new Date(session.lastMessageAt).toLocaleString() : 'No messages captured yet'}</td><td className="p-3"><div className="flex gap-2"><Button size="sm" variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(session.sessionId)}`}>View conversations</Link></Button>{session.state !== 'disconnected' && session.state !== 'disabled' && <Button size="sm" variant="outline" disabled={action.isPending} onClick={() => setLogoutPath(`/api/whatsapp/sessions/${session.user?.id}/logout`)}>Disconnect</Button>}</div></td></tr>)}
         </tbody></table></div>}
       </CardContent>
     </Card>}

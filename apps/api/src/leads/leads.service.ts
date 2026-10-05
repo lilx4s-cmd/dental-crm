@@ -209,7 +209,13 @@ export class LeadsService {
     }
     if (stage) where.stage = stage as $Enums.PipelineStage;
     if (source) where.source = source as $Enums.LeadSource;
-    where.status = status ? (status as $Enums.LeadStatus) : $Enums.LeadStatus.ACTIVE;
+    if (status !== 'ALL') where.status = status ? (status as $Enums.LeadStatus) : $Enums.LeadStatus.ACTIVE;
+    if (query.createdFrom || query.createdBefore) {
+      where.createdAt = {
+        ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+        ...(query.createdBefore ? { lt: new Date(query.createdBefore) } : {}),
+      };
+    }
 
     if (taskDue) {
       where.tasks =
@@ -1063,9 +1069,8 @@ export class LeadsService {
   }
 
   async findAllByStage(query: LeadsQueryDto, currentUser: JwtPayload) {
-    // The board deliberately ignores the `stage` filter: hiding columns would break the drag
-    // targets, and a stage filter on a stage-partitioned view is what the column already is.
-    const where = this.buildWhere({ ...query, stage: undefined }, currentUser);
+    // Filter the deals while retaining every column below as a drag target.
+    const where = this.buildWhere(query, currentUser);
 
     const leads = await this.prisma.lead.findMany({
       where,

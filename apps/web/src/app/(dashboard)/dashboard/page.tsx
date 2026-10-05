@@ -2,6 +2,7 @@
 import { TeamAttention } from '@/components/coaching/team-attention';
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { Users, TrendingUp, UserCheck, DollarSign, Calendar } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,6 +27,7 @@ function StatCard({
   error,
   onRetry,
   suffix = '',
+  href,
 }: {
   label: string;
   value: string | number | undefined;
@@ -35,9 +37,10 @@ function StatCard({
   error?: unknown;
   onRetry?: () => void;
   suffix?: string;
+  href?: string;
 }) {
-  return (
-    <Card>
+  const card = (
+    <Card className={href && !loading && !error ? 'transition-colors hover:border-primary' : undefined}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
         <Icon className={`h-5 w-5 ${color}`} />
@@ -56,6 +59,7 @@ function StatCard({
       </CardContent>
     </Card>
   );
+  return href && !loading && !error ? <Link href={href} aria-label={`View ${label}`} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{card}</Link> : card;
 }
 
 export default function DashboardPage() {
@@ -79,6 +83,9 @@ export default function DashboardPage() {
   const pipelineValue = stats?.pipelineValueTotal
     ? formatMoneyRounded(stats.pipelineValueTotal)
     : '—';
+  const todayLeadsHref = stats?.todayStart && stats?.todayEnd
+    ? `/pipeline?${new URLSearchParams({ createdFrom: stats.todayStart, createdBefore: stats.todayEnd, status: 'ALL' })}`
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -89,11 +96,11 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Leads Today" value={stats?.leadsToday} icon={TrendingUp} color="text-blue-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
-        <StatCard label="Total Leads" value={stats?.leadsTotal} icon={TrendingUp} color="text-indigo-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
-        <StatCard label="Active Patients" value={stats?.patientsTotal} icon={Users} color="text-accent-foreground" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
-        <StatCard label="Appts Today" value={stats?.appointmentsToday} icon={Calendar} color="text-cyan-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
-        <StatCard label="Conversion Rate" value={stats?.conversionRate} icon={UserCheck} color="text-success" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} suffix="%" />
+        <StatCard label="Leads Today" value={stats?.leadsToday} href={todayLeadsHref} icon={TrendingUp} color="text-blue-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Total Leads" value={stats?.leadsTotal} href="/pipeline" icon={TrendingUp} color="text-indigo-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Active Patients" value={stats?.patientsTotal} href="/patients" icon={Users} color="text-accent-foreground" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Appts Today" value={stats?.appointmentsToday} href={`/appointments?view=day${stats?.todayDate ? `&date=${stats.todayDate}` : ''}`} icon={Calendar} color="text-cyan-500" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} />
+        <StatCard label="Conversion Rate" value={stats?.conversionRate} href="/pipeline?status=WON" icon={UserCheck} color="text-success" loading={statsQ.isLoading} error={statsError} onRetry={statsQ.refetch} suffix="%" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -116,7 +123,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-success" />
-              Pipeline Value
+              <Link href="/pipeline" className="hover:underline">Pipeline Value</Link>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -130,10 +137,10 @@ export default function DashboardPage() {
             {!statsQ.isLoading && (
               <div className="mt-4 space-y-2">
                 {pipeline?.filter((g) => g.count > 0).map((g) => (
-                  <div key={g.stage} className="flex items-center justify-between text-sm">
+                  <Link href={`/pipeline?stage=${encodeURIComponent(g.stage)}`} key={g.stage} className="flex min-h-11 items-center justify-between rounded px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <span className="text-muted-foreground">{STAGE_LABELS[g.stage] ?? g.stage}</span>
                     <span className="font-medium">{g.count}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

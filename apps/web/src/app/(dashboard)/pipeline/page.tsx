@@ -1,7 +1,8 @@
 'use client';
 import { hasPermission } from '@dental-crm/shared';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -49,6 +50,7 @@ import { PipelineFilterBar } from '@/components/pipeline/pipeline-filter-bar';
 import { QueryError } from '@/components/ui/query-state';
 import { formatDealValue } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import { pipelineFilterParams, pipelineFiltersFromSearch } from '@/lib/pipeline-filters';
 // The board draws whatever the shared stage list says, so renaming a stage renames it here,
 // in the filters, on the dashboard and in the reports at once.
 import { PIPELINE_STAGES as STAGES } from '@dental-crm/shared';
@@ -200,11 +202,19 @@ function moveErrorMessage(e: unknown): string {
   return raw || 'Failed to move deal';
 }
 
-export default function PipelinePage() {
+function PipelineBoard() {
   const { user } = useAuth();
   const canWrite = hasPermission(user, 'leads.write', true);
   const canAssign = hasPermission(user, 'leads.assign', user?.role === 'SUPER_ADMIN');
-  const [filters, setFilters] = useState<PipelineFilters>({});
+  const params = useSearchParams();
+  const router = useRouter();
+  const filters = useMemo(() => pipelineFiltersFromSearch(params), [params]);
+  const setFilters = (next: PipelineFilters) => {
+    const search = pipelineFilterParams(next);
+    const leadId = params.get('leadId');
+    if (leadId) search.set('leadId', leadId);
+    router.replace(`/pipeline${search.size ? `?${search}` : ''}`, { scroll: false });
+  };
   const boardQuery = useLeadsByStage(filters);
   const { data: groups, isLoading } = boardQuery;
   const updateStage = useUpdateLeadStage();
@@ -219,11 +229,8 @@ export default function PipelinePage() {
   const [confirmationReason, setConfirmationReason] = useState('');
   const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
-  const [linkedLeadId, setLinkedLeadId] = useState('');
+  const linkedLeadId = params.get('leadId') ?? '';
   const linkedLead = useLead(linkedLeadId);
-  useEffect(() => {
-    setLinkedLeadId(new URLSearchParams(window.location.search).get('leadId') ?? '');
-  }, []);
   useEffect(() => {
     if (linkedLead.data) setDetailLead(linkedLead.data);
   }, [linkedLead.data]);
@@ -751,4 +758,8 @@ export default function PipelinePage() {
       />
     </div>
   );
+}
+
+export default function PipelinePage() {
+  return <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-lg" />}><PipelineBoard /></Suspense>;
 }

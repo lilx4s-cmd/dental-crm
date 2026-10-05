@@ -22,7 +22,8 @@ export class DashboardService {
     todayStart.setHours(0, 0, 0, 0);
 
     const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    todayEnd.setHours(0, 0, 0, 0);
+    todayEnd.setDate(todayEnd.getDate() + 1);
 
     // Interactive transaction rather than the array form: the array form erases groupBy's result
     // type, and these six figures are read together so they should describe one instant.
@@ -30,7 +31,7 @@ export class DashboardService {
       await this.prisma.$transaction(async (tx) => {
         const [leadsToday, leadStatusCounts, patientsTotal, pipelineValue, appointmentsToday] =
           await Promise.all([
-            tx.lead.count({ where: { ...LIVE_LEAD, createdAt: { gte: todayStart } } }),
+            tx.lead.count({ where: { ...LIVE_LEAD, createdAt: { gte: todayStart, lt: todayEnd } } }),
             // One grouped query where three counts stood: active, won, and the all-time total
             // that divides into the conversion rate.
             tx.lead.groupBy({ by: ['status'], where: LIVE_LEAD, _count: { _all: true } }),
@@ -40,7 +41,7 @@ export class DashboardService {
               _sum: { estimatedValue: true },
             }),
             tx.appointment.count({
-              where: { startTime: { gte: todayStart, lte: todayEnd }, status: { not: 'CANCELLED' } },
+              where: { startTime: { gte: todayStart, lt: todayEnd }, status: { not: 'CANCELLED' } },
             }),
           ]);
         return { leadsToday, leadStatusCounts, patientsTotal, pipelineValue, appointmentsToday };
@@ -54,6 +55,9 @@ export class DashboardService {
     const conversionRate = totalLeadsEver > 0 ? Math.round((wonLeads / totalLeadsEver) * 100) : 0;
 
     return {
+      todayStart: todayStart.toISOString(),
+      todayEnd: todayEnd.toISOString(),
+      todayDate: `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, '0')}-${String(todayStart.getDate()).padStart(2, '0')}`,
       leadsToday,
       leadsTotal,
       patientsTotal,

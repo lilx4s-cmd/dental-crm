@@ -103,6 +103,9 @@ export interface PipelineGroup {
 }
 
 export interface PipelineFilters {
+  status?: string;
+  createdFrom?: string;
+  createdBefore?: string;
   search?: string;
   stage?: string;
   assignedToId?: string;
@@ -116,7 +119,6 @@ export interface PipelineFilters {
 export interface LeadsQuery extends PipelineFilters {
   page?: number;
   limit?: number;
-  status?: string;
   /** Set false to skip firing the query (e.g. while a dependent selection is empty). Defaults to true. */
   enabled?: boolean;
 }
@@ -155,6 +157,8 @@ export function useLeads(query: LeadsQuery = {}) {
   if (rest.search) params.set('search', rest.search);
   if (rest.stage) params.set('stage', rest.stage);
   if (rest.status) params.set('status', rest.status);
+  if (rest.createdFrom) params.set('createdFrom', rest.createdFrom);
+  if (rest.createdBefore) params.set('createdBefore', rest.createdBefore);
   if (rest.assignedToId) params.set('assignedToId', rest.assignedToId);
 
   return useQuery<LeadsListResponse>({
