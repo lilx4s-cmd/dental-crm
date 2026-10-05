@@ -2,10 +2,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
-export interface MonthlyRevenue { month: string; revenue: number }
-export interface AppointmentStat { status: string; count: number }
-export interface PatientGrowth { month: string; newPatients: number; total: number }
-export interface LeadFunnelStage { stage: string; count: number }
+export interface MonthlyRevenue {
+  month: string;
+  revenue: number;
+}
+export interface AppointmentStat {
+  status: string;
+  count: number;
+}
+export interface PatientGrowth {
+  month: string;
+  newPatients: number;
+  total: number;
+}
+export interface LeadFunnelStage {
+  stage: string;
+  count: number;
+}
 export interface LeadFunnel {
   stages: LeadFunnelStage[];
   summary: { won: number; lost: number; total: number; conversionRate: number };
@@ -23,6 +36,7 @@ export interface KpiSnapshot {
   completionRate: number;
 }
 export interface ClinicSettings {
+  documentConfiguration?: import('@dental-crm/shared').DocumentConfiguration | null;
   id: string;
   clinicName: string;
   address: string | null;
@@ -103,7 +117,11 @@ export function useUpdateClinicSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<Omit<ClinicSettings, 'id' | 'updatedAt'>>) =>
-      apiRequest('/api/settings', { method: 'PATCH', body: JSON.stringify(data) }, accessToken ?? undefined),
+      apiRequest(
+        '/api/settings',
+        { method: 'PATCH', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   });
 }

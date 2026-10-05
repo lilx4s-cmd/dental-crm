@@ -51,6 +51,12 @@ export class WhatsAppController {
   @HttpCode(HttpStatus.OK)
   newOwnSessionQr(@CurrentUser() user: JwtPayload) { return this.webService.newQrOwn(user); }
 
+  @Post('sessions/me/sync-contacts')
+  @Permission('conversations.read')
+  @Roles(...PATIENT_FACING)
+  @HttpCode(HttpStatus.OK)
+  syncOwnContacts(@CurrentUser() user: JwtPayload) { return this.webService.syncOwnContacts(user); }
+
   @Post('sessions/me/logout')
   @Permission('conversations.read')
   @Roles(...PATIENT_FACING)
@@ -126,6 +132,22 @@ export class WhatsAppController {
   @ApiOperation({ summary: 'Start the QR session — poll web/status for the code' })
   async webConnect() {
     await this.webService.connect();
+    return this.webService.status();
+  }
+
+  @Post('web/new-qr')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async newWebQr() {
+    await this.webService.newQr();
+    return this.webService.status();
+  }
+
+  @Post('web/sync-contacts')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async syncWebContacts() {
+    await this.webService.syncContacts();
     return this.webService.status();
   }
 

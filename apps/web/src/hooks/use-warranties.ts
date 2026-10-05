@@ -3,6 +3,8 @@ import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
 
 export interface WarrantyTemplate {
+  lifetime?: boolean;
+  procedureType?: string | null;
   id: string;
   name: string;
   treatmentCategoryId: string | null;
@@ -17,6 +19,7 @@ export interface WarrantyTemplate {
 }
 
 export interface Warranty {
+  lifetime?: boolean;
   id: string;
   treatmentPlanItemId: string;
   warrantyTemplateId: string | null;
@@ -31,7 +34,12 @@ export interface Warranty {
   createdAt: string;
   updatedAt: string;
   warrantyTemplate: { id: string; name: string } | null;
-  treatmentPlanItem: { id: string; description: string; toothNumber: string | null; treatmentPlanId: string };
+  treatmentPlanItem: {
+    id: string;
+    description: string;
+    toothNumber: string | null;
+    treatmentPlanId: string;
+  };
 }
 
 export interface CreateWarrantyTemplateInput {
@@ -68,7 +76,11 @@ export function useCreateWarrantyTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateWarrantyTemplateInput) =>
-      apiRequest('/api/warranty-templates', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
+      apiRequest(
+        '/api/warranty-templates',
+        { method: 'POST', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['warranty-templates'] }),
   });
 }
@@ -77,7 +89,8 @@ export function usePatientWarranties(patientId: string) {
   const { accessToken } = useAuth();
   return useQuery<Warranty[]>({
     queryKey: ['warranties', patientId],
-    queryFn: () => apiRequest(`/api/warranties?patientId=${patientId}`, {}, accessToken ?? undefined),
+    queryFn: () =>
+      apiRequest(`/api/warranties?patientId=${patientId}`, {}, accessToken ?? undefined),
     enabled: !!patientId,
   });
 }

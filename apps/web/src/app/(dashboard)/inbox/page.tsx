@@ -173,12 +173,14 @@ function MessageBubble({
   retrying,
   readOnly = false,
   onOpenImage,
+  travelDealId,
 }: {
   msg: Message;
   onRetry: () => void;
   retrying: boolean;
   readOnly?: boolean;
   onOpenImage: (file: SentAttachment) => void;
+  travelDealId?: string;
 }) {
   const outbound = msg.direction === 'OUTBOUND';
   const failed = msg.status === 'FAILED';
@@ -193,7 +195,11 @@ function MessageBubble({
         {attachments.length > 0 && (
           <div className={cn('flex flex-col gap-1.5', outbound && 'items-end')}>
             {attachments.map((file) => (
-              <MessageAttachment key={file.id} file={file} outbound={outbound} onOpenImage={onOpenImage} />
+              <div key={file.id}>
+                <MessageAttachment file={file} outbound={outbound} onOpenImage={onOpenImage} />
+                {travelDealId && ['application/pdf','image/jpeg','image/png','image/webp'].includes(file.mimeType) &&
+                  <a className="inline-flex min-h-11 items-center text-xs underline" href={`/travel?leadId=${encodeURIComponent(travelDealId)}&fileId=${encodeURIComponent(file.id)}`}>Attach as flight ticket to a treatment visit</a>}
+              </div>
             ))}
           </div>
         )}
@@ -352,6 +358,7 @@ function MessageThread({ conversationId, onBack }: { conversationId: string; onB
             onRetry={() => { if (!manager) void handleRetry(msg.id); }}
             retrying={retryMessage.isPending && retryMessage.variables === msg.id}
             onOpenImage={setLightbox}
+            travelDealId={conv.lead?.id}
           />
           </div>
         ))}

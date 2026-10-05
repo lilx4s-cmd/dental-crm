@@ -55,6 +55,17 @@ export class WhatsAppSenderService {
     return { transport, label: TRANSPORT_LABELS[transport], canSend: transport !== 'none' };
   }
 
+  async alertConnection() {
+    const transport = this.activeTransport();
+    if (transport === 'evolution') {
+      const connection = await this.evolution.connectionStatus();
+      return { transport, label: TRANSPORT_LABELS[transport], canSend: connection.state === 'open', ...connection };
+    }
+    if (transport === 'cloud_api') return { transport, label: TRANSPORT_LABELS[transport], canSend: false, state: 'templates_required', sendingNumber: null, error: 'Approved staff alert templates are not configured' };
+    const connection = this.web.status();
+    return { transport, label: TRANSPORT_LABELS[transport], canSend: connection.state === 'connected', state: connection.state, sendingNumber: connection.linkedNumber ?? null, error: null };
+  }
+
   /**
    * Sends text to a phone number, returning the transport that carried it.
    *

@@ -6,7 +6,13 @@ import { TREATMENT_PRESETS, findPreset, type TreatmentPreset } from '@dental-crm
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,21 +38,22 @@ export function presetToForms(
     phases.push({
       ...emptyPhase(phase.phaseNumber),
       name: phase.name ?? '',
-      healingPeriodMonths: phase.healingPeriodMonths ? String(phase.healingPeriodMonths) : '',
+      healingPeriodMonths: '',
     });
 
     for (const item of phase.items) {
       // Categories are clinic-editable, so a preset names one and takes whatever matches. No match
       // simply leaves it unset — the description still drives the chart via conditionFromText.
-      const category = categories?.find((c) => c.name.toLowerCase() === item.categoryName?.toLowerCase());
+      const category = categories?.find(
+        (c) => c.name.toLowerCase() === item.categoryName?.toLowerCase(),
+      );
       items.push({
         ...EMPTY_ITEM,
         description: item.description,
         treatmentCategoryId: category?.id ?? '',
         material: item.material ?? '',
-        // One line covers the whole span at one unit price, which is how these are quoted; the
-        // chart resolves the list back into individual teeth.
-        toothNumber: item.teeth.join(' '),
+        // Presets supply quantities. A clinician must confirm the patient’s tooth positions.
+        toothNumber: '',
         quantity: String(item.teeth.length),
         phaseNumber: phase.phaseNumber,
       });
@@ -111,8 +118,8 @@ export function QuickPlanPicker({
           <AlertDialogHeader>
             <AlertDialogTitle>Replace the procedures you have entered?</AlertDialogTitle>
             <AlertDialogDescription>
-              Applying “{preset?.name}” will discard the procedures and phases currently on this plan.
-              Your diagnoses and the rest of the form are not affected.
+              Applying “{preset?.name}” will discard the procedures and phases currently on this
+              plan. Your diagnoses and the rest of the form are not affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -9,6 +9,7 @@ export interface OutboundEmail {
   /** Plain text is the message. Some staff read mail in clients that never render HTML. */
   text: string;
   html?: string;
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 }
 
 /**
@@ -96,6 +97,7 @@ export class MailService {
       subject: email.subject,
       text: email.text,
       html: email.html,
+      attachments: email.attachments,
     });
   }
 

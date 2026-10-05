@@ -1,11 +1,23 @@
 'use client';
+import Link from 'next/link';
 import { LeadCoach } from '@/components/coaching/lead-coach';
 
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Phone, Mail, MapPin, Calendar, Edit2, Plus,
-  CreditCard, FileText, Stethoscope, Trash2, ClipboardList, Paperclip,
+  ArrowLeft,
+  Phone,
+  Mail,
+  MapPin,
+  Calendar,
+  Edit2,
+  Plus,
+  CreditCard,
+  FileText,
+  Stethoscope,
+  Trash2,
+  ClipboardList,
+  Paperclip,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -16,12 +28,31 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CasePlanningTab } from '@/components/patients/case-planning-tab';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 import { usePatient, useUpdatePatient } from '@/hooks/use-patients';
 import { useAppointments, useCreateAppointment } from '@/hooks/use-appointments';
@@ -116,7 +147,10 @@ function EditPatientDialog({
     update.mutate(
       { ...form, ...flags, email: form.email || undefined, phone: form.phone || undefined },
       {
-        onSuccess: () => { toast.success('Patient updated'); onClose(); },
+        onSuccess: () => {
+          toast.success('Patient updated');
+          onClose();
+        },
         onError: () => toast.error('Failed to update'),
       },
     );
@@ -125,23 +159,55 @@ function EditPatientDialog({
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Edit Patient</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Edit Patient</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>First Name</Label><Input value={form.firstName} onChange={(e) => set('firstName', e.target.value)} /></div>
-            <div className="space-y-1"><Label>Last Name</Label><Input value={form.lastName} onChange={(e) => set('lastName', e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>First Name</Label>
+              <Input value={form.firstName} onChange={(e) => set('firstName', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Last Name</Label>
+              <Input value={form.lastName} onChange={(e) => set('lastName', e.target.value)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>Phone</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
-            <div className="space-y-1"><Label>WhatsApp</Label><Input value={form.whatsappNumber} onChange={(e) => set('whatsappNumber', e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Phone</Label>
+              <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>WhatsApp</Label>
+              <Input
+                value={form.whatsappNumber}
+                onChange={(e) => set('whatsappNumber', e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
-          <div className="space-y-1"><Label>Address</Label><Input value={form.address} onChange={(e) => set('address', e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Email</Label>
+            <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Address</Label>
+            <Input value={form.address} onChange={(e) => set('address', e.target.value)} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>City</Label><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-            <div className="space-y-1"><Label>Country</Label><Input value={form.country} onChange={(e) => set('country', e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>City</Label>
+              <Input value={form.city} onChange={(e) => set('city', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Country</Label>
+              <Input value={form.country} onChange={(e) => set('country', e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-1"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Notes</Label>
+            <Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
+          </div>
           {/* The medical history a clinician plans treatment from. Only allergies was here before,
               and only allergies was writable through the API — so four of the five questions the
               next-steps card asks could not be answered anywhere in the app.
@@ -152,24 +218,86 @@ function EditPatientDialog({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Medical history
             </p>
-            <div className="space-y-1"><Label>Allergies</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none — a blank means nobody asked' value={form.allergies} onChange={(e) => set('allergies', e.target.value)} /></div>
-            <div className="space-y-1"><Label>Current medications</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none' value={form.medications} onChange={(e) => set('medications', e.target.value)} /></div>
-            <div className="space-y-1"><Label>Medical conditions</Label><Textarea rows={2} placeholder='Diabetes, heart conditions, immune suppression — or "None"' value={form.medicalConditions} onChange={(e) => set('medicalConditions', e.target.value)} /></div>
-            <div className="space-y-1"><Label>Previous surgeries</Label><Textarea rows={2} placeholder='Write "None" if asked and there are none' value={form.previousSurgeries} onChange={(e) => set('previousSurgeries', e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Allergies</Label>
+              <Textarea
+                rows={2}
+                placeholder='Write "None" if asked and there are none — a blank means nobody asked'
+                value={form.allergies}
+                onChange={(e) => set('allergies', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Current medications</Label>
+              <Textarea
+                rows={2}
+                placeholder='Write "None" if asked and there are none'
+                value={form.medications}
+                onChange={(e) => set('medications', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Medical conditions</Label>
+              <Textarea
+                rows={2}
+                placeholder='Diabetes, heart conditions, immune suppression — or "None"'
+                value={form.medicalConditions}
+                onChange={(e) => set('medicalConditions', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Previous surgeries</Label>
+              <Textarea
+                rows={2}
+                placeholder='Write "None" if asked and there are none'
+                value={form.previousSurgeries}
+                onChange={(e) => set('previousSurgeries', e.target.value)}
+              />
+            </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <TriState label="Blood thinners" value={flags.takesBloodThinners} onChange={(v) => setFlags((f) => ({ ...f, takesBloodThinners: v }))} />
-              <TriState label="Pregnant" value={flags.isPregnant} onChange={(v) => setFlags((f) => ({ ...f, isPregnant: v }))} />
-              <TriState label="Smoker" value={flags.isSmoker} onChange={(v) => setFlags((f) => ({ ...f, isSmoker: v }))} />
+              <TriState
+                label="Blood thinners"
+                value={flags.takesBloodThinners}
+                onChange={(v) => setFlags((f) => ({ ...f, takesBloodThinners: v }))}
+              />
+              <TriState
+                label="Pregnant"
+                value={flags.isPregnant}
+                onChange={(v) => setFlags((f) => ({ ...f, isPregnant: v }))}
+              />
+              <TriState
+                label="Smoker"
+                value={flags.isSmoker}
+                onChange={(v) => setFlags((f) => ({ ...f, isSmoker: v }))}
+              />
             </div>
           </div>
 
-          <div className="space-y-1"><Label>Diagnosis</Label><Textarea rows={2} value={form.diagnosis} onChange={(e) => set('diagnosis', e.target.value)} /></div>
-          <div className="space-y-1"><Label>Insurance</Label><Input value={form.insuranceInfo} onChange={(e) => set('insuranceInfo', e.target.value)} placeholder="Provider — Policy #" /></div>
+          <div className="space-y-1">
+            <Label>Diagnosis</Label>
+            <Textarea
+              rows={2}
+              value={form.diagnosis}
+              onChange={(e) => set('diagnosis', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Insurance</Label>
+            <Input
+              value={form.insuranceInfo}
+              onChange={(e) => set('insuranceInfo', e.target.value)}
+              placeholder="Provider — Policy #"
+            />
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={update.isPending}>{update.isPending ? 'Saving…' : 'Save'}</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? 'Saving…' : 'Save'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -177,51 +305,115 @@ function EditPatientDialog({
 }
 
 // ─── New Appointment (inline for this patient) ────────────────────────────────
-function NewAppointmentDialog({ patientId, open, onClose }: { patientId: string; open: boolean; onClose: () => void }) {
+function NewAppointmentDialog({
+  patientId,
+  open,
+  onClose,
+}: {
+  patientId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateAppointment();
   const { data: dentists } = useDentists();
   const today = new Date().toISOString().slice(0, 16);
-  const [form, setForm] = useState({ dentistId: '', type: 'CONSULTATION', startTime: today, endTime: today.slice(0, 11) + '10:00', notes: '' });
+  const [form, setForm] = useState({
+    dentistId: '',
+    type: 'CONSULTATION',
+    startTime: today,
+    endTime: today.slice(0, 11) + '10:00',
+    notes: '',
+  });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSubmit = () => {
     create.mutate(
-      { patientId, dentistId: form.dentistId || undefined, type: form.type, startTime: new Date(form.startTime).toISOString(), endTime: new Date(form.endTime).toISOString(), notes: form.notes || undefined },
-      { onSuccess: () => { toast.success('Appointment booked'); onClose(); }, onError: (e: unknown) => toast.error((e as Error).message) },
+      {
+        patientId,
+        dentistId: form.dentistId || undefined,
+        type: form.type,
+        startTime: new Date(form.startTime).toISOString(),
+        endTime: new Date(form.endTime).toISOString(),
+        notes: form.notes || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Appointment booked');
+          onClose();
+        },
+        onError: (e: unknown) => toast.error((e as Error).message),
+      },
     );
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-sm">
-        <DialogHeader><DialogTitle>New Appointment</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>New Appointment</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
             <Label>Dentist</Label>
             <Select value={form.dentistId} onValueChange={(v) => set('dentistId', v)}>
-              <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Unassigned</SelectItem>
-                {dentists?.map((d) => <SelectItem key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</SelectItem>)}
+                {dentists?.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    Dr. {d.firstName} {d.lastName}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
             <Label>Type</Label>
             <Select value={form.type} onValueChange={(v) => set('type', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{APPT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APPT_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1"><Label>Start</Label><Input type="datetime-local" value={form.startTime} onChange={(e) => set('startTime', e.target.value)} /></div>
-            <div className="space-y-1"><Label>End</Label><Input type="datetime-local" value={form.endTime} onChange={(e) => set('endTime', e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Start</Label>
+              <Input
+                type="datetime-local"
+                value={form.startTime}
+                onChange={(e) => set('startTime', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>End</Label>
+              <Input
+                type="datetime-local"
+                value={form.endTime}
+                onChange={(e) => set('endTime', e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1"><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Notes</Label>
+            <Textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={create.isPending}>{create.isPending ? 'Booking…' : 'Book'}</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={create.isPending}>
+            {create.isPending ? 'Booking…' : 'Book'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -230,11 +422,23 @@ function NewAppointmentDialog({ patientId, open, onClose }: { patientId: string;
 
 // ─── New Invoice (inline for this patient) ────────────────────────────────────
 // Quantity and price are held as text and converted on submit — see `@/lib/numeric-input`.
-interface QuickLineItem { description: string; quantity: string; unitPrice: string }
+interface QuickLineItem {
+  description: string;
+  quantity: string;
+  unitPrice: string;
+}
 
 const EMPTY_LINE: QuickLineItem = { description: '', quantity: '1', unitPrice: '' };
 
-function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; open: boolean; onClose: () => void }) {
+function QuickInvoiceDialog({
+  patientId,
+  open,
+  onClose,
+}: {
+  patientId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateInvoice();
   const [items, setItems] = useState<QuickLineItem[]>([EMPTY_LINE]);
   const [discount, setDiscount] = useState('');
@@ -244,27 +448,68 @@ function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; o
   const subtotal = items.reduce((s, i) => s + lineTotal(i), 0);
 
   const updateItem = (idx: number, k: keyof QuickLineItem, v: string) =>
-    setItems((prev) => prev.map((it, i) => i === idx ? { ...it, [k]: v } : it));
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [k]: v } : it)));
 
   const handleSubmit = () => {
-    if (items.some((i) => !i.description || num(i.unitPrice) <= 0)) { toast.error('Fill all line items'); return; }
+    if (items.some((i) => !i.description || num(i.unitPrice) <= 0)) {
+      toast.error('Fill all line items');
+      return;
+    }
     create.mutate(
-      { patientId, items: items.map((i) => ({ description: i.description, quantity: num(i.quantity, 1), unitPrice: num(i.unitPrice) })), discount: num(discount) || undefined },
-      { onSuccess: () => { toast.success('Invoice created'); onClose(); }, onError: () => toast.error('Failed') },
+      {
+        patientId,
+        items: items.map((i) => ({
+          description: i.description,
+          quantity: num(i.quantity, 1),
+          unitPrice: num(i.unitPrice),
+        })),
+        discount: num(discount) || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Invoice created');
+          onClose();
+        },
+        onError: () => toast.error('Failed'),
+      },
     );
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Create Invoice</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Create Invoice</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           {items.map((item, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-center">
-              <Input className="col-span-6" placeholder="Description" value={item.description} onChange={(e) => updateItem(i, 'description', e.target.value)} />
-              <Input className="col-span-2" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', e.target.value)} />
-              <Input className="col-span-3" type="number" step="0.01" placeholder="Price" value={item.unitPrice} onChange={(e) => updateItem(i, 'unitPrice', e.target.value)} />
-              <button className="col-span-1 text-muted-foreground hover:text-destructive" onClick={() => items.length > 1 && setItems((p) => p.filter((_, idx) => idx !== i))}>
+              <Input
+                className="col-span-6"
+                placeholder="Description"
+                value={item.description}
+                onChange={(e) => updateItem(i, 'description', e.target.value)}
+              />
+              <Input
+                className="col-span-2"
+                type="number"
+                min="1"
+                placeholder="Qty"
+                value={item.quantity}
+                onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+              />
+              <Input
+                className="col-span-3"
+                type="number"
+                step="0.01"
+                placeholder="Price"
+                value={item.unitPrice}
+                onChange={(e) => updateItem(i, 'unitPrice', e.target.value)}
+              />
+              <button
+                className="col-span-1 text-muted-foreground hover:text-destructive"
+                onClick={() => items.length > 1 && setItems((p) => p.filter((_, idx) => idx !== i))}
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -273,16 +518,30 @@ function QuickInvoiceDialog({ patientId, open, onClose }: { patientId: string; o
             <Plus className="h-3 w-3 mr-1" /> Add Item
           </Button>
           <div className="flex items-center justify-between text-sm pt-2 border-t">
-            <span className="text-muted-foreground">Subtotal: <strong>{fmt(subtotal)}</strong></span>
+            <span className="text-muted-foreground">
+              Subtotal: <strong>{fmt(subtotal)}</strong>
+            </span>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">Discount:</span>
-              <Input className="w-20 h-7 text-sm" type="number" step="0.01" min="0" placeholder="0.00" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+              <Input
+                className="w-20 h-7 text-sm"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+              />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={create.isPending}>{create.isPending ? 'Creating…' : 'Create Invoice'}</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={create.isPending}>
+            {create.isPending ? 'Creating…' : 'Create Invoice'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -305,7 +564,11 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
         </Button>
       </div>
       {isLoading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
       ) : query.isError ? (
         <QueryError error={query.error} onRetry={query.refetch} />
       ) : patientAppts.length === 0 ? (
@@ -325,29 +588,47 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {patientAppts.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).map((a) => (
-              <AppointmentRow key={a.id} appt={a} />
-            ))}
+            {patientAppts
+              .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+              .map((a) => (
+                <AppointmentRow key={a.id} appt={a} />
+              ))}
           </TableBody>
         </Table>
       )}
-      <NewAppointmentDialog patientId={patientId} open={newOpen} onClose={() => setNewOpen(false)} />
+      <NewAppointmentDialog
+        patientId={patientId}
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+      />
     </div>
   );
 }
 
-function AppointmentRow({ appt }: { appt: NonNullable<ReturnType<typeof useAppointments>['data']>[number] }) {
+function AppointmentRow({
+  appt,
+}: {
+  appt: NonNullable<ReturnType<typeof useAppointments>['data']>[number];
+}) {
   return (
     <TableRow>
-      <TableCell className="text-sm">{format(new Date(appt.startTime), 'MMM d, yyyy HH:mm')}</TableCell>
-      <TableCell className="text-sm">{APPT_TYPES.find((t) => t.value === appt.type)?.label ?? appt.type}</TableCell>
-      <TableCell className="text-sm">{appt.dentist ? `Dr. ${appt.dentist.firstName} ${appt.dentist.lastName}` : '—'}</TableCell>
+      <TableCell className="text-sm">
+        {format(new Date(appt.startTime), 'MMM d, yyyy HH:mm')}
+      </TableCell>
+      <TableCell className="text-sm">
+        {APPT_TYPES.find((t) => t.value === appt.type)?.label ?? appt.type}
+      </TableCell>
+      <TableCell className="text-sm">
+        {appt.dentist ? `Dr. ${appt.dentist.firstName} ${appt.dentist.lastName}` : '—'}
+      </TableCell>
       <TableCell>
         <Badge className={APPT_STATUS_COLORS[appt.status] ?? ''} variant="outline">
           {appt.status.replace(/_/g, ' ')}
         </Badge>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground max-w-32 truncate">{appt.notes ?? '—'}</TableCell>
+      <TableCell className="text-xs text-muted-foreground max-w-32 truncate">
+        {appt.notes ?? '—'}
+      </TableCell>
     </TableRow>
   );
 }
@@ -359,15 +640,30 @@ function InvoicesTab({ patientId }: { patientId: string }) {
   const [newOpen, setNewOpen] = useState(false);
   const [payInvoiceId, setPayInvoiceId] = useState<string | null>(null);
 
-  const totalPaid = invoices?.filter((inv) => inv.status === 'PAID').reduce((s, inv) => s + Number(inv.total), 0) ?? 0;
-  const totalOutstanding = invoices?.filter((inv) => ['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status)).reduce((s, inv) => s + Number(inv.total), 0) ?? 0;
+  const totalPaid =
+    invoices?.filter((inv) => inv.status === 'PAID').reduce((s, inv) => s + Number(inv.total), 0) ??
+    0;
+  const totalOutstanding =
+    invoices
+      ?.filter((inv) => ['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status))
+      .reduce((s, inv) => s + Number(inv.total), 0) ?? 0;
 
   return (
     <div className="space-y-4">
       {invoices && invoices.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <Card className="py-3"><CardContent className="px-4 text-center"><p className="text-xs text-muted-foreground">Total Paid</p><p className="text-xl font-bold text-success">{fmt(totalPaid)}</p></CardContent></Card>
-          <Card className="py-3"><CardContent className="px-4 text-center"><p className="text-xs text-muted-foreground">Outstanding</p><p className="text-xl font-bold text-orange-500">{fmt(totalOutstanding)}</p></CardContent></Card>
+          <Card className="py-3">
+            <CardContent className="px-4 text-center">
+              <p className="text-xs text-muted-foreground">Total Paid</p>
+              <p className="text-xl font-bold text-success">{fmt(totalPaid)}</p>
+            </CardContent>
+          </Card>
+          <Card className="py-3">
+            <CardContent className="px-4 text-center">
+              <p className="text-xs text-muted-foreground">Outstanding</p>
+              <p className="text-xl font-bold text-orange-500">{fmt(totalOutstanding)}</p>
+            </CardContent>
+          </Card>
         </div>
       )}
       <div className="flex justify-end">
@@ -376,7 +672,11 @@ function InvoicesTab({ patientId }: { patientId: string }) {
         </Button>
       </div>
       {isLoading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
       ) : query.isError ? (
         <QueryError error={query.error} onRetry={query.refetch} />
       ) : !invoices?.length ? (
@@ -400,13 +700,32 @@ function InvoicesTab({ patientId }: { patientId: string }) {
             {invoices.map((inv) => (
               <TableRow key={inv.id}>
                 <TableCell className="font-mono text-sm">{inv.invoiceNumber}</TableCell>
-                <TableCell className="text-sm">{format(new Date(inv.issuedAt ?? inv.createdAt), 'MMM d, yyyy')}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{inv.items.map((i) => i.description).join(', ').slice(0, 40)}{inv.items.length > 1 ? '…' : ''}</TableCell>
-                <TableCell><Badge className={INV_STATUS_COLORS[inv.status] ?? ''} variant="outline">{inv.status.replace(/_/g, ' ')}</Badge></TableCell>
-                <TableCell className="text-right font-medium">{fmt(Number(inv.total), inv.currency)}</TableCell>
+                <TableCell className="text-sm">
+                  {format(new Date(inv.issuedAt ?? inv.createdAt), 'MMM d, yyyy')}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {inv.items
+                    .map((i) => i.description)
+                    .join(', ')
+                    .slice(0, 40)}
+                  {inv.items.length > 1 ? '…' : ''}
+                </TableCell>
+                <TableCell>
+                  <Badge className={INV_STATUS_COLORS[inv.status] ?? ''} variant="outline">
+                    {inv.status.replace(/_/g, ' ')}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right font-medium">
+                  {fmt(Number(inv.total), inv.currency)}
+                </TableCell>
                 <TableCell>
                   {inv.status !== 'PAID' && inv.status !== 'CANCELLED' && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setPayInvoiceId(inv.id)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2"
+                      onClick={() => setPayInvoiceId(inv.id)}
+                    >
                       <CreditCard className="h-3.5 w-3.5 mr-1" /> Pay
                     </Button>
                   )}
@@ -428,30 +747,76 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
   const record = useRecordPayment(invoiceId);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('CASH');
+  const [visitNumber,setVisitNumber] = useState('');
   const handleSubmit = () => {
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) { toast.error('Enter valid amount'); return; }
-    record.mutate({ amount: amt, method }, { onSuccess: () => { toast.success('Payment recorded'); onClose(); }, onError: () => toast.error('Failed') });
+    if (isNaN(amt) || amt <= 0) {
+      toast.error('Enter valid amount');
+      return;
+    }
+    record.mutate(
+      { amount: amt, method, visitNumber:visitNumber?Number(visitNumber):undefined },
+      {
+        onSuccess: () => {
+          toast.success('Payment recorded');
+          onClose();
+        },
+        onError: () => toast.error('Failed'),
+      },
+    );
   };
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-xs">
-        <DialogHeader><DialogTitle>Record Payment</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Record Payment</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1"><Label>Amount</Label><Input type="number" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+          <label className="block text-sm">Payment applies to visit
+            <select className="block min-h-11 w-full rounded border p-2" value={visitNumber} onChange={e=>setVisitNumber(e.target.value)}>
+              <option value="">Whole case / unallocated</option><option value="1">First visit</option><option value="2">Second visit</option>
+            </select>
+          </label>
+          <div className="space-y-1">
+            <Label>Amount</Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
           <div className="space-y-1">
             <Label>Method</Label>
             <Select value={method} onValueChange={setMethod}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                {[['CASH','Cash'],['CARD','Card'],['BANK_TRANSFER','Bank Transfer'],['ONLINE','Online'],['INSTALLMENT','Installment'],['OTHER','Other']].map(([v,l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                {[
+                  ['CASH', 'Cash'],
+                  ['CARD', 'Card'],
+                  ['BANK_TRANSFER', 'Bank Transfer'],
+                  ['ONLINE', 'Online'],
+                  ['INSTALLMENT', 'Installment'],
+                  ['OTHER', 'Other'],
+                ].map(([v, l]) => (
+                  <SelectItem key={v} value={v}>
+                    {l}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={record.isPending}>{record.isPending ? 'Saving…' : 'Record'}</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={record.isPending}>
+            {record.isPending ? 'Saving…' : 'Record'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -470,7 +835,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-2 gap-4"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <Skeleton className="h-40" />
+          <Skeleton className="h-40" />
+        </div>
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -494,7 +862,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground">Patient not found.</p>
-        <Button variant="link" onClick={() => router.push('/patients')}>Back to patients</Button>
+        <Button variant="link" onClick={() => router.push('/patients')}>
+          Back to patients
+        </Button>
       </div>
     );
   }
@@ -507,7 +877,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">{patient.firstName} {patient.lastName}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {patient.firstName} {patient.lastName}
+          </h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant={patient.isActive ? 'success' : 'secondary'}>
               {patient.isActive ? 'Active' : 'Inactive'}
@@ -526,45 +898,132 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       {/* Above the info cards, deliberately. It is the only thing on this page that says what to
           do rather than what is already known, and a record with five unanswered medical questions
           should say so before it shows a phone number. */}
+      {patient.convertedFromLeadId && (
+        <Link
+          className="inline-flex min-h-11 items-center rounded border px-4"
+          href={`/travel?leadId=${patient.convertedFromLeadId}`}
+        >
+          Flight tickets and travel visits
+        </Link>
+      )}
       <PatientGuidanceCard patientId={patient.id} />
 
       {/* Info cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Contact</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Contact</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {patient.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground shrink-0" />{patient.phone}</div>}
-            {patient.whatsappNumber && patient.whatsappNumber !== patient.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-success shrink-0" />{patient.whatsappNumber} <span className="text-xs text-success">WhatsApp</span></div>}
-            {patient.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground shrink-0" />{patient.email}</div>}
-            {(patient.address || patient.city || patient.country) && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />{[patient.address, patient.city, patient.country].filter(Boolean).join(', ')}</div>}
-            {!patient.phone && !patient.email && <p className="text-muted-foreground italic">No contact info</p>}
+            {patient.phone && (
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                {patient.phone}
+              </div>
+            )}
+            {patient.whatsappNumber && patient.whatsappNumber !== patient.phone && (
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4 text-success shrink-0" />
+                {patient.whatsappNumber} <span className="text-xs text-success">WhatsApp</span>
+              </div>
+            )}
+            {patient.email && (
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                {patient.email}
+              </div>
+            )}
+            {(patient.address || patient.city || patient.country) && (
+              <div className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                {[patient.address, patient.city, patient.country].filter(Boolean).join(', ')}
+              </div>
+            )}
+            {!patient.phone && !patient.email && (
+              <p className="text-muted-foreground italic">No contact info</p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Details</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Details</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {patient.dateOfBirth && <div className="flex justify-between"><span className="text-muted-foreground">Date of Birth</span><span>{format(new Date(patient.dateOfBirth), 'MMM d, yyyy')}</span></div>}
-            {patient.gender && <div className="flex justify-between"><span className="text-muted-foreground">Gender</span><span className="capitalize">{patient.gender.toLowerCase()}</span></div>}
-            {patient.nationalId && <div className="flex justify-between"><span className="text-muted-foreground">National ID</span><span>{patient.nationalId}</span></div>}
-            {patient.insuranceInfo && <div className="flex justify-between"><span className="text-muted-foreground">Insurance</span><span>{patient.insuranceInfo}</span></div>}
-            <div className="flex justify-between"><span className="text-muted-foreground">Patient since</span><span>{format(new Date(patient.createdAt), 'MMM d, yyyy')}</span></div>
-            {patient.allergies && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Allergies</p><p className="text-xs leading-relaxed">{patient.allergies}</p></div>}
-            {patient.diagnosis && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Diagnosis</p><p className="text-xs leading-relaxed">{patient.diagnosis}</p></div>}
-            {patient.notes && <div className="pt-2 border-t"><p className="text-muted-foreground text-xs mb-1">Notes</p><p className="text-xs leading-relaxed">{patient.notes}</p></div>}
+            {patient.dateOfBirth && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Date of Birth</span>
+                <span>{format(new Date(patient.dateOfBirth), 'MMM d, yyyy')}</span>
+              </div>
+            )}
+            {patient.gender && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Gender</span>
+                <span className="capitalize">{patient.gender.toLowerCase()}</span>
+              </div>
+            )}
+            {patient.nationalId && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">National ID</span>
+                <span>{patient.nationalId}</span>
+              </div>
+            )}
+            {patient.insuranceInfo && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Insurance</span>
+                <span>{patient.insuranceInfo}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Patient since</span>
+              <span>{format(new Date(patient.createdAt), 'MMM d, yyyy')}</span>
+            </div>
+            {patient.allergies && (
+              <div className="pt-2 border-t">
+                <p className="text-muted-foreground text-xs mb-1">Allergies</p>
+                <p className="text-xs leading-relaxed">{patient.allergies}</p>
+              </div>
+            )}
+            {patient.diagnosis && (
+              <div className="pt-2 border-t">
+                <p className="text-muted-foreground text-xs mb-1">Diagnosis</p>
+                <p className="text-xs leading-relaxed">{patient.diagnosis}</p>
+              </div>
+            )}
+            {patient.notes && (
+              <div className="pt-2 border-t">
+                <p className="text-muted-foreground text-xs mb-1">Notes</p>
+                <p className="text-xs leading-relaxed">{patient.notes}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Tabs */}
-      {patient.convertedFromLeadId && <LeadCoach leadId={patient.convertedFromLeadId}/>}
+      {patient.convertedFromLeadId && <LeadCoach leadId={patient.convertedFromLeadId} />}
       <Tabs defaultValue="planning">
         <TabsList>
-          <TabsTrigger value="planning" className="gap-2"><ClipboardList className="h-4 w-4" />Planning</TabsTrigger>
-          <TabsTrigger value="appointments" className="gap-2"><Calendar className="h-4 w-4" />Appointments</TabsTrigger>
-          <TabsTrigger value="invoices" className="gap-2"><FileText className="h-4 w-4" />Invoices</TabsTrigger>
-          <TabsTrigger value="plans" className="gap-2"><Stethoscope className="h-4 w-4" />Treatment Plans</TabsTrigger>
-          <TabsTrigger value="files" className="gap-2"><Paperclip className="h-4 w-4" />Files</TabsTrigger>
+          <TabsTrigger value="planning" className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Planning
+          </TabsTrigger>
+          <TabsTrigger value="appointments" className="gap-2">
+            <Calendar className="h-4 w-4" />
+            Appointments
+          </TabsTrigger>
+          <TabsTrigger value="invoices" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Invoices
+          </TabsTrigger>
+          <TabsTrigger value="plans" className="gap-2">
+            <Stethoscope className="h-4 w-4" />
+            Treatment Plans
+          </TabsTrigger>
+          <TabsTrigger value="files" className="gap-2">
+            <Paperclip className="h-4 w-4" />
+            Files
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="planning" className="mt-4">
@@ -577,7 +1036,10 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <InvoicesTab patientId={id} />
         </TabsContent>
         <TabsContent value="plans" className="mt-4">
-          <TreatmentPlansTab patientId={id} patientPhone={patient.whatsappNumber || patient.phone} />
+          <TreatmentPlansTab
+            patientId={id}
+            patientPhone={patient.whatsappNumber || patient.phone}
+          />
         </TabsContent>
         {/* Radiographs, scans, clinical photographs and paperwork. The storage backend has
             always supported these and nothing in the product could reach them, so an X-ray

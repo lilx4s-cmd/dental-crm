@@ -19,6 +19,8 @@ interface WhatsAppWebStatus {
   qrDataUrl: string | null;
   linkedNumber: string | null;
   error: string | null;
+  syncingContacts?: boolean;
+  contactSyncError?: string | null;
 }
 
 /** Bare digits are what the socket reports; show them the way a person writes a number. */
@@ -45,7 +47,7 @@ export function WhatsAppWebCard() {
     // it reads as the link being broken.
     refetchInterval: (q) => {
       const s = q.state.data?.state;
-      return s === 'awaiting_scan' || s === 'connecting' ? 4000 : false;
+      return q.state.data?.syncingContacts || s === 'awaiting_scan' || s === 'connecting' ? 4000 : false;
     },
   });
 
@@ -55,13 +57,29 @@ export function WhatsAppWebCard() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not start the session'),
   });
 
+  const newQr = useMutation({
+    mutationFn: () => apiRequest<WhatsAppWebStatus>('/api/whatsapp/web/new-qr', { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: (result) => {
+      qc.setQueryData(['whatsapp-web-status'], result);
+      qc.invalidateQueries({ queryKey: ['whatsapp-web-status'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not prepare a new QR code'),
+  });
+
   const logout = useMutation({
-    mutationFn: () => apiRequest('/api/whatsapp/web/logout', { method: 'POST' }, accessToken ?? undefined),
-    onSuccess: () => {
-      toast.success('Device unlinked');
+    mutationFn: () => apiRequest<WhatsAppWebStatus>('/api/whatsapp/web/logout', { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: (result) => {
+      toast.success('WhatsApp signed out and reset. You can now get a new QR code.');
+      qc.setQueryData(['whatsapp-web-status'], result);
       qc.invalidateQueries({ queryKey: ['whatsapp-web-status'] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not unlink'),
+  });
+
+  const syncContacts = useMutation({
+    mutationFn: () => apiRequest('/api/whatsapp/web/sync-contacts', { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => { toast.success('Contact name sync started. Keep WhatsApp online on your phone.'); qc.invalidateQueries({ queryKey: ['conversations'] }); qc.invalidateQueries({ queryKey: ['whatsapp-web-status'] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Could not sync contact names'),
   });
 
   return (
@@ -108,15 +126,6 @@ export function WhatsAppWebCard() {
                 <code className="rounded bg-muted px-1">{prettyNumber(data.linkedNumber)}</code>
               )}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => logout.mutate()}
-              disabled={logout.isPending}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              {logout.isPending ? 'Unlinking…' : 'Unlink this device'}
-            </Button>
           </div>
         ) : data.state === 'awaiting_scan' && data.qrDataUrl ? (
           <div className="space-y-3">
@@ -143,6 +152,19 @@ export function WhatsAppWebCard() {
             </Button>
           </div>
         )}
+
+        {data?.enabled && <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={newQr.isPending || logout.isPending || connect.isPending || syncContacts.isPending} onClick={() => newQr.mutate()}><QrCode className="mr-2 h-4 w-4" />{newQr.isPending ? 'Preparing…' : 'Get a new QR code'}</Button>
+            {data.state === 'connected' && <Button variant="outline" size="sm" disabled={data.syncingContacts || syncContacts.isPending || newQr.isPending || logout.isPending || connect.isPending} onClick={() => syncContacts.mutate()}>{data.syncingContacts || syncContacts.isPending ? 'Syncing names…' : 'Sync contact names'}</Button>}
+            <Button variant="outline" size="sm" disabled={logout.isPending || newQr.isPending || connect.isPending || syncContacts.isPending} onClick={() => {
+              if (window.confirm('Sign out of WhatsApp and reset this saved connection? Saved conversations will remain.')) logout.mutate();
+            }}><LogOut className="mr-2 h-4 w-4" />{logout.isPending ? 'Signing out…' : 'Sign out & reset'}</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">If the QR code does not appear, sign out and reset, then request a new code. For missing saved names, connect the phone and choose Sync contact names. Saved conversations remain.</p>
+          {data.syncingContacts && <p role="status" className="text-sm">Syncing saved contact names… You can keep using the CRM.</p>}
+          {data.contactSyncError && <p role="alert" className="text-sm text-destructive">{data.contactSyncError}</p>}
+        </div>}
 
         {/* Stated on the card rather than buried in a runbook: it is the clinic's number at stake. */}
         {data?.enabled && (

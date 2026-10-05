@@ -153,3 +153,24 @@
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
 }
+
+@font-face { font-family: "NotoSans"; src: url("/fonts/NotoSans-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "NotoSans"; src: url("/fonts/NotoSans-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "NotoSansArabic"; src: url("/fonts/NotoSansArabic-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "NotoSansArabic"; src: url("/fonts/NotoSansArabic-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
+ .consultation-document { font-family: NotoSans, Arial, sans-serif; }
+ .consultation-document[dir="rtl"] { font-family: DejaVuSans, Tahoma, Arial, sans-serif; }
+
+@font-face { font-family: "DejaVuSans"; src: url("/fonts/DejaVuSans-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
+
+@font-face { font-family: "DejaVuSans"; src: url("/fonts/DejaVuSans-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* Phone controls stay usable with the software keyboard and safe-area insets. */
+@media (pointer: coarse) {
+  button, [role="button"], input:not([type="checkbox"]), select { min-height: 44px; }
+  input, textarea, select { font-size: 16px; }
+  input[type="checkbox"] { width: 20px; height: 20px; }
+}
+html { scroll-padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+body { font-family: Arial, Tahoma, sans-serif; }
+[dir="rtl"] { font-family: DejaVuSans, Tahoma, Arial, sans-serif; }

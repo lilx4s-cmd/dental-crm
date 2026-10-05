@@ -20,6 +20,9 @@
 export const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
 
 export const PROTECTED_PATH_PREFIXES = [
+  '/notifications',
+  '/travel',
+  '/operations-finance',
   '/dashboard',
   '/my-day',
   '/patients',

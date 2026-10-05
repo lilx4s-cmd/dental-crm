@@ -357,31 +357,36 @@ enum ToothCondition {
 // ─────────────────────────── CORE / AUTH ───────────────────────────
 
 model User {
-  id               String           @id @default(uuid())
-  email            String           @unique
-  passwordHash     String
-  firstName        String
-  lastName         String
-  phone            String?
-  avatarUrl        String?
-  role             Role
-  isActive         Boolean          @default(true)
-  employmentStatus EmploymentStatus @default(ACTIVE)
-  hireDate         DateTime?
-  specialization   String?
-  calendarColor    String?
+  notificationPhone       String?           @unique
+  notificationPreferences Json?
+  pushDevices             PushDevice[]
+  staffAlerts             StaffAlert[]
+  documentVersions        DocumentVersion[]
+  id                      String            @id @default(uuid())
+  email                   String            @unique
+  passwordHash            String
+  firstName               String
+  lastName                String
+  phone                   String?
+  avatarUrl               String?
+  role                    Role
+  isActive                Boolean           @default(true)
+  employmentStatus        EmploymentStatus  @default(ACTIVE)
+  hireDate                DateTime?
+  specialization          String?
+  calendarColor           String?
   // TOTP second factor. The secret is stored encrypted at rest (see TwoFactorService) rather than
   // in clear: a leaked database read would otherwise hand over the second factor along with the
   // first, which defeats the point of having one.
-  twoFactorSecret    String?
-  twoFactorEnabledAt DateTime?
+  twoFactorSecret         String?
+  twoFactorEnabledAt      DateTime?
   // Failed sign-in tracking. The counter is not reset when the account locks — it keeps climbing
   // so the lock duration can escalate for someone who is clearly guessing, and is cleared only by
   // a successful sign-in. See packages/shared/src/access/lockout.ts.
-  failedLoginAttempts Int           @default(0)
-  lockedUntil      DateTime?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  failedLoginAttempts     Int               @default(0)
+  lockedUntil             DateTime?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
   refreshTokens               RefreshToken[]
   assignedLeads               Lead[]                   @relation("LeadAssignee")
@@ -414,17 +419,17 @@ model User {
   leadTagHistory              LeadTagHistory[]         @relation("LeadTagHistoryActor")
   whatsAppAccount             WhatsAppAccount?
   accessProfileId             String?
-  accessProfile               AccessProfile? @relation(fields: [accessProfileId], references: [id])
-  supervisedLeads             Lead[] @relation("LeadSupervisor")
-  reviewsCreated              LeadReview[] @relation("ReviewAuthor")
-
-  @@index([role])
-  @@map("users")
+  accessProfile               AccessProfile?           @relation(fields: [accessProfileId], references: [id])
+  supervisedLeads             Lead[]                   @relation("LeadSupervisor")
+  reviewsCreated              LeadReview[]             @relation("ReviewAuthor")
   coachingIssues              CoachingIssue[]          @relation("IssueAssignee")
   coachingEscalations         CoachingIssue[]          @relation("IssueSupervisor")
   instructionsReceived        SupervisorInstruction[]  @relation("InstructionRecipient")
   instructionsSent            SupervisorInstruction[]  @relation("InstructionAuthor")
   assessments                 ClinicalAssessment[]     @relation("AssessmentReviewer")
+
+  @@index([role])
+  @@map("users")
 }
 
 model RefreshToken {
@@ -444,19 +449,21 @@ model RefreshToken {
 }
 
 model ClinicSettings {
-  id           String   @id @default("singleton")
-  clinicName   String
-  address      String?
-  city         String?
-  country      String?
-  timezone     String   @default("Europe/Istanbul")
-  logoUrl      String?
-  workingHours Json?
-  currency     String   @default("USD")
-  phone        String?
-  email        String?
-  whatsapp     String?
-  website      String?
+  notificationSettings       Json?
+  documentConfiguration      Json?
+  id                         String   @id @default("singleton")
+  clinicName                 String
+  address                    String?
+  city                       String?
+  country                    String?
+  timezone                   String   @default("Europe/Istanbul")
+  logoUrl                    String?
+  workingHours               Json?
+  currency                   String   @default("USD")
+  phone                      String?
+  email                      String?
+  whatsapp                   String?
+  website                    String?
   // Defaults every new plan starts from. Set once by the clinic; this is most of the difference
   // between a two-minute proposal and a twenty-minute one.
   defaultPackageIncludes     String[] @default([])
@@ -465,7 +472,7 @@ model ClinicSettings {
   defaultDepositPercent      Decimal? @db.Decimal(5, 2)
   defaultPaymentTerms        String?
   defaultWarrantyTerms       String?
-  updatedAt    DateTime @updatedAt
+  updatedAt                  DateTime @updatedAt
 
   @@map("clinic_settings")
 }
@@ -473,18 +480,20 @@ model ClinicSettings {
 // ─────────────────────────── PATIENTS / LEADS / PIPELINE ───────────────────────────
 
 model Patient {
-  id                  String    @id @default(uuid())
+  travelBookings      TravelBooking[]
+  documentVersions    DocumentVersion[]
+  id                  String            @id @default(uuid())
   // Short human-readable case reference — what staff say on the phone, since nobody reads a uuid
   // aloud. Generated by the database from a sequence so two people admitting patients at once
   // cannot land on the same number.
-  caseNumber          String?   @unique
+  caseNumber          String?           @unique
   firstName           String
   lastName            String
   email               String?
   phone               String?
   whatsappNumber      String?
   dateOfBirth         DateTime?
-  gender              Gender?   @default(UNKNOWN)
+  gender              Gender?           @default(UNKNOWN)
   address             String?
   city                String?
   country             String?
@@ -515,17 +524,17 @@ model Patient {
   // costs them and what the salesperson takes. Price, paid and profit are derived from the
   // existing invoices and payments rather than stored again, so there is one answer to "how much
   // has this patient paid" instead of two that can disagree.
-  serviceCost         Decimal?  @db.Decimal(12, 2)
-  salesCommission     Decimal?  @db.Decimal(12, 2)
+  serviceCost         Decimal?          @db.Decimal(12, 2)
+  salesCommission     Decimal?          @db.Decimal(12, 2)
   commissionUserId    String?
-  commissionUser      User?     @relation("PatientCommission", fields: [commissionUserId], references: [id])
+  commissionUser      User?             @relation("PatientCommission", fields: [commissionUserId], references: [id])
   diagnosis           String?
   insuranceInfo       String?
-  isActive            Boolean   @default(true)
-  convertedFromLeadId String?   @unique
-  convertedFromLead   Lead?     @relation("LeadToPatient", fields: [convertedFromLeadId], references: [id])
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  isActive            Boolean           @default(true)
+  convertedFromLeadId String?           @unique
+  convertedFromLead   Lead?             @relation("LeadToPatient", fields: [convertedFromLeadId], references: [id])
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   tags           PatientTag[]
   appointments   Appointment[]
@@ -729,17 +738,21 @@ model Campaign {
 }
 
 model Lead {
-  id             String        @id @default(uuid())
-  firstName      String
-  lastName       String?
-  email          String?
-  phone          String?
-  whatsappNumber String?
+  travelBookings     TravelBooking[]
+  assignmentRevision Int                   @default(0)
+  assignmentEvents   LeadAssignmentEvent[]
+  documentVersions   DocumentVersion[]
+  id                 String                @id @default(uuid())
+  firstName          String
+  lastName           String?
+  email              String?
+  phone              String?
+  whatsappNumber     String?
   // ISO 3166-1 alpha-2. Needed to read a phone number: a leading zero is a national trunk prefix
   // and means nothing without a country, so every local-format number used to be assumed Turkish
   // — a Saudi patient's 055 512 3456 became a real Turkish number belonging to someone else.
   // Also makes country a first-class reporting dimension, which the clinic has never had.
-  country        String?
+  country            String?
   /// ISO 639-1. What language to talk to this patient in.
   ///
   /// Not decorative: 125 of the 152 deals that recorded one in the old CRM were Arabic, in a clinic
@@ -748,53 +761,70 @@ model Lead {
   ///
   /// Null means nobody has said, which is different from English — defaulting would send an
   /// English treatment plan to somebody who cannot read it.
-  preferredLanguage String?
-  source         LeadSource
-  campaignId     String?
-  campaign       Campaign?     @relation(fields: [campaignId], references: [id])
-  utmSource      String?
-  utmMedium      String?
-  utmCampaign    String?
-  utmTerm        String?
-  utmContent     String?
-  stage          PipelineStage @default(NEW_DEAL)
-  status         LeadStatus    @default(ACTIVE)
-  assignedToId   String?
-  assignedTo     User?         @relation("LeadAssignee", fields: [assignedToId], references: [id])
-  supervisorId   String?
-  supervisor     User? @relation("LeadSupervisor", fields: [supervisorId], references: [id])
-  reviews        LeadReview[]
-  estimatedValue Decimal?      @db.Decimal(12, 2)
-  currency       String?
-  lostReason     String?
-  notes          String?
+  preferredLanguage  String?
+  source             LeadSource
+  campaignId         String?
+  campaign           Campaign?             @relation(fields: [campaignId], references: [id])
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  utmTerm            String?
+  utmContent         String?
+  stage              PipelineStage         @default(NEW_DEAL)
+  status             LeadStatus            @default(ACTIVE)
+  assignedToId       String?
+  assignedTo         User?                 @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  supervisorId       String?
+  supervisor         User?                 @relation("LeadSupervisor", fields: [supervisorId], references: [id])
+  reviews            LeadReview[]
+  estimatedValue     Decimal?              @db.Decimal(12, 2)
+  currency           String?
+  lostReason         String?
+  notes              String?
   // When the lead last moved stage. Stored rather than derived from LeadActivity because the
   // kanban needs it for every card at once, and the "no movement" filter has to be a WHERE
   // clause — reconstructing it per lead would be a query per card.
-  stageChangedAt DateTime      @default(now())
+  stageChangedAt     DateTime              @default(now())
   // Original Bitrix24 deal ID (recovered from the migration's deterministic
   // id mapping — see migration/import.mjs's detUuid()). Nullable since leads
   // created directly in this CRM never had a Bitrix counterpart. Powers the
   // "Open in Bitrix24" link in the lead detail view.
-  bitrixDealId   Int?          @unique
+  bitrixDealId       Int?                  @unique
   // Set when this deal was folded into another during duplicate cleanup. The row is kept rather
   // than deleted — it carries whatever somebody wrote against it, and "this enquiry became that
   // deal" is itself worth knowing. Merged deals are filtered out of every board and list query.
-  mergedIntoId   String?
-  mergedInto     Lead?         @relation("LeadMerge", fields: [mergedIntoId], references: [id])
-  mergedFrom     Lead[]        @relation("LeadMerge")
-  mergedAt       DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  mergedIntoId       String?
+  mergedInto         Lead?                 @relation("LeadMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom         Lead[]                @relation("LeadMerge")
+  mergedAt           DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
-  activities    LeadActivity[]
-  conversations Conversation[]
-  callLogs      CallLog[]
-  tasks         LeadTask[]
-  tags          LeadTag[]
-  tagHistory    LeadTagHistory[]
-  intakeSubmissions IntakeSubmission[]
-  patient       Patient?       @relation("LeadToPatient")
+  activities               LeadActivity[]
+  conversations            Conversation[]
+  callLogs                 CallLog[]
+  tasks                    LeadTask[]
+  tags                     LeadTag[]
+  tagHistory               LeadTagHistory[]
+  intakeSubmissions        IntakeSubmission[]
+  patient                  Patient?                  @relation("LeadToPatient")
+  assignedAt               DateTime                  @default(now())
+  temperature              String                    @default("WARM")
+  waitingReason            String?
+  reviewAt                 DateTime?
+  lostReasonCode           String?
+  lostReasonDetail         String?
+  competitorName           String?
+  competitorPrice          Decimal?                  @db.Decimal(12, 2)
+  coachingIssues           CoachingIssue[]
+  coachingDirty            CoachingDirty?
+  instructions             SupervisorInstruction[]
+  assessment               ClinicalAssessment?
+  quoteVersions            QuoteVersion[]
+  paymentPromises          PaymentPromise[]
+  contactEvidence          ContactEvidence?
+  responseObservations     ResponseObservation[]
+  firstContactObservations FirstContactObservation[]
 
   @@index([stage])
   @@index([assignedToId])
@@ -814,23 +844,6 @@ model Lead {
   @@index([createdAt])
   @@index([campaignId])
   @@map("leads")
-  assignedAt               DateTime                  @default(now())
-  temperature              String                    @default("WARM")
-  waitingReason            String?
-  reviewAt                 DateTime?
-  lostReasonCode           String?
-  lostReasonDetail         String?
-  competitorName           String?
-  competitorPrice          Decimal?                  @db.Decimal(12, 2)
-  coachingIssues           CoachingIssue[]
-  coachingDirty            CoachingDirty?
-  instructions             SupervisorInstruction[]
-  assessment               ClinicalAssessment?
-  quoteVersions            QuoteVersion[]
-  paymentPromises          PaymentPromise[]
-  contactEvidence          ContactEvidence?
-  responseObservations     ResponseObservation[]
-  firstContactObservations FirstContactObservation[]
 }
 
 // What a prospective patient filled in on the public intake form, kept exactly as they wrote it.
@@ -840,7 +853,7 @@ model Lead {
 // and enrich the lead as they learn more, and that editing must never overwrite what the patient
 // originally said about their own health.
 model IntakeSubmission {
-  id     String @id @default(uuid())
+  id     String  @id @default(uuid())
   // Set on submit so the enquiry lands in the pipeline where staff already work, rather than in a
   // separate queue somebody has to remember to check. Nullable and SetNull so deleting a lead
   // does not destroy the declaration that created it.
@@ -932,16 +945,16 @@ model IntakeAttachment {
 // Baileys stores its state as many small keyed blobs (the credentials themselves, plus per-device
 // pre-key and session records), so this is a key-value table rather than typed columns.
 model WhatsAppAccount {
-  sessionId      String   @id
-  ownerUserId    String?  @unique
-  owner          User?    @relation(fields: [ownerUserId], references: [id])
+  sessionId      String    @id
+  ownerUserId    String?   @unique
+  owner          User?     @relation(fields: [ownerUserId], references: [id])
   linkedNumber   String?
-  autoReconnect  Boolean @default(false)
+  autoReconnect  Boolean   @default(false)
   connectedAt    DateTime?
   disconnectedAt DateTime?
   lastMessageAt  DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("whatsapp_accounts")
 }
@@ -965,32 +978,34 @@ model WhatsAppSession {
 // due date is what drives the pipeline's Today / This week / This month filters, so it is required:
 // a task with no date cannot answer "who do I contact now", which is the whole point of having it.
 model LeadTask {
-  review       LeadReview?
-  id           String    @id @default(uuid())
-  leadId       String
-  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  title        String
-  dueDate      DateTime
-  assignedToId String?
-  assignedTo   User?     @relation("LeadTaskAssignee", fields: [assignedToId], references: [id])
+  review           LeadReview?
+  id               String      @id @default(uuid())
+  leadId           String
+  lead             Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title            String
+  dueDate          DateTime
+  assignedToId     String?
+  assignedTo       User?       @relation("LeadTaskAssignee", fields: [assignedToId], references: [id])
   // Null means open. A timestamp rather than a boolean so "done today" is answerable later.
-  completedAt  DateTime?
-  createdById  String
-  createdBy    User      @relation("LeadTaskCreatedBy", fields: [createdById], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  completedAt      DateTime?
+  createdById      String
+  createdBy        User        @relation("LeadTaskCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  rescheduleCount  Int         @default(0)
+  rescheduleReason String?
+  quoteVersionId   String?     @unique
 
   @@index([leadId])
   @@index([dueDate])
   @@index([assignedToId])
-  @@map("lead_tasks")
-  rescheduleCount  Int         @default(0)
-  rescheduleReason String?
-  quoteVersionId   String?     @unique
   @@index([assignedToId, completedAt, dueDate])
+  @@map("lead_tasks")
 }
 
 model LeadActivity {
+  contactRecordedAt DateTime?
+  contactMethod String?
   id        String         @id @default(uuid())
   leadId    String
   lead      Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1023,17 +1038,17 @@ model Resource {
 }
 
 model Appointment {
-  id                    String            @id @default(uuid())
+  id                    String                     @id @default(uuid())
   patientId             String
-  patient               Patient           @relation(fields: [patientId], references: [id])
+  patient               Patient                    @relation(fields: [patientId], references: [id])
   dentistId             String?
-  dentist               User?             @relation("AppointmentDentist", fields: [dentistId], references: [id])
+  dentist               User?                      @relation("AppointmentDentist", fields: [dentistId], references: [id])
   resourceId            String?
-  resource              Resource?         @relation(fields: [resourceId], references: [id])
+  resource              Resource?                  @relation(fields: [resourceId], references: [id])
   createdById           String
-  createdBy             User              @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
-  type                  AppointmentType   @default(CONSULTATION)
-  status                AppointmentStatus @default(SCHEDULED)
+  createdBy             User                       @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  type                  AppointmentType            @default(CONSULTATION)
+  status                AppointmentStatus          @default(SCHEDULED)
   startTime             DateTime
   endTime               DateTime
   notes                 String?
@@ -1043,11 +1058,11 @@ model Appointment {
   /// Which treatment plan this appointment serves, when it was booked from one. Nullable: routine
   /// check-ups and emergencies belong to no plan.
   treatmentPlanId       String?
-  treatmentPlan         TreatmentPlan?    @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+  treatmentPlan         TreatmentPlan?             @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
   /// The itinerary line this booking realises, if it came from one.
   scheduleItem          TreatmentPlanScheduleItem?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 
   @@index([startTime])
   @@index([dentistId, startTime])
@@ -1069,44 +1084,47 @@ model TreatmentCategory {
 }
 
 model TreatmentPlan {
-  id                    String                @id @default(uuid())
-  patientId             String
-  patient               Patient               @relation(fields: [patientId], references: [id])
-  createdById           String
-  createdBy             User                  @relation("TreatmentPlanCreatedBy", fields: [createdById], references: [id])
-  assignedDentistId     String?
-  assignedDentist       User?                 @relation("TreatmentPlanDentist", fields: [assignedDentistId], references: [id])
-  assignedCoordinatorId String?
-  assignedCoordinator   User?                 @relation("TreatmentPlanCoordinator", fields: [assignedCoordinatorId], references: [id])
-  title                 String
-  status                TreatmentStatus       @default(PLANNED)
-  totalCost             Decimal               @default(0) @db.Decimal(12, 2)
-  currency              String                @default("USD")
-  notes                 String?
-  approvalStatus        PatientApprovalStatus @default(PENDING)
-  approvedAt            DateTime?
-  rejectionReason       String?
-  doctorRecommendation  String?
+  consultation              Json?
+  approvedDocumentVersionId String?
+  documentVersions          DocumentVersion[]
+  id                        String                @id @default(uuid())
+  patientId                 String
+  patient                   Patient               @relation(fields: [patientId], references: [id])
+  createdById               String
+  createdBy                 User                  @relation("TreatmentPlanCreatedBy", fields: [createdById], references: [id])
+  assignedDentistId         String?
+  assignedDentist           User?                 @relation("TreatmentPlanDentist", fields: [assignedDentistId], references: [id])
+  assignedCoordinatorId     String?
+  assignedCoordinator       User?                 @relation("TreatmentPlanCoordinator", fields: [assignedCoordinatorId], references: [id])
+  title                     String
+  status                    TreatmentStatus       @default(PLANNED)
+  totalCost                 Decimal               @default(0) @db.Decimal(12, 2)
+  currency                  String                @default("USD")
+  notes                     String?
+  approvalStatus            PatientApprovalStatus @default(PENDING)
+  approvedAt                DateTime?
+  rejectionReason           String?
+  doctorRecommendation      String?
   // Copied from Patient.diagnosis at creation so the patient-facing presentation
   // stays stable even if the live diagnosis changes later.
-  diagnosisSnapshot     String?
+  diagnosisSnapshot         String?
   // Patient-friendly summary, staff-generated and cached (see Phase E AI module).
-  aiSummary             String?
+  aiSummary                 String?
   // What the quoted price includes, as keys the dossier renders with its own labels. Held on the
   // plan, not only on the clinic: a proposal sent in March must still say what was promised in
   // March after the clinic changes its terms in June.
-  packageIncludes       String[]              @default([])
+  packageIncludes           String[]              @default([])
   // Payment terms as quoted. Nullable throughout, because a zero would read as "no deposit
   // required" — a different promise from "not decided yet".
-  depositAmount         Decimal?              @db.Decimal(12, 2)
-  cardFeePercent        Decimal?              @db.Decimal(5, 2)
-  cashDiscountPercent   Decimal?              @db.Decimal(5, 2)
-  flightRefundNote      String?
-  paymentTerms          String?
+  depositAmount             Decimal?              @db.Decimal(12, 2)
+  cardFeePercent            Decimal?              @db.Decimal(5, 2)
+  cashDiscountPercent       Decimal?              @db.Decimal(5, 2)
+  flightRefundNote          String?
+  paymentTerms              String?
   // The language this dossier was issued in, so reissuing reproduces what was sent.
-  language              String                @default("en")
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  language                  String                @default("en")
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
 
   items         TreatmentPlanItem[]
   invoices      Invoice[]
@@ -1119,12 +1137,12 @@ model TreatmentPlan {
   scheduleItems TreatmentPlanScheduleItem[]
   labOrders     LabOrder[]
   appointments  Appointment[]
+  quoteVersions QuoteVersion[]
 
   @@index([assignedDentistId])
   @@index([assignedCoordinatorId])
   @@index([patientId])
   @@map("treatment_plans")
-  quoteVersions QuoteVersion[]
 }
 
 // Travel and accommodation for a patient coming in from abroad. One per plan — a trip is the
@@ -1143,13 +1161,13 @@ model TreatmentPlanStay {
   departureDate   DateTime?
   departureFlight String?
 
-  hotelName       String?
-  hotelAddress    String?
-  roomType        String?
-  nights          Int?
-  companions      Int?
-  checkInDate     DateTime?
-  checkOutDate    DateTime?
+  hotelName    String?
+  hotelAddress String?
+  roomType     String?
+  nights       Int?
+  companions   Int?
+  checkInDate  DateTime?
+  checkOutDate DateTime?
 
   // Free text rather than booleans: "hotel to clinic each morning, driver waits" is the useful
   // thing to print, and a checkbox cannot say it.
@@ -1171,20 +1189,19 @@ model TreatmentPlanScheduleItem {
   treatmentPlanId String
   treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
 
-  date      DateTime
+  date          DateTime
   // Kept as text ("09:30", "Morning") so an itinerary can be issued before exact times are set.
-  time      String?
-  title     String
-  location  String?
-  notes     String?
-  createdAt DateTime @default(now())
-
-  @@index([treatmentPlanId])
+  time          String?
+  title         String
+  location      String?
+  notes         String?
+  createdAt     DateTime     @default(now())
   /// The booking that realises this line, once somebody has made one. Until then the itinerary
   /// promises a day the diary knows nothing about, which is the discrepancy this exists to show.
   appointmentId String?      @unique
   appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
+  @@index([treatmentPlanId])
   @@map("treatment_plan_schedule_items")
 }
 
@@ -1264,6 +1281,7 @@ model TreatmentPlanPhase {
 }
 
 model TreatmentPlanItem {
+  completedAt         DateTime?
   id                  String             @id @default(uuid())
   treatmentPlanId     String
   treatmentPlan       TreatmentPlan      @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
@@ -1301,24 +1319,25 @@ model TreatmentPlanItem {
 }
 
 model Invoice {
-  id              String         @id @default(uuid())
-  invoiceNumber   String         @unique
-  patientId       String
-  patient         Patient        @relation(fields: [patientId], references: [id])
-  treatmentPlanId String?
-  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id])
-  status          InvoiceStatus  @default(DRAFT)
-  subtotal        Decimal        @db.Decimal(12, 2)
-  discount        Decimal        @default(0) @db.Decimal(12, 2)
-  tax             Decimal        @default(0) @db.Decimal(12, 2)
-  total           Decimal        @db.Decimal(12, 2)
-  currency        String         @default("USD")
-  dueDate         DateTime?
-  issuedAt        DateTime?
-  createdById     String
-  createdBy       User           @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  documentVersions DocumentVersion[]
+  id               String            @id @default(uuid())
+  invoiceNumber    String            @unique
+  patientId        String
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  treatmentPlanId  String?
+  treatmentPlan    TreatmentPlan?    @relation(fields: [treatmentPlanId], references: [id])
+  status           InvoiceStatus     @default(DRAFT)
+  subtotal         Decimal           @db.Decimal(12, 2)
+  discount         Decimal           @default(0) @db.Decimal(12, 2)
+  tax              Decimal           @default(0) @db.Decimal(12, 2)
+  total            Decimal           @db.Decimal(12, 2)
+  currency         String            @default("USD")
+  dueDate          DateTime?
+  issuedAt         DateTime?
+  createdById      String
+  createdBy        User              @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   items           InvoiceItem[]
   payments        Payment[]
@@ -1382,6 +1401,7 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   paidAt      DateTime?
   reference   String?
+  visitNumber Int?
   createdById String
   createdBy   User          @relation("PaymentCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime      @default(now())
@@ -1396,20 +1416,20 @@ model Payment {
 // ─────────────────────────── COMMUNICATIONS ───────────────────────────
 
 model Conversation {
-  id               String              @id @default(uuid())
-  channel          ConversationChannel
-  patientId        String?
-  patient          Patient?            @relation(fields: [patientId], references: [id])
-  leadId           String?
-  lead             Lead?               @relation(fields: [leadId], references: [id])
+  id                  String              @id @default(uuid())
+  channel             ConversationChannel
+  patientId           String?
+  patient             Patient?            @relation(fields: [patientId], references: [id])
+  leadId              String?
+  lead                Lead?               @relation(fields: [leadId], references: [id])
   whatsappContactName String?
-  whatsappNameIsSaved Boolean @default(false)
-  externalThreadId String?
+  whatsappNameIsSaved Boolean             @default(false)
+  externalThreadId    String?
   /// Keeps two salespeople's conversations with the same patient on the correct sending number.
-  whatsappSessionId String @default("default")
-  assignedToId     String?
-  assignedTo       User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
-  lastMessageAt    DateTime?
+  whatsappSessionId   String              @default("default")
+  assignedToId        String?
+  assignedTo          User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
+  lastMessageAt       DateTime?
   // When a member of staff last opened this thread.
   //
   // Distinct from Message.readAt, which is WhatsApp's delivery receipt — the *patient* reading
@@ -1418,17 +1438,17 @@ model Conversation {
   //
   // On the conversation rather than per message: staff read a thread, not individual lines, and a
   // per-message read table would grow without bound to answer a question nobody asks.
-  lastReadAt       DateTime?
-  isArchived       Boolean             @default(false)
+  lastReadAt          DateTime?
+  isArchived          Boolean             @default(false)
   /// Kept at the top of the inbox regardless of when it last spoke.
   ///
   /// Clinic-wide rather than per user. A pinned thread here means "everyone should be able to find
   /// this one" — the patient flying in on Thursday, the complaint being handled — not "I am
   /// personally working on it", which is what assignment already records. A per-user pin would
   /// need its own join table and would hide the urgent thread from whoever is covering.
-  isPinned         Boolean             @default(false)
-  pinnedAt         DateTime?
-  createdAt        DateTime            @default(now())
+  isPinned            Boolean             @default(false)
+  pinnedAt            DateTime?
+  createdAt           DateTime            @default(now())
 
   messages Message[]
 
@@ -1522,25 +1542,26 @@ model CallLog {
 // ─────────────────────────── FILES ───────────────────────────
 
 model File {
-  id           String         @id @default(uuid())
-  ownerType    AttachableType
-  ownerId      String
-  category     FileCategory   @default(OTHER)
-  fileName     String
-  mimeType     String
-  sizeBytes    Int
-  s3Bucket     String
-  s3Key        String
-  uploadedById String
-  uploadedBy   User           @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  travelAttachments TravelAttachment[]
+  id                String             @id @default(uuid())
+  ownerType         AttachableType
+  ownerId           String
+  category          FileCategory       @default(OTHER)
+  fileName          String
+  mimeType          String
+  sizeBytes         Int
+  s3Bucket          String
+  s3Key             String
+  uploadedById      String
+  uploadedBy        User               @relation("FileUploadedBy", fields: [uploadedById], references: [id])
   /// Where this file stands with the malware scanner.
   ///
   /// SKIPPED when none is configured, which is this clinic today — see FileScanStatus. Recorded on
   /// the row rather than assumed, so the day a scanner is wired in there is no ambiguity about
   /// which of the existing files it has actually seen.
-  scanStatus   FileScanStatus @default(SKIPPED)
-  scannedAt    DateTime?
-  createdAt    DateTime       @default(now())
+  scanStatus        FileScanStatus     @default(SKIPPED)
+  scannedAt         DateTime?
+  createdAt         DateTime           @default(now())
 
   messageAttachments MessageAttachment[]
 
@@ -1632,6 +1653,8 @@ model AuditLog {
 // ─────────────────────────── TREATMENT PLAN & WARRANTY ───────────────────────────
 
 model WarrantyTemplate {
+  lifetime                Boolean            @default(false)
+  procedureType           String?
   id                      String             @id @default(uuid())
   name                    String             @unique
   treatmentCategoryId     String?
@@ -1651,6 +1674,9 @@ model WarrantyTemplate {
 }
 
 model Warranty {
+  lifetime                Boolean           @default(false)
+  documentVersions        DocumentVersion[]
+  certificateNumber       String?           @unique
   id                      String            @id @default(uuid())
   treatmentPlanItemId     String
   treatmentPlanItem       TreatmentPlanItem @relation(fields: [treatmentPlanItemId], references: [id])
@@ -1726,35 +1752,37 @@ model TreatmentPlanShareLink {
 }
 
 model AccessProfile {
-  id          String @id @default(uuid())
-  name        String @unique
+  id          String   @id @default(uuid())
+  name        String   @unique
   permissions Json
   users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@map("access_profiles")
 }
+
 model LeadReview {
-  taskId         String? @unique
-  task           LeadTask? @relation(fields: [taskId], references: [id])
-  id             String @id @default(uuid())
-  leadId         String
-  lead           Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  reviewerId     String
-  reviewer       User @relation("ReviewAuthor", fields: [reviewerId], references: [id])
-  note           String
-  status         String @default("OPEN")
-  correction     String?
-  submittedById  String?
-  dueAt          DateTime
-  resolvedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  taskId        String?   @unique
+  task          LeadTask? @relation(fields: [taskId], references: [id])
+  id            String    @id @default(uuid())
+  leadId        String
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User      @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  note          String
+  status        String    @default("OPEN")
+  correction    String?
+  submittedById String?
+  dueAt         DateTime
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   @@index([leadId, status])
   @@index([status, dueAt])
   @@map("lead_reviews")
 }
-
 
 model SalesRule {
   id                String   @id @default(uuid())
@@ -1978,4 +2006,286 @@ model FirstContactObservation {
   @@unique([leadId, assignedAt])
   @@index([assignedUserId, assignedAt])
   @@map("first_contact_observations")
+}
+
+// Immutable PDFs and their input snapshots; only new versions can be created.
+model DocumentVersion {
+  id               String         @id @default(uuid())
+  kind             String
+  sourceId         String
+  version          Int
+  patientId        String
+  patient          Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  leadId           String?
+  lead             Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  treatmentPlanId  String?
+  treatmentPlan    TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: Restrict)
+  invoiceId        String?
+  invoice          Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  warrantyId       String?
+  warranty         Warranty?      @relation(fields: [warrantyId], references: [id], onDelete: Restrict)
+  language         String
+  createdById      String
+  createdBy        User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now())
+  snapshot         Json
+  pdfData          Bytes
+  verificationHash String         @unique
+
+  @@unique([kind, sourceId, version])
+  @@index([patientId, createdAt])
+  @@index([leadId, createdAt])
+  @@map("document_versions")
+}
+
+model LeadAssignmentEvent {
+  remindedAt DateTime?
+  escalatedAt DateTime?
+  id            String       @id @default(uuid())
+  leadId        String
+  lead          Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  revision      Int
+  assignedToId  String?
+  createdAt     DateTime     @default(now())
+  initializedAt DateTime?
+  reminderAt    DateTime?
+  escalationAt  DateTime?
+  closedAt      DateTime?
+  alerts        StaffAlert[]
+
+  @@unique([leadId, revision])
+  @@index([closedAt, createdAt])
+  @@map("lead_assignment_events")
+}
+
+model StaffAlert {
+  id          String               @id @default(uuid())
+  eventId     String?
+  event       LeadAssignmentEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String
+  channel     String
+  dedupeKey   String               @unique
+  state       String               @default("QUEUED")
+  dueAt       DateTime             @default(now())
+  attemptedAt DateTime?
+  acceptedAt  DateTime?
+  deliveredAt DateTime?
+  attempts    Int                  @default(0)
+  error       String?
+  createdAt   DateTime             @default(now())
+
+  @@index([state, dueAt])
+  @@index([userId, createdAt])
+  @@map("staff_alerts")
+}
+
+model PushDevice {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("push_devices")
+}
+
+model TravelBooking {
+ calendarCycle Int @default(1)
+  id          String             @id @default(uuid())
+  patientId   String
+  patient     Patient            @relation(fields: [patientId], references: [id])
+  leadId      String
+  lead        Lead               @relation(fields: [leadId], references: [id])
+  visit       Int
+  status      String             @default("DRAFT")
+  details     Json
+  arrivalAt   DateTime?
+  departureAt DateTime?
+  revision    Int                @default(1)
+  createdById String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  attachments TravelAttachment[]
+  sync        CalendarSync?
+
+  @@unique([patientId, leadId, visit])
+  @@index([arrivalAt, status])
+  @@index([leadId, arrivalAt])
+  @@map("travel_bookings")
+}
+
+model TravelAttachment {
+  bookingId    String
+  booking      TravelBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fileId       String
+  file         File          @relation(fields: [fileId], references: [id])
+  attachedById String
+  createdAt    DateTime      @default(now())
+
+  @@id([bookingId, fileId])
+  @@map("travel_attachments")
+}
+
+model CalendarConnection {
+  id          String   @id @default("singleton")
+  credentials String?
+  calendarId  String?
+  account     String?
+  status      String   @default("DISCONNECTED")
+  updatedAt   DateTime @updatedAt
+
+  @@map("calendar_connections")
+}
+
+model CalendarOAuthState {
+  hash      String   @id
+  userId    String
+  expiresAt DateTime
+
+  @@map("calendar_oauth_states")
+}
+
+model CalendarSync {
+  bookingId String        @id
+  booking   TravelBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  revision  Int
+  state     String        @default("PENDING")
+  eventIds  Json          @default("{}")
+  attempts  Int           @default(0)
+  nextAt    DateTime      @default(now())
+  lockedAt  DateTime?
+  error     String?
+  updatedAt DateTime      @updatedAt
+
+  @@index([state, nextAt])
+  @@map("calendar_syncs")
+}
+
+model CostCatalogVersion {
+  id          String   @id @default(uuid())
+  key         String
+  version     Int
+  details     Json
+  effectiveAt DateTime
+  active      Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([key, version])
+  @@index([active, effectiveAt])
+  @@map("cost_catalog_versions")
+}
+
+model CaseCostSnapshot {
+  id          String   @id @default(uuid())
+  patientId   String
+  leadId      String
+  visit       Int
+  version     Int
+  state       String   @default("ESTIMATE")
+  details     Json
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([patientId, leadId, visit, version])
+  @@index([leadId, createdAt])
+  @@map("case_cost_snapshots")
+}
+
+model CompensationRule {
+  id          String   @id @default(uuid())
+  staffId     String
+  version     Int
+  details     Json
+  effectiveAt DateTime
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([staffId, version])
+  @@index([staffId, effectiveAt])
+  @@map("compensation_rules")
+}
+
+model CommissionEntry {
+  id          String    @id @default(uuid())
+  staffId     String
+  patientId   String
+  leadId      String
+  ruleId      String
+  dedupeKey   String    @unique
+  amount      Decimal   @db.Decimal(18, 2)
+  currency    String
+  state       String    @default("ESTIMATED")
+  calculation Json
+  earnedAt    DateTime?
+  approvedAt  DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([staffId, createdAt])
+  @@index([staffId, earnedAt])
+  @@index([paidAt])
+  @@index([leadId])
+  @@map("commission_entries")
+}
+
+model BusinessExpense {
+  id          String   @id @default(uuid())
+  month       String
+  kind        String
+  staffId     String?
+  amount      Decimal  @db.Decimal(18, 2)
+  currency    String
+  status      String   @default("UNPAID")
+  details     Json
+  dedupeKey   String   @unique
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([month, currency])
+  @@map("business_expenses")
+}
+
+model FinancialChange {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  reason     String
+  previous   Json
+  next       Json
+  editorId   String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@map("financial_changes")
+}
+
+model CaseCalculationWork {
+ leadId String @id
+ revision Int @default(1)
+ processedRevision Int @default(0)
+ nextAt DateTime @default(now())
+ error String?
+ @@index([nextAt])
+ @@map("case_calculation_work")
+}
+
+model TicketExtraction {
+ bookingId String
+ fileId String
+ requestedById String
+ state String @default("QUEUED")
+ suggestions Json @default("{}")
+ error String?
+ requestedAt DateTime @default(now())
+ startedAt DateTime?
+ @@id([bookingId, fileId])
+ @@index([state, requestedAt])
+ @@map("ticket_extractions")
 }

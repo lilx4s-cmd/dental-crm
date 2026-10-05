@@ -84,6 +84,7 @@ export interface PortalComment {
 }
 
 export interface PortalPlan {
+  consultation?: import('@dental-crm/shared').Consultation | null;
   id: string;
   title: string;
   status: string;
@@ -105,6 +106,7 @@ export interface PortalPlan {
 }
 
 export interface PortalClinicBranding {
+  coverPhoto?: string | null;
   clinicName: string;
   logoUrl: string | null;
   address: string | null;

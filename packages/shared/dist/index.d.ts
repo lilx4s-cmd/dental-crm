@@ -30,4 +30,6 @@ export * from './types/user.types';
 export * from './types/api-response.types';
 export * from './types/pagination.types';
 export * from './access/permissions';
+export * from './treatment-plan/consultation';
+export * from './treatment-plan/consultation-copy';
 //# sourceMappingURL=index.d.ts.map

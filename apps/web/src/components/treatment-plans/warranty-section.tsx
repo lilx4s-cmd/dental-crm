@@ -6,13 +6,17 @@ import { ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from '@/components/ui/accordion';
 
 import { usePatientWarranties, type Warranty } from '@/hooks/use-warranties';
 import type { TreatmentPlan, TreatmentPlanItem } from '@/hooks/use-treatment-plans';
 import { WARRANTY_STATUS_VARIANT } from '@/lib/format';
 import { IssueWarrantyDialog } from './issue-warranty-dialog';
-
 
 function WarrantyCard({ warranty }: { warranty: Warranty }) {
   const expiresAt = addMonths(new Date(warranty.startDate), warranty.durationMonths);
@@ -22,13 +26,17 @@ function WarrantyCard({ warranty }: { warranty: Warranty }) {
         <AccordionTrigger className="text-xs">
           <span className="flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5" />
-            {warranty.warrantyTemplate?.name ?? 'Custom warranty'} · {warranty.durationMonths} mo
-            <Badge variant={WARRANTY_STATUS_VARIANT[warranty.status] ?? 'outline'}>{warranty.status}</Badge>
+            {warranty.warrantyTemplate?.name ?? 'Custom warranty'} ·{' '}
+            {warranty.lifetime ? 'Lifetime contractual coverage' : warranty.durationMonths + ' mo'}
+            <Badge variant={WARRANTY_STATUS_VARIANT[warranty.status] ?? 'outline'}>
+              {warranty.status}
+            </Badge>
           </span>
         </AccordionTrigger>
         <AccordionContent className="space-y-1.5 text-xs">
           <p className="text-muted-foreground">
-            {format(new Date(warranty.startDate), 'MMM d, yyyy')} – {format(expiresAt, 'MMM d, yyyy')}
+            {format(new Date(warranty.startDate), 'MMM d, yyyy')} –{' '}
+            {warranty.lifetime ? 'Lifetime contractual coverage' : format(expiresAt, 'MMM d, yyyy')}
           </p>
           <div>
             <p className="font-semibold text-muted-foreground">Terms & Conditions</p>
@@ -75,9 +83,20 @@ export function WarrantySection({ plan, patientId }: { plan: TreatmentPlan; pati
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium">
                   {item.description}
-                  {item.toothNumber && <span className="ml-1 text-muted-foreground">(tooth {item.toothNumber})</span>}
+                  {item.toothNumber && (
+                    <span className="ml-1 text-muted-foreground">(tooth {item.toothNumber})</span>
+                  )}
                 </span>
-                <Button size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => setIssueItem(item)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[11px]"
+                  disabled={item.status !== 'COMPLETED'}
+                  title={
+                    item.status !== 'COMPLETED' ? 'Record treatment completion first' : undefined
+                  }
+                  onClick={() => setIssueItem(item)}
+                >
                   Issue Warranty
                 </Button>
               </div>

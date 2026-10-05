@@ -1,4 +1,11 @@
-import { ApiError, refreshAccessToken, apiRequest, clearCsrfToken, setCsrfToken } from './api-client';
+import {
+  ApiError,
+  refreshAccessToken,
+  apiRequest,
+  clearCsrfToken,
+  setCsrfToken,
+  cancelPendingRefresh,
+} from './api-client';
 
 /**
  * The transport every screen depends on.
@@ -33,12 +40,15 @@ function res(status: number, body: unknown): Response {
 /** Awaits a rejection as an ApiError, and fails loudly if the promise resolved instead. */
 async function rejection(promise: Promise<unknown>): Promise<ApiError> {
   return promise.then(
-    (data) => { throw new Error(`expected a rejection, got: ${JSON.stringify(data)}`); },
+    (data) => {
+      throw new Error(`expected a rejection, got: ${JSON.stringify(data)}`);
+    },
     (e: ApiError) => e,
   );
 }
 
 beforeEach(() => {
+  cancelPendingRefresh();
   fetchMock = jest.fn() as FetchMock;
   global.fetch = fetchMock as unknown as typeof fetch;
   // The token is module-level state and persists between tests, exactly as it does between
@@ -139,7 +149,9 @@ describe('apiRequest — expired access token', () => {
     // Two refreshes race, and the loser's rotated token is already invalid when it lands. The
     // queue exists so the second caller waits rather than starting its own.
     let releaseRefresh: (r: Response) => void = () => {};
-    const refreshInFlight = new Promise<Response>((resolve) => { releaseRefresh = resolve; });
+    const refreshInFlight = new Promise<Response>((resolve) => {
+      releaseRefresh = resolve;
+    });
 
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url.endsWith('/api/auth/refresh')) return refreshInFlight;
@@ -162,13 +174,15 @@ describe('apiRequest — expired access token', () => {
     expect(refreshCalls).toHaveLength(1);
   });
 
-  it('surfaces a refusal to the caller that waited on someone else\'s refresh', async () => {
+  it("surfaces a refusal to the caller that waited on someone else's refresh", async () => {
     // The exact shape of the original bug. The first caller drove the refresh and took the
     // checked path; the second waited in the queue and took an unchecked `.then(r => r.json())`,
     // so its 403 body was resolved as data. Only the second caller was affected, which is why a
     // test that fires one request could never have caught it.
     let releaseRefresh: (r: Response) => void = () => {};
-    const refreshInFlight = new Promise<Response>((resolve) => { releaseRefresh = resolve; });
+    const refreshInFlight = new Promise<Response>((resolve) => {
+      releaseRefresh = resolve;
+    });
 
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url.endsWith('/api/auth/refresh')) return refreshInFlight;
@@ -189,7 +203,9 @@ describe('apiRequest — expired access token', () => {
     await expect(driver).resolves.toEqual({ ok: true });
 
     const err: ApiError = await queued.then(
-      (data) => { throw new Error(`resolved as data: ${JSON.stringify(data)}`); },
+      (data) => {
+        throw new Error(`resolved as data: ${JSON.stringify(data)}`);
+      },
       (e) => e,
     );
     expect(err).toBeInstanceOf(ApiError);
@@ -269,8 +285,11 @@ describe('apiRequest — expired access token', () => {
 
 describe('session recovery', () => {
   it('updates the browser token and notifies the auth provider', async () => {
-    const listener = jest.fn(); window.addEventListener('crm:session-refreshed', listener);
-    fetchMock.mockResolvedValueOnce(res(200, { accessToken: 'replacement', csrfToken: 'csrf-new' }));
+    const listener = jest.fn();
+    window.addEventListener('crm:session-refreshed', listener);
+    fetchMock.mockResolvedValueOnce(
+      res(200, { accessToken: 'replacement', csrfToken: 'csrf-new' }),
+    );
     expect(await refreshAccessToken()).toBe('replacement');
     expect(document.cookie).toContain('access_token=replacement');
     expect(listener).toHaveBeenCalledTimes(1);
@@ -279,6 +298,73 @@ describe('session recovery', () => {
   it('shares concurrent refreshes to avoid rotating the same token twice', async () => {
     fetchMock.mockResolvedValueOnce(res(200, { accessToken: 'replacement' }));
     await Promise.all([refreshAccessToken(), refreshAccessToken()]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a new session supersedes older requests', () => {
+  it('does not overwrite the new login with a delayed refresh response', async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const pending = refreshAccessToken();
+    const listener = jest.fn();
+    window.addEventListener('crm:session-refreshed', listener);
+    cancelPendingRefresh();
+    document.cookie = 'access_token=new-login; path=/';
+    finish(res(200, { accessToken: 'old-session', csrfToken: 'old-csrf' }));
+    expect(await pending).toBeNull();
+    expect(document.cookie).toContain('access_token=new-login');
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener('crm:session-refreshed', listener);
+  });
+
+  it('an old refresh finishing cannot discard a newer in-flight refresh', async () => {
+    let finishOld!: (response: Response) => void;
+    let finishNew!: (response: Response) => void;
+    fetchMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishNew = resolve;
+        }),
+      );
+    const old = refreshAccessToken();
+    cancelPendingRefresh();
+    const current = refreshAccessToken();
+    finishOld(res(200, { accessToken: 'old' }));
+    await old;
+    const concurrent = refreshAccessToken();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    finishNew(res(200, { accessToken: 'new' }));
+    expect(await current).toBe('new');
+    expect(await concurrent).toBe('new');
+  });
+
+  it('does not retry an old-session mutation after the user signs in again', async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const pending = apiRequest(
+      '/api/travel/bookings',
+      { method: 'POST', body: '{}' },
+      'old-session',
+    );
+    cancelPendingRefresh();
+    finish(res(401, { message: 'Old session expired' }));
+    const error = await rejection(pending);
+    expect(error.status).toBe(401);
+    expect(error.message).toMatch(/session changed/i);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

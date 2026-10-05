@@ -48,7 +48,12 @@ exports.FINANCE = exports.MANAGEMENT;
  * patient already answered. Sales is not: they sell the trip, and a patient's medical history is
  * not theirs to read.
  */
-exports.CLINICAL = [enums_1.Role.SUPER_ADMIN, enums_1.Role.CLINIC_MANAGER, enums_1.Role.DENTIST, enums_1.Role.RECEPTION];
+exports.CLINICAL = [
+    enums_1.Role.SUPER_ADMIN,
+    enums_1.Role.CLINIC_MANAGER,
+    enums_1.Role.DENTIST,
+    enums_1.Role.RECEPTION,
+];
 /** The sales pipeline: deals, campaigns, lead reporting. */
 exports.PIPELINE = [enums_1.Role.SUPER_ADMIN, enums_1.Role.CLINIC_MANAGER, enums_1.Role.SALES_CONSULTANT];
 /** The pipeline plus the front desk, who enter the enquiries that walk in and ring. */
@@ -136,7 +141,16 @@ exports.FILE_OWNER_ACCESS = {
 function canAccessFilesFor(ownerType, role, permissions, write = false) {
     if (!role)
         return false;
-    const resource = { PATIENT: 'patients', LEAD: 'leads', CONVERSATION: 'conversations', TREATMENT_PLAN: 'plans', TREATMENT_PLAN_ITEM: 'plans', WARRANTY: 'plans', INVOICE: 'finance', APPOINTMENT: 'appointments' };
+    const resource = {
+        PATIENT: 'patients',
+        LEAD: 'leads',
+        CONVERSATION: 'conversations',
+        TREATMENT_PLAN: 'plans',
+        TREATMENT_PLAN_ITEM: 'plans',
+        WARRANTY: 'plans',
+        INVOICE: 'finance',
+        APPOINTMENT: 'appointments',
+    };
     const key = resource[ownerType] && `${resource[ownerType]}.${write ? 'write' : 'read'}`;
     if (key && typeof permissions?.[key] === 'boolean')
         return permissions[key];
@@ -154,6 +168,9 @@ function canAccessFilesFor(ownerType, role, permissions, write = false) {
  * actually load is worse than no page at all: it offers the work and then refuses it.
  */
 exports.ROUTE_ACCESS = {
+    '/notifications': exports.ALL_STAFF,
+    '/travel': exports.PIPELINE_WRITE,
+    '/operations-finance': exports.FINANCE,
     '/dashboard': exports.MANAGEMENT,
     '/my-day': exports.ALL_STAFF,
     '/patients': exports.CLINICAL,
@@ -194,7 +211,15 @@ function landingRoute(role) {
         return '/my-day';
     if (role === 'DENTIST')
         return '/appointments';
-    const order = ['/dashboard', '/my-day', '/pipeline', '/appointments', '/patients', '/inbox', '/settings'];
+    const order = [
+        '/dashboard',
+        '/my-day',
+        '/pipeline',
+        '/appointments',
+        '/patients',
+        '/inbox',
+        '/settings',
+    ];
     return order.find((r) => canAccessRoute(r, role)) ?? '/settings';
 }
 //# sourceMappingURL=policy.js.map

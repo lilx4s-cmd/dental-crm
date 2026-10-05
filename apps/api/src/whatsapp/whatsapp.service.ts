@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, ServiceUnavailableException, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  forwardRef,
+} from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { $Enums } from '@prisma/client';
@@ -41,7 +47,8 @@ export class WhatsAppService {
     const missing: string[] = [];
     if (!this.token) missing.push('WHATSAPP_CLOUD_API_TOKEN');
     if (!this.phoneNumberId) missing.push('WHATSAPP_PHONE_NUMBER_ID');
-    if (!this.config.get<string>('whatsapp.webhookVerifyToken')) missing.push('WHATSAPP_WEBHOOK_VERIFY_TOKEN');
+    if (!this.config.get<string>('whatsapp.webhookVerifyToken'))
+      missing.push('WHATSAPP_WEBHOOK_VERIFY_TOKEN');
     if (!this.appSecret) missing.push('WHATSAPP_APP_SECRET');
     return {
       configured: missing.length === 0,
@@ -125,6 +132,15 @@ export class WhatsAppService {
   // externalMessageId is required, not optional: it is what stops a redelivered webhook or a
   // reconnect replay being stored as a second copy of the same message.
   async storeInbound(phone: string, content: string, externalMessageId: string): Promise<void> {
+    // Staff alerts live outside patient conversations; replies and session replays must not create leads.
+    const staffNumber = '+' + phone.replace(/\D/g, '');
+    if (
+      await this.prisma.user.findFirst({
+        where: { notificationPhone: staffNumber },
+        select: { id: true },
+      })
+    )
+      return;
     const [lead, patient] = await Promise.all([
       this.prisma.lead.findFirst({
         where: { OR: [{ phone }, { whatsappNumber: phone }] },
@@ -143,14 +159,42 @@ export class WhatsAppService {
     );
   }
 
-  async storeSessionMessage(phone: string, content: string, externalMessageId: string, sessionId: string, ownerUserId: string | null, outbound: boolean, messageAt?: Date) {
+  async storeSessionMessage(
+    phone: string,
+    content: string,
+    externalMessageId: string,
+    sessionId: string,
+    ownerUserId: string | null,
+    outbound: boolean,
+    messageAt?: Date,
+  ) {
+    // Staff alerts live outside patient conversations; replies and session replays must not create leads.
+    const staffNumber = '+' + phone.replace(/\D/g, '');
+    if (
+      await this.prisma.user.findFirst({
+        where: { notificationPhone: staffNumber },
+        select: { id: true },
+      })
+    )
+      return;
     const [lead, patient] = await Promise.all([
-      this.prisma.lead.findFirst({ where: { OR: [{ phone }, { whatsappNumber: phone }] }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.lead.findFirst({
+        where: { OR: [{ phone }, { whatsappNumber: phone }] },
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.patient.findFirst({ where: { OR: [{ phone }, { whatsappNumber: phone }] } }),
     ]);
     return this.conversations.createInboundMessage(
-      $Enums.ConversationChannel.WHATSAPP, phone, content, `${sessionId}:${externalMessageId}`,
-      lead?.id, patient?.id, sessionId, ownerUserId ?? undefined, outbound, messageAt,
+      $Enums.ConversationChannel.WHATSAPP,
+      phone,
+      content,
+      `${sessionId}:${externalMessageId}`,
+      lead?.id,
+      patient?.id,
+      sessionId,
+      ownerUserId ?? undefined,
+      outbound,
+      messageAt,
     );
   }
 

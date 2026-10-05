@@ -26,6 +26,8 @@ type Session = {
   historyReceived?: boolean;
   messageEventsSeen?: number;
   captureError?: string | null;
+  syncingContacts?: boolean;
+  contactSyncError?: string | null;
   state: 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
   linkedNumber: string | null;
   qrDataUrl?: string | null;
@@ -46,7 +48,7 @@ export function WhatsAppSessions() {
     queryKey: ['whatsapp-session', user?.sub],
     queryFn: () => apiRequest('/api/whatsapp/sessions/me', {}, accessToken ?? undefined),
     enabled: canPair && !!accessToken,
-    refetchInterval: (query) => ['connecting', 'awaiting_scan'].includes(query.state.data?.state ?? '') ? 4000 : 15000,
+    refetchInterval: (query) => query.state.data?.syncingContacts || ['connecting', 'awaiting_scan'].includes(query.state.data?.state ?? '') ? 4000 : 15000,
   });
   const team = useQuery<Session[]>({
     queryKey: ['whatsapp-team'],
@@ -61,11 +63,13 @@ export function WhatsAppSessions() {
       qc.invalidateQueries({ queryKey: ['whatsapp-session'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-team'] });
       qc.invalidateQueries({ queryKey: ['conversations'] });
+      if (path.endsWith('/sync-contacts')) toast.success('Contact name sync started. Keep WhatsApp online on your phone.');
+      if (path === '/api/whatsapp/sessions/me/logout') toast.success('WhatsApp signed out and reset. You can now get a new QR code.');
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Session action failed'),
   });
   function unlink(path: string) {
-    if (window.confirm('Disconnect this work WhatsApp account from the CRM? Existing messages will remain.')) action.mutate(path);
+    if (window.confirm('Sign out of this work WhatsApp and reset its saved connection? You will need to scan a new QR code. Saved conversations and patient records will remain.')) action.mutate(path);
   }
   const data = mine.data;
   const preparedFor = useRef<string | null>(null);
@@ -87,8 +91,10 @@ export function WhatsAppSessions() {
           <div className="flex items-center gap-3"><Badge variant={data.state === 'connected' ? 'success' : 'secondary'}>{stateLabels[data.state]}</Badge>{data.linkedNumber && <span>+{data.linkedNumber}</span>}</div>
           <div className="rounded-lg border p-3 text-sm"><strong>Saved chats: {data.storedConversations ?? 0}</strong> · Messages: {data.storedMessages ?? 0}<p className="mt-1 text-xs text-muted-foreground">{data.historyReceived ? 'WhatsApp chat history received.' : data.state === 'connected' ? 'Phone linked. Waiting for WhatsApp to provide chat history or new messages.' : 'Chat capture starts after the phone is linked.'}{typeof data.messageEventsSeen === 'number' && ` ${data.messageEventsSeen} message events received since this connection started.`}</p></div>
           {data.captureError && <p className="text-sm text-destructive" role="alert">{data.captureError}</p>}
+          {data.contactSyncError && <p className="text-sm text-destructive" role="alert">{data.contactSyncError}</p>}
+          {data.syncingContacts && <p role="status" className="text-sm">Syncing saved contact names… You can keep using the CRM.</p>}
           {!data.enabled && <p className="text-sm text-muted-foreground">Your administrator has disabled work WhatsApp linking.</p>}
-          {data.state === 'connecting' && <p role="status" className="text-sm">Preparing your QR code… Keep this page open.</p>}
+          {data.state === 'connecting' && <p role="status" className="text-sm">Connecting to WhatsApp… A QR code will appear if pairing is needed. Keep this page open.</p>}
           {data.state === 'awaiting_scan' && data.qrDataUrl && <div className="space-y-3">
             <Image src={data.qrDataUrl} alt="Link your work WhatsApp account" width={280} height={280} unoptimized className="rounded border bg-white p-3" />
             <p className="text-sm">On your work phone: WhatsApp → Linked devices → Link a device, then scan this QR code.</p>
@@ -97,11 +103,12 @@ export function WhatsAppSessions() {
           <div className="flex flex-wrap gap-2">
             {data.enabled && <Button disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/new-qr')}>{action.isPending ? 'Preparing…' : 'Get a new QR code'}</Button>}
             {data.enabled && data.state === 'disconnected' && <Button variant="outline" disabled={action.isPending} onClick={() => action.mutate('/api/whatsapp/sessions/me/connect')}>Resume saved connection</Button>}
-            {data.enabled && data.state !== 'disconnected' && <Button variant="outline" disabled={action.isPending} onClick={() => unlink('/api/whatsapp/sessions/me/logout')}>Disconnect</Button>}
+            {data.enabled && data.state === 'connected' && <Button variant="outline" disabled={action.isPending || data.syncingContacts} onClick={() => action.mutate('/api/whatsapp/sessions/me/sync-contacts')}>{data.syncingContacts || action.isPending && action.variables?.endsWith('/sync-contacts') ? 'Syncing names…' : 'Sync contact names'}</Button>}
+            {data.enabled && <Button variant="outline" disabled={action.isPending} onClick={() => unlink('/api/whatsapp/sessions/me/logout')}>{action.isPending && action.variables?.endsWith('/logout') ? 'Signing out…' : 'Sign out & reset'}</Button>}
             <Button variant="outline" onClick={() => mine.refetch()} disabled={mine.isFetching} aria-label="Refresh connection status"><RefreshCw className="h-4 w-4" /></Button>
             <Button variant="outline" asChild><Link href={`/inbox?session=${encodeURIComponent(data.sessionId)}`}>My conversations</Link></Button>
           </div>
-          <p className="text-xs text-muted-foreground">Available chat history syncs when you pair the phone. New text from the work phone and its linked devices is also recorded. To refresh the pairing or request a new history snapshot, choose Get a new QR code and scan again. This replaces the current link and keeps saved conversations. Use a work account; personal chats on that number will also sync.</p>
+          <p className="text-xs text-muted-foreground">If a new QR code does not appear, choose Sign out &amp; reset, then Get a new QR code. To recover missing saved names while connected, choose Sync contact names and keep WhatsApp online on your phone. Saved conversations remain after a reset. Use a work account; chats on that number sync to the CRM.</p>
         </>}
       </CardContent>
     </Card>}

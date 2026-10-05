@@ -55,11 +55,36 @@ export class EvolutionService {
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new ServiceUnavailableException(
-        `Evolution API returned ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-      );
+      const error = new ServiceUnavailableException(`Evolution API returned ${res.status}${detail ? `: ${detail.slice(0,200)}` : ''}`) as ServiceUnavailableException & {providerStatus:number}; error.providerStatus=res.status; throw error;
     }
     return (await res.json()) as T;
+  }
+
+  private connectionCache?: { until: number; value: { state: EvolutionState; sendingNumber: string | null; error: string | null } };
+
+  /** Read-only probe: never calls connect or rotates a pairing QR. */
+  async connectionStatus() {
+    if (this.connectionCache && this.connectionCache.until > Date.now()) return this.connectionCache.value;
+    let value: { state: EvolutionState; sendingNumber: string | null; error: string | null };
+    if (!this.configured) return { state: 'not_configured' as const, sendingNumber: null, error: null };
+    try {
+      const response = await this.call<{ instance?: { state?: string } }>(`/instance/connectionState/${this.instance}`);
+      const raw = response.instance?.state;
+      const state: EvolutionState = raw === 'open' ? 'open' : raw === 'connecting' ? 'connecting' : 'close';
+      let sendingNumber: string | null = null;
+      if (state === 'open') {
+        // Provider instance records may contain credentials. Return only the sanitized phone number.
+        const instances = await this.call<Array<{ name?: string; ownerJid?: string; number?: string; instance?: { instanceName?: string; owner?: string; ownerJid?: string } }>>(`/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance)}`).catch(() => []);
+        const item = Array.isArray(instances) ? instances.find((i) => i.name === this.instance || i.instance?.instanceName === this.instance) ?? instances[0] : undefined;
+        const number = (item?.ownerJid ?? item?.number ?? item?.instance?.ownerJid ?? item?.instance?.owner ?? '').split('@')[0].replace(/\D/g, '');
+        if (/^\d{7,15}$/.test(number)) sendingNumber = '+' + number;
+      }
+      value = { state, sendingNumber, error: null };
+    } catch {
+      value = { state: 'unreachable', sendingNumber: null, error: 'WhatsApp gateway unavailable' };
+    }
+    this.connectionCache = { until: Date.now() + 15000, value };
+    return value;
   }
 
   /**

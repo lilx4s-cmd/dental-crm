@@ -12,7 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useClinicSettings, useUpdateClinicSettings } from '@/hooks/use-reports';
 import { useUsers, type User } from '@/hooks/use-users';
@@ -22,6 +28,8 @@ import { StorageStatusCard } from '@/components/settings/storage-status-card';
 import { WhatsAppStatusCard } from '@/components/settings/whatsapp-status-card';
 import { EvolutionCard } from '@/components/settings/evolution-card';
 import { WhatsAppWebCard } from '@/components/settings/whatsapp-web-card';
+import { WarrantyTemplatesCard } from '@/components/settings/warranty-templates-card';
+import { DocumentSettingsCard } from '@/components/settings/document-settings-card';
 import { PlanDefaultsCard } from '@/components/settings/plan-defaults-card';
 import { QueryError } from '@/components/ui/query-state';
 import { AccountSecurityCard } from '@/components/settings/account-security-card';
@@ -37,9 +45,20 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 const TIMEZONES = [
-  'UTC', 'Europe/Istanbul', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-  'Asia/Dubai', 'Asia/Riyadh', 'Asia/Kuwait', 'Asia/Cairo', 'Africa/Cairo',
-  'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo', 'Asia/Singapore',
+  'UTC',
+  'Europe/Istanbul',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Dubai',
+  'Asia/Riyadh',
+  'Asia/Kuwait',
+  'Asia/Cairo',
+  'Africa/Cairo',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Tokyo',
+  'Asia/Singapore',
 ];
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'TRY', 'SAR', 'AED', 'EGP', 'KWD', 'QAR', 'JOD'];
@@ -50,8 +69,12 @@ function ClinicSettingsForm() {
   const update = useUpdateClinicSettings();
 
   const [form, setForm] = useState({
-    clinicName: '', address: '', city: '', country: '',
-    timezone: 'Europe/Istanbul', currency: 'USD',
+    clinicName: '',
+    address: '',
+    city: '',
+    country: '',
+    timezone: 'Europe/Istanbul',
+    currency: 'USD',
   });
 
   useEffect(() => {
@@ -70,7 +93,10 @@ function ClinicSettingsForm() {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSave = () => {
-    if (!form.clinicName.trim()) { toast.error('Clinic name is required'); return; }
+    if (!form.clinicName.trim()) {
+      toast.error('Clinic name is required');
+      return;
+    }
     update.mutate(form, {
       onSuccess: () => toast.success('Settings saved'),
       onError: () => toast.error('Failed to save settings'),
@@ -86,7 +112,9 @@ function ClinicSettingsForm() {
       <CardContent className="space-y-4">
         {isLoading ? (
           <div className="space-y-3">
-            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
           </div>
         ) : settingsQuery.isError ? (
           // The form must not render on a failed load. Its fields default to empty strings, so a
@@ -118,18 +146,30 @@ function ClinicSettingsForm() {
               <div className="space-y-1">
                 <Label>Timezone</Label>
                 <Select value={form.timezone} onValueChange={(v) => set('timezone', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {TIMEZONES.map((tz) => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}
+                    {TIMEZONES.map((tz) => (
+                      <SelectItem key={tz} value={tz}>
+                        {tz}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
                 <Label>Default Currency</Label>
                 <Select value={form.currency} onValueChange={(v) => set('currency', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -169,7 +209,9 @@ function UserManagement() {
       <CardContent className="p-0">
         {isLoading ? (
           <div className="p-6 space-y-3">
-            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         ) : usersQuery.isError ? (
           <QueryError error={usersQuery.error} onRetry={usersQuery.refetch} className="py-10" />
@@ -184,21 +226,30 @@ function UserManagement() {
               >
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-                    {u.firstName[0]}{u.lastName[0]}
+                    {u.firstName[0]}
+                    {u.lastName[0]}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{u.firstName} {u.lastName}</p>
+                    <p className="text-sm font-medium">
+                      {u.firstName} {u.lastName}
+                    </p>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {u.specialization && (
-                    <span className="text-xs text-muted-foreground hidden sm:block">{u.specialization}</span>
+                    <span className="text-xs text-muted-foreground hidden sm:block">
+                      {u.specialization}
+                    </span>
                   )}
                   <Badge className={ROLE_COLORS[u.role] ?? ''} variant="outline">
                     {u.role.replace(/_/g, ' ')}
                   </Badge>
-                  {!u.isActive && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                  {!u.isActive && (
+                    <Badge variant="secondary" className="text-xs">
+                      Inactive
+                    </Badge>
+                  )}
                   <KeyRound className="h-4 w-4 text-muted-foreground" />
                 </div>
               </button>
@@ -228,7 +279,7 @@ export default function SettingsPage() {
       {/* First, because it is the only section on this page every role can act on — everything
           below is clinic-wide configuration that most staff can only read. */}
       <SalesRulesCard />
-<AccountSecurityCard />
+      <AccountSecurityCard />
 
       <Separator />
 
@@ -236,6 +287,8 @@ export default function SettingsPage() {
 
       {/* The terms every new treatment plan starts from — set once, copied onto each plan. */}
       <PlanDefaultsCard />
+      <DocumentSettingsCard />
+      <WarrantyTemplatesCard />
 
       {/* Above the integrations: tags are used every day by everyone, where the cards below are
           configured once and then only looked at when something breaks. */}
@@ -247,12 +300,32 @@ export default function SettingsPage() {
       <StorageStatusCard />
 
       <Card>
-        <CardHeader><CardTitle>Work WhatsApp</CardTitle><CardDescription>Each staff member links their work number by scanning a QR code. Supervisors can check connections and captured conversations.</CardDescription></CardHeader>
-        <CardContent><Button asChild><Link href="/whatsapp">Open Work WhatsApp</Link></Button><p className="mt-3 text-sm text-muted-foreground">Staff open Work WhatsApp, then scan using WhatsApp → Linked devices → Link a device. No API tokens or webhook setup are needed for work accounts.</p></CardContent>
+        <CardHeader>
+          <CardTitle>Work WhatsApp</CardTitle>
+          <CardDescription>
+            Each staff member links their work number by scanning a QR code. Supervisors can check
+            connections and captured conversations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href="/whatsapp">Open Work WhatsApp</Link>
+          </Button>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Staff open Work WhatsApp, then scan using WhatsApp → Linked devices → Link a device. No
+            API tokens or webhook setup are needed for work accounts.
+          </p>
+        </CardContent>
       </Card>
       <details className="rounded-lg border p-4">
-        <summary className="cursor-pointer text-sm font-medium">Advanced clinic messaging integrations</summary>
-        <div className="mt-4 space-y-4"><WhatsAppStatusCard /><EvolutionCard /><WhatsAppWebCard /></div>
+        <summary className="cursor-pointer text-sm font-medium">
+          Advanced clinic messaging integrations
+        </summary>
+        <div className="mt-4 space-y-4">
+          <WhatsAppStatusCard />
+          <EvolutionCard />
+          <WhatsAppWebCard />
+        </div>
       </details>
 
       <Separator />
@@ -262,7 +335,8 @@ export default function SettingsPage() {
       <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
         <p>
-          Manage staff accounts above and edit their permissions in Access Control. Use Work WhatsApp for QR pairing and team contact oversight.
+          Manage staff accounts above and edit their permissions in Access Control. Use Work
+          WhatsApp for QR pairing and team contact oversight.
         </p>
       </div>
     </div>

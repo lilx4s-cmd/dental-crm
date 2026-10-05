@@ -18,7 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export async function usePrismaAuthState(
   prisma: PrismaService,
   sessionId = 'default',
-): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void>; clear: () => Promise<void> }> {
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void>; flush: () => Promise<void>; close: () => Promise<void>; clear: () => Promise<void> }> {
   const read = async <T>(key: string): Promise<T | null> => {
     const row = await prisma.whatsAppSession.findUnique({
       where: { sessionId_key: { sessionId, key } },
@@ -31,16 +31,19 @@ export async function usePrismaAuthState(
   // Drain in-flight writes before deletion; ignore late writes from a closed socket.
   let closed = false;
   const pending = new Set<Promise<void>>();
-  const enqueue = async (operation: () => Promise<void>) => {
+  const writes = new Map<string, Promise<void>>();
+  const enqueue = async (key: string, operation: () => Promise<void>) => {
     if (closed) return;
-    const next = operation();
+    // A slower old credential write must never overwrite a newer pairing or signal key.
+    const next = (writes.get(key) ?? Promise.resolve()).catch(() => undefined).then(operation);
+    writes.set(key, next);
     pending.add(next);
     try { await next; }
-    finally { pending.delete(next); }
+    finally { pending.delete(next); if (writes.get(key) === next) writes.delete(key); }
   };
   const write = async (key: string, value: unknown) => {
     const encoded = JSON.parse(JSON.stringify(value, BufferJSON.replacer));
-    await enqueue(async () => { await prisma.whatsAppSession.upsert({
+    await enqueue(key, async () => { await prisma.whatsAppSession.upsert({
       where: { sessionId_key: { sessionId, key } },
       create: { sessionId, key, value: encoded },
       update: { value: encoded },
@@ -48,7 +51,7 @@ export async function usePrismaAuthState(
   };
 
   const remove = async (key: string) => {
-    await enqueue(async () => { await prisma.whatsAppSession.deleteMany({ where: { sessionId, key } }); });
+    await enqueue(key, async () => { await prisma.whatsAppSession.deleteMany({ where: { sessionId, key } }); });
   };
 
   const creds: AuthenticationCreds = (await read<AuthenticationCreds>('creds')) ?? initAuthCreds();
@@ -90,6 +93,8 @@ export async function usePrismaAuthState(
       },
     },
     saveCreds: () => write('creds', creds),
+    flush: async () => { while (pending.size) await Promise.all([...pending]); },
+    close: async () => { closed = true; await Promise.allSettled([...pending]); },
     // Used on logout, and whenever WhatsApp tells us the session is dead — leaving stale
     // credentials behind would make the next connect fail in a way that looks like a bug.
     clear: async () => {

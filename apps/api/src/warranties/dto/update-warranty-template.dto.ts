@@ -1,6 +1,8 @@
 import { IsString, IsOptional, IsNumber, Min, IsBoolean } from 'class-validator';
 
 export class UpdateWarrantyTemplateDto {
+  @IsOptional() @IsString() procedureType?: string;
+  @IsOptional() @IsBoolean() lifetime?: boolean;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() treatmentCategoryId?: string;
   @IsOptional() @IsNumber() @Min(1) durationMonths?: number;

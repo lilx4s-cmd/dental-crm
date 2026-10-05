@@ -110,6 +110,7 @@ function RecordPaymentDialog({
     amount: String(Math.max(0, remaining)),
     method: 'CASH',
     reference: '',
+    visitNumber: '',
   });
 
   if (!invoice) return null;
@@ -118,7 +119,7 @@ function RecordPaymentDialog({
     const amount = parseFloat(form.amount);
     if (isNaN(amount) || amount <= 0) { toast.error('Enter a valid amount'); return; }
     record.mutate(
-      { amount, method: form.method, reference: form.reference || undefined },
+      { amount, method: form.method, reference: form.reference || undefined, visitNumber:form.visitNumber?Number(form.visitNumber):undefined },
       {
         onSuccess: () => { toast.success('Payment recorded'); onClose(); },
         onError: () => toast.error('Failed to record payment'),
@@ -134,6 +135,11 @@ function RecordPaymentDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          <label className="block text-sm">Payment applies to treatment visit
+            <select className="block min-h-11 w-full rounded border p-2" value={form.visitNumber} onChange={e=>setForm({...form,visitNumber:e.target.value})}>
+              <option value="">Whole case / unallocated</option><option value="1">First visit</option><option value="2">Second visit</option>
+            </select>
+          </label>
           <div className="text-sm text-muted-foreground">
             Total: {fmt(Number(invoice.total), invoice.currency)} · Remaining:{' '}
             <span className="font-semibold text-foreground">{fmt(remaining, invoice.currency)}</span>

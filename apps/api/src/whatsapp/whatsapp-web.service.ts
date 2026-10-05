@@ -15,8 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { usePrismaAuthState } from './baileys-auth-state';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
-
-type ContactSnapshot = { id?: string | null; lid?: string | null; jid?: string | null; pnJid?: string | null; lidJid?: string | null; name?: string | null; notify?: string | null; conversationTimestamp?: unknown };
+import { ContactRoster, contactJid, ContactSnapshot } from './contact-roster';
 
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
@@ -81,6 +80,8 @@ class WhatsAppConnection {
   /** Guards against two connect attempts racing into two sockets on one session. */
   private connecting = false;
   private clearAuth: (() => Promise<void>) | null = null;
+  private flushAuth: (() => Promise<void>) | null = null;
+  private closeAuth: (() => Promise<void>) | null = null;
   private freshPairing: Promise<void> | null = null;
   /**
    * The pending automatic reconnect, held so it can be cancelled. Without this, unlinking a device
@@ -93,8 +94,9 @@ class WhatsAppConnection {
   private stopped = false;
   private generation = 0;
   private sentIds = new Set<string>();
-  private contactNames = new Map<string, { name: string; saved: boolean }>();
-  private phoneJids = new Map<string, string>();
+  private readonly roster: ContactRoster;
+  private syncingContacts: Promise<void> | null = null;
+  private contactSyncError: string | null = null;
   private ingestionQueue: Promise<void> = Promise.resolve();
   private historyReceived = false;
   private messageEventsSeen = 0;
@@ -110,6 +112,7 @@ class WhatsAppConnection {
     private readonly onUpdate: (update: { linkedNumber?: string | null; connectedAt?: Date; disconnectedAt?: Date; autoReconnect?: boolean; lastMessageAt?: Date }) => Promise<void>,
     private readonly numberInUse: (number: string) => boolean,
   ) {
+    this.roster = new ContactRoster(prisma, sessionId);
     // Refuses to run alongside Evolution. Two WhatsApp clients on one number would each ingest
     // every inbound message, so every patient reply would appear twice in the CRM.
     const evolutionConfigured = sessionId === 'default' && !!this.config.get<string>('evolution.url');
@@ -133,6 +136,8 @@ class WhatsAppConnection {
       historyReceived: this.historyReceived,
       messageEventsSeen: this.messageEventsSeen,
       captureError: this.captureError,
+      syncingContacts: !!this.syncingContacts,
+      contactSyncError: this.contactSyncError,
     };
   }
 
@@ -173,7 +178,7 @@ class WhatsAppConnection {
   }
 
   private async connectInternal(): Promise<void> {
-    if (!this.enabled || this.connecting || this.state === 'connected') return;
+    if (!this.enabled || this.connecting || this.socket || this.state === 'connected') return;
 
     const generation = this.generation;
     this.connecting = true;
@@ -181,11 +186,14 @@ class WhatsAppConnection {
     this.state = 'connecting';
 
     try {
-      const { state, saveCreds, clear } = await usePrismaAuthState(this.prisma, this.sessionId);
+      const { state, saveCreds, flush, close, clear } = await usePrismaAuthState(this.prisma, this.sessionId);
+      await this.roster.restore();
 
       const version = await this.currentWebVersion();
       if (this.stopped || generation !== this.generation) return;
       this.clearAuth = clear;
+      this.flushAuth = flush;
+      this.closeAuth = close;
       const sock = makeWASocket({
         // Announcing a stale protocol version gets the connection refused with 405 before any QR
         // is issued — see currentWebVersion below.
@@ -201,8 +209,14 @@ class WhatsAppConnection {
       });
       this.socket = sock;
 
-      sock.ev.on('creds.update', async () => {
-        if (!this.stopped && this.socket === sock && generation === this.generation) await saveCreds();
+      sock.ev.on('creds.update', async (update) => {
+        if (!this.stopped && this.socket === sock && generation === this.generation) {
+          Object.assign(state.creds, update);
+          await saveCreds().catch(() => {
+            this.lastError = 'Could not save the WhatsApp connection. Retry connecting before closing this page.';
+            this.logger.error(`Could not persist WhatsApp credentials (${this.sessionId})`);
+          });
+        }
       });
 
       sock.ev.on('connection.update', async (update) => {
@@ -243,6 +257,15 @@ class WhatsAppConnection {
           await this.onUpdate({ disconnectedAt: new Date() });
 
           // A person pressed unlink while this drop was in flight. Honour that over any retry.
+          if (this.stopped || generation !== this.generation) return;
+
+          // Pairing emits credentials immediately before a 515 restart. Persist them before
+          // the replacement socket reads the DB, or it incorrectly asks for another QR.
+          try { await flush(); }
+          catch {
+            this.lastError = 'Could not save the WhatsApp connection. Press Resume saved connection to retry.';
+            return;
+          }
           if (this.stopped || generation !== this.generation) return;
 
           if (code !== undefined && TERMINAL_DISCONNECTS.has(code)) {
@@ -293,18 +316,8 @@ class WhatsAppConnection {
       });
 
       const rememberContacts = (contacts: ContactSnapshot[]) => {
-        for (const contact of contacts) {
-          const phone = contact.pnJid ?? contact.jid ?? (contact.id?.endsWith('@s.whatsapp.net') ? contact.id : undefined);
-          const lid = contact.lidJid ?? contact.lid ?? (contact.id?.endsWith('@lid') ? contact.id : undefined);
-          if (phone && lid) this.phoneJids.set(lid, phone);
-          const name = contact.name?.trim() || contact.notify?.trim();
-          if (name) {
-            const saved = !!contact.name?.trim();
-            for (const address of [contact.id, phone, lid]) {
-              if (address && (saved || !this.contactNames.get(address)?.saved)) this.contactNames.set(address, { name, saved });
-            }
-          }
-        }
+        if (this.stopped || this.socket !== sock) return;
+        for (const contact of contacts) this.roster.remember(contact);
       };
       const syncContacts = (contacts: ContactSnapshot[], create: boolean) => {
         rememberContacts(contacts);
@@ -316,6 +329,7 @@ class WhatsAppConnection {
       sock.ev.on('chats.update', (chats) => syncContacts(chats, false));
       sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => syncContacts([{ id: lid, jid, lid }], false));
       sock.ev.on('messaging-history.set', ({ messages, contacts = [], chats = [] }) => {
+        if (this.stopped || this.socket !== sock) return;
         this.historyReceived = true;
         rememberContacts(contacts);
         rememberContacts(chats);
@@ -392,6 +406,11 @@ class WhatsAppConnection {
     const sock = this.socket;
     this.socket = null;
     this.connecting = false;
+    this.state = this.enabled ? 'disconnected' : 'disabled';
+    this.qrDataUrl = null;
+    this.linkedNumber = null;
+    this.lastError = null;
+    await this.onUpdate({ autoReconnect: false, linkedNumber: null, disconnectedAt: new Date() });
     const clear = this.clearAuth ?? (await usePrismaAuthState(this.prisma, this.sessionId)).clear;
     this.clearAuth = null;
     let timeout: NodeJS.Timeout | undefined;
@@ -404,20 +423,73 @@ class WhatsAppConnection {
     } catch {
       // Already gone from the phone's side; clearing local state is what matters.
     }
-    finally { if (timeout) clearTimeout(timeout); sock?.end(undefined); }
+    finally { if (timeout) clearTimeout(timeout); try { sock?.end(undefined); } catch { /* A closed socket still needs its saved session cleared. */ } }
+    await this.ingestionQueue;
     await clear();
+    this.roster.reset();
+    this.flushAuth = null;
+    this.closeAuth = null;
+    this.historyReceived = false;
+    this.messageEventsSeen = 0;
+    this.captureError = null;
+    this.contactSyncError = null;
+    this.syncingContacts = null;
     this.state = this.enabled ? 'disconnected' : 'disabled';
     this.qrDataUrl = null;
     this.linkedNumber = null;
     this.lastError = null;
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.stopped = true;
     this.generation += 1;
     this.cancelReconnect();
-    this.socket?.end(undefined);
+    try { this.socket?.end(undefined); } catch { /* Credentials still need to finish saving. */ }
     this.socket = null;
+    await this.ingestionQueue;
+    await this.closeAuth?.();
+  }
+
+  private contactSyncSocket() {
+    const sock = this.socket;
+    if (!sock || this.state !== 'connected') throw new ServiceUnavailableException('Connect your work WhatsApp before syncing contact names.');
+    if (!sock.authState.creds.myAppStateKeyId) throw new ServiceUnavailableException('WhatsApp is still syncing. Keep your phone online and try again shortly.');
+    return sock;
+  }
+
+  requestContactNameSync(): void {
+    this.contactSyncSocket();
+    if (this.syncingContacts) return;
+    this.contactSyncError = null;
+    const generation = this.generation;
+    // Large address books can take longer than an HTTP request. Keep progress visible while
+    // the roster is captured, instead of letting the user see a timeout and reset again.
+    void this.syncContactNames().catch(() => {
+      if (this.stopped || generation !== this.generation) return;
+      this.contactSyncError = 'Contact names could not finish syncing. Keep WhatsApp online on your phone and retry Sync contact names.';
+    });
+  }
+
+  /** Re-fetch the contact-only app-state snapshot without unlinking the phone or resetting keys. */
+  async syncContactNames(): Promise<void> {
+    if (this.syncingContacts) return this.syncingContacts;
+    const sock = this.contactSyncSocket();
+    const generation = this.generation;
+    this.syncingContacts = (async () => {
+      // Only this collection contains saved contact names. A fresh snapshot replays names
+      // missed by earlier CRM versions; the other collections and identity keys are retained.
+      await sock.authState.keys.set({ 'app-state-sync-version': { critical_unblock_low: null } });
+      if (this.stopped || this.socket !== sock || generation !== this.generation) return;
+      await sock.resyncAppState(['critical_unblock_low'], false);
+      await this.ingestionQueue;
+      if (this.stopped || this.socket !== sock || generation !== this.generation) return;
+      const synced = await sock.authState.keys.get('app-state-sync-version', ['critical_unblock_low']);
+      if (!synced.critical_unblock_low) throw new ServiceUnavailableException('WhatsApp has not shared its contact names yet. Keep the phone online and retry.');
+      await this.flushAuth?.();
+    })();
+    const syncing = this.syncingContacts;
+    try { await syncing; }
+    finally { if (this.syncingContacts === syncing) this.syncingContacts = null; }
   }
 
   async sendText(toPhone: string, text: string): Promise<void> {
@@ -442,7 +514,7 @@ class WhatsAppConnection {
     this.ingestionQueue = this.ingestionQueue.then(async () => {
       for (const contact of contacts) {
         if (this.stopped || this.socket !== sock) return;
-        try { await this.syncChat(contact, create); }
+        try { await this.roster.persist(contact); await this.syncChat(contact, create); }
         catch (e) {
           this.captureError = 'Some WhatsApp chats could not be saved. Check the connection status and retry.';
           this.logger.error(`Failed to capture WhatsApp chat: ${(e as Error).message}`);
@@ -453,16 +525,16 @@ class WhatsAppConnection {
   }
 
   private async syncChat(contact: ContactSnapshot, create: boolean) {
-    const raw = contact.id ?? contact.pnJid ?? contact.jid ?? '';
-    const jid = this.phoneJids.get(raw) ?? raw;
+    const raw = [contact.id, contact.pnJid, contact.jid, contact.lidJid, contact.lid].map(contactJid).find(Boolean) ?? '';
+    const jid = this.roster.resolve(raw) ?? raw;
     if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
     const address = (value: string) => value.endsWith('@lid') ? value : value.split('@')[0].split(':')[0];
     const threadId = address(jid);
     // Update existing alternate-ID rows when the phone finally shares the real address.
     // Never combine or delete patient conversations during contact synchronization.
-    const aliases = [...new Set([threadId, address(raw), ...(contact.lid ? [contact.lid] : []), ...(contact.lidJid ? [contact.lidJid] : [])])];
+    const aliases = [...new Set([threadId, ...[raw, contact.pnJid, contact.jid, contact.lid, contact.lidJid].filter((id): id is string => !!id).flatMap(id => this.roster.aliases(id)).map(address)])];
     const rows = await this.prisma.conversation.findMany({ where: { channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: { in: aliases } } });
-    const label = this.contactNames.get(jid) ?? this.contactNames.get(raw);
+    const label = this.roster.label(jid) ?? this.roster.label(raw);
     const seconds = Number(contact.conversationTimestamp);
     const lastMessageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
     if (rows.length === 0 && create) {
@@ -499,8 +571,11 @@ class WhatsAppConnection {
   private async ingest(msg: { key: { remoteJid?: string | null; remoteJidAlt?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; messageTimestamp?: unknown; pushName?: string | null }) {
     if (msg.key.id && this.sentIds.has(msg.key.id)) return;
 
-    const rawJid = msg.key.remoteJid ?? '';
-    const jid = rawJid.endsWith('@lid') ? msg.key.remoteJidAlt ?? this.phoneJids.get(rawJid) ?? rawJid : rawJid;
+    const rawJid = contactJid(msg.key.remoteJid) ?? '';
+    const alternate = contactJid(msg.key.remoteJidAlt);
+    const contact = { id: rawJid, jid: alternate, ...(!msg.key.fromMe && msg.pushName ? { notify: msg.pushName } : {}) };
+    this.roster.remember(contact);
+    const jid = this.roster.resolve(rawJid) ?? rawJid;
     // Groups and status broadcasts are not patient conversations.
     if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
 
@@ -515,8 +590,8 @@ class WhatsAppConnection {
     const seconds = Number(msg.messageTimestamp);
     const messageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
     await this.whatsapp.storeSessionMessage(phone, body, msg.key.id, this.sessionId, this.ownerUserId, !!msg.key.fromMe, messageAt);
-    if (msg.pushName && !msg.key.fromMe && !this.contactNames.has(jid)) this.contactNames.set(jid, { name: msg.pushName, saved: false });
-    await this.syncChat({ id: jid }, false);
+    await this.roster.persist(contact);
+    await this.syncChat(contact, false);
     this.captureError = null;
     await this.onUpdate({ lastMessageAt: new Date() });
   }
@@ -583,10 +658,12 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  onModuleDestroy() { for (const session of this.sessions.values()) session.close(); }
+  async onModuleDestroy() { await Promise.all([...this.sessions.values()].map(session => session.close())); }
 
   status(sessionId = 'default') { return this.connection(sessionId).status(); }
   async connect() { await this.connection().connect(); }
+  async newQr() { await this.connection().newQr(); }
+  async syncContacts() { this.connection().requestContactNameSync(); }
   async logout() {
     await this.connection().logout();
     await this.prisma.whatsAppAccount.updateMany({ where: { sessionId: 'default' }, data: { autoReconnect: false, linkedNumber: null } });
@@ -625,6 +702,11 @@ export class WhatsAppWebService implements OnModuleInit, OnModuleDestroy {
   async newQrOwn(user: JwtPayload) {
     const { sessionId, ownerId } = await this.resolveSession(user);
     await this.connection(sessionId, ownerId).newQr();
+    return this.ownStatus(user);
+  }
+  async syncOwnContacts(user: JwtPayload) {
+    const { sessionId, ownerId } = await this.resolveSession(user);
+    this.connection(sessionId, ownerId).requestContactNameSync();
     return this.ownStatus(user);
   }
   async logoutOwn(user: JwtPayload, ownerUserId?: string) {

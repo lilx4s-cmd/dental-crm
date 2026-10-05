@@ -1,7 +1,27 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Plane, Stethoscope, Send, MessageSquare, Link2, Download, Sparkles, MessageCircle } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/context/auth-context';
+import { apiRequest } from '@/lib/api-client';
+import { ConsultationPatientView } from './consultation-patient-view';
+import type { ConsultationSource } from './consultation-editor';
+const ConsultationRevision = dynamic(
+  () => import('./consultation-editor').then((m) => m.ConsultationEditor),
+  { ssr: false },
+);
+import {
+  Plus,
+  Plane,
+  Stethoscope,
+  Send,
+  MessageSquare,
+  Link2,
+  Download,
+  Sparkles,
+  MessageCircle,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -10,7 +30,13 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 import {
   useTreatmentPlans,
@@ -23,8 +49,13 @@ import {
   type TimelineStep,
 } from '@/hooks/use-treatment-plans';
 import { useDentists, useCoordinators } from '@/hooks/use-users';
-import { useGenerateSummary, useDraftWhatsAppMessage, isAiNotConfiguredError } from '@/hooks/use-ai';
+import {
+  useGenerateSummary,
+  useDraftWhatsAppMessage,
+  isAiNotConfiguredError,
+} from '@/hooks/use-ai';
 import { normalizePhoneForWhatsApp } from '@/lib/whatsapp';
+import { ClinicalDocuments } from './clinical-documents';
 import { NewTreatmentPlanDialog } from './new-treatment-plan-dialog';
 import { EditItineraryDialog } from './edit-itinerary-dialog';
 import { PlanAftercare, PlanSchedule, PlanStay } from './plan-itinerary';
@@ -51,7 +82,10 @@ const PLAN_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-destructive-muted text-destructive-muted-foreground',
 };
 
-const APPROVAL_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive'; label: string }> = {
+const APPROVAL_BADGE: Record<
+  string,
+  { variant: 'warning' | 'success' | 'destructive'; label: string }
+> = {
   PENDING: { variant: 'warning', label: 'Awaiting patient' },
   APPROVED: { variant: 'success', label: 'Patient approved' },
   REJECTED: { variant: 'destructive', label: 'Patient rejected' },
@@ -95,7 +129,9 @@ function CommentThread({ plan, patientId }: { plan: TreatmentPlan; patientId: st
                       ? `${c.authorUser.firstName} ${c.authorUser.lastName}`
                       : 'Staff'}
                 </span>
-                <span className="text-muted-foreground">{format(new Date(c.createdAt), 'MMM d, HH:mm')}</span>
+                <span className="text-muted-foreground">
+                  {format(new Date(c.createdAt), 'MMM d, HH:mm')}
+                </span>
               </div>
               <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
             </li>
@@ -112,7 +148,12 @@ function CommentThread({ plan, patientId }: { plan: TreatmentPlan; patientId: st
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
-        <Button size="sm" className="h-8" onClick={submit} disabled={addComment.isPending || !body.trim()}>
+        <Button
+          size="sm"
+          className="h-8"
+          onClick={submit}
+          disabled={addComment.isPending || !body.trim()}
+        >
           <Send className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -120,7 +161,15 @@ function CommentThread({ plan, patientId }: { plan: TreatmentPlan; patientId: st
   );
 }
 
-function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; patientId: string; patientPhone?: string | null }) {
+function PlanCard({
+  plan,
+  patientId,
+  patientPhone,
+}: {
+  plan: TreatmentPlan;
+  patientId: string;
+  patientPhone?: string | null;
+}) {
   const update = useUpdateTreatmentPlan(patientId);
   const updateStep = useUpdateTimelineStep(patientId);
   const createShareLink = useCreateShareLink(patientId);
@@ -136,6 +185,13 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   const [lastShareToken, setLastShareToken] = useState<string | null>(null);
   const [editingItinerary, setEditingItinerary] = useState(false);
   const [revising, setRevising] = useState(false);
+  const { accessToken } = useAuth();
+  const revisionSource = useQuery<ConsultationSource>({
+    queryKey: ['document-context', patientId],
+    queryFn: () =>
+      apiRequest(`/api/documents/context?patientId=${patientId}`, {}, accessToken ?? undefined),
+    enabled: revising && !!plan.consultation,
+  });
   // The itinerary line waiting to be turned into a booking.
   const [bookingItem, setBookingItem] = useState<BookableScheduleItem | null>(null);
 
@@ -145,7 +201,9 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
       {
         onSuccess: () => toast.success('Patient-friendly summary generated'),
         onError: (err) =>
-          toast.error(isAiNotConfiguredError(err) ? AI_NOT_CONFIGURED_TOAST : 'Failed to generate summary'),
+          toast.error(
+            isAiNotConfiguredError(err) ? AI_NOT_CONFIGURED_TOAST : 'Failed to generate summary',
+          ),
       },
     );
   };
@@ -164,7 +222,11 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           window.open(url, '_blank', 'noopener,noreferrer');
         },
         onError: (err) =>
-          toast.error(isAiNotConfiguredError(err) ? AI_NOT_CONFIGURED_TOAST : 'Failed to draft WhatsApp message'),
+          toast.error(
+            isAiNotConfiguredError(err)
+              ? AI_NOT_CONFIGURED_TOAST
+              : 'Failed to draft WhatsApp message',
+          ),
       },
     );
   };
@@ -199,7 +261,11 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
   const advance = (status: string) => update.mutate({ id: plan.id, status });
 
   const handleStepClick = (step: TimelineStep) =>
-    updateStep.mutate({ planId: plan.id, stepId: step.id, status: NEXT_STEP_STATUS[step.status] ?? 'PENDING' });
+    updateStep.mutate({
+      planId: plan.id,
+      stepId: step.id,
+      status: NEXT_STEP_STATUS[step.status] ?? 'PENDING',
+    });
 
   return (
     <Card>
@@ -207,22 +273,36 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         <div className="min-w-0">
           <p className="text-sm font-medium">{plan.title}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Created {format(new Date(plan.createdAt), 'MMM d, yyyy')} · {plan.items.length} procedure{plan.items.length !== 1 ? 's' : ''}
+            Created {format(new Date(plan.createdAt), 'MMM d, yyyy')} · {plan.items.length}{' '}
+            procedure{plan.items.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <span className="text-sm font-semibold">{fmt(Number(plan.totalCost), plan.currency)}</span>
+          <span className="text-sm font-semibold">
+            {fmt(Number(plan.totalCost), plan.currency)}
+          </span>
           <Badge className={PLAN_STATUS_COLORS[plan.status] ?? ''} variant="outline">
             {plan.status.replace(/_/g, ' ')}
           </Badge>
           <Badge variant={approval.variant}>{approval.label}</Badge>
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleCopyLink} disabled={createShareLink.isPending}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={handleCopyLink}
+            disabled={createShareLink.isPending}
+          >
             <Link2 className="mr-1 h-3.5 w-3.5" /> Copy portal link
           </Button>
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleDownloadPdf}>
             <Download className="mr-1 h-3.5 w-3.5" /> PDF
           </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setRevising(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => setRevising(true)}
+          >
             Revise proposal
           </Button>
         </div>
@@ -233,21 +313,39 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Dentist</label>
-            <Select value={plan.assignedDentistId ?? ''} onValueChange={(v) => update.mutate({ id: plan.id, assignedDentistId: v })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+            <Select
+              value={plan.assignedDentistId ?? ''}
+              onValueChange={(v) => update.mutate({ id: plan.id, assignedDentistId: v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Unassigned</SelectItem>
-                {dentists?.map((d) => <SelectItem key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</SelectItem>)}
+                {dentists?.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    Dr. {d.firstName} {d.lastName}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Coordinator</label>
-            <Select value={plan.assignedCoordinatorId ?? ''} onValueChange={(v) => update.mutate({ id: plan.id, assignedCoordinatorId: v })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+            <Select
+              value={plan.assignedCoordinatorId ?? ''}
+              onValueChange={(v) => update.mutate({ id: plan.id, assignedCoordinatorId: v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Unassigned</SelectItem>
-                {coordinators?.map((c) => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>)}
+                {coordinators?.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.firstName} {c.lastName}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -304,13 +402,26 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         )}
 
         {/* Charted findings, then the proposed work — the order the patient document reads in. */}
-        <PlanDiagnoses plan={plan} />
-        <PlanProcedures plan={plan} />
+        {plan.consultation ? (
+          <ConsultationPatientView plan={plan.consultation} />
+        ) : (
+          <>
+            <PlanDiagnoses plan={plan} />
+            <PlanProcedures plan={plan} />
+          </>
+        )}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">Travel &amp; itinerary</span>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingItinerary(true)}>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Travel &amp; itinerary
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setEditingItinerary(true)}
+            >
               <Plane className="mr-1 h-3 w-3" /> Stay &amp; schedule
             </Button>
           </div>
@@ -323,7 +434,7 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
           />
         </div>
 
-        <PlanAftercare items={plan.items} />
+        {!plan.consultation && <PlanAftercare items={plan.items} />}
 
         {/* What the price covers and how it is paid. Both already print on the dossier; until now
             nothing could set them, so every plan carried whatever the clinic defaults happened to
@@ -365,7 +476,12 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
         {!isTerminal && (
           <div className="flex gap-2 border-t pt-3">
             {plan.status === 'PLANNED' && (
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => advance('IN_PROGRESS')}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => advance('IN_PROGRESS')}
+              >
                 Start Treatment
               </Button>
             )}
@@ -374,31 +490,61 @@ function PlanCard({ plan, patientId, patientPhone }: { plan: TreatmentPlan; pati
                 Mark Completed
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => advance('CANCELLED')}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-destructive"
+              onClick={() => advance('CANCELLED')}
+            >
               Cancel Plan
             </Button>
           </div>
         )}
       </CardContent>
-      {revising && <NewTreatmentPlanDialog patientId={patientId} open initialPlan={plan} onClose={() => setRevising(false)} />}
+      {revising && plan.consultation && revisionSource.data && (
+        <ConsultationRevision
+          source={revisionSource.data}
+          initial={plan.consultation}
+          onClose={() => setRevising(false)}
+        />
+      )}
+      {revising && !plan.consultation && (
+        <NewTreatmentPlanDialog
+          patientId={patientId}
+          open
+          initialPlan={plan}
+          onClose={() => setRevising(false)}
+        />
+      )}
     </Card>
   );
 }
 
-export function TreatmentPlansTab({ patientId, patientPhone }: { patientId: string; patientPhone?: string | null }) {
+export function TreatmentPlansTab({
+  patientId,
+  patientPhone,
+}: {
+  patientId: string;
+  patientPhone?: string | null;
+}) {
   const query = useTreatmentPlans(patientId);
   const { data: plans, isLoading } = query;
   const [newOpen, setNewOpen] = useState(false);
 
   return (
     <div className="space-y-4">
+      <ClinicalDocuments patientId={patientId} />
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setNewOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> New Plan
         </Button>
       </div>
       {isLoading ? (
-        <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+        <div className="space-y-2">
+          {[...Array(2)].map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
       ) : query.isError ? (
         // A coordinator who sees "no treatment plans yet" on a patient who has one will quote the
         // case again from scratch, and the second quote will not match the first.
@@ -415,7 +561,11 @@ export function TreatmentPlansTab({ patientId, patientPhone }: { patientId: stri
           ))}
         </div>
       )}
-      <NewTreatmentPlanDialog patientId={patientId} open={newOpen} onClose={() => setNewOpen(false)} />
+      <NewTreatmentPlanDialog
+        patientId={patientId}
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+      />
     </div>
   );
 }

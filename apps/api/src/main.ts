@@ -1,3 +1,4 @@
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -9,10 +10,12 @@ import 'reflect-metadata';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // needed for Facebook webhook signature verification
   });
+  app.useBodyParser('json', { limit: '2mb' });
   const config = app.get(ConfigService);
+  app.enableShutdownHooks();
 
   // Render terminates TLS at its own proxy, so without this every request arrives carrying the
   // proxy's address and req.ip is identical for the entire internet. The rate limiters below would

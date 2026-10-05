@@ -111,54 +111,57 @@ function DroppableColumn({
       {/* Right-clicking the header acts on the column: select everything in it, or export it.
           Both are things people currently do by dragging a selection box that does not exist. */}
       <ContextMenu>
-      <ContextMenuTrigger asChild>
-      <div className="shrink-0 overflow-hidden rounded-[3px] border border-bx-line bg-bx-surface">
-        <div className="h-[3px]" style={{ backgroundColor: stage.color }} />
-        <div className="flex items-start gap-1 px-2.5 py-1.5">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wide text-bx-text" title={stage.label}>
-              {stage.label}
-            </p>
-            <p className="mt-px truncate text-[11px] text-bx-muted" title={totalsLabel(totals)}>
-              {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
-              {totals.length > 0 && ` · ${totalsLabel(totals)}`}
-            </p>
-          </div>
-          {/* Lost needs a reason, which this dialog does not collect — so that one column keeps
+        <ContextMenuTrigger asChild>
+          <div className="shrink-0 overflow-hidden rounded-[3px] border border-bx-line bg-bx-surface">
+            <div className="h-[3px]" style={{ backgroundColor: stage.color }} />
+            <div className="flex items-start gap-1 px-2.5 py-1.5">
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-[11px] font-bold uppercase tracking-wide text-bx-text"
+                  title={stage.label}
+                >
+                  {stage.label}
+                </p>
+                <p className="mt-px truncate text-[11px] text-bx-muted" title={totalsLabel(totals)}>
+                  {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
+                  {totals.length > 0 && ` · ${totalsLabel(totals)}`}
+                </p>
+              </div>
+              {/* Lost needs a reason, which this dialog does not collect — so that one column keeps
               the drag-and-drop path that does ask for one. */}
-          {canWrite && stage.terminal !== 'lost' && (
-            <NewLeadDialog defaultStage={stage.id} defaultStageLabel={stage.label}>
-              <button
-                type="button"
-                aria-label={`Add a deal to ${stage.label}`}
-                title={`Add a deal to ${stage.label}`}
-                className="-mr-1 shrink-0 rounded p-1 text-bx-muted transition-colors hover:bg-bx-board hover:text-bx-link"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </NewLeadDialog>
-          )}
-        </div>
-      </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuLabel className="truncate">{stage.label}</ContextMenuLabel>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={leads.length === 0}
-          onSelect={() => selection.selectAll(leads)}
-        >
-          <CheckSquare className="mr-2 h-4 w-4" />
-          Select all {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={leads.length === 0} onSelect={() => onExportColumn(leads)}>
-          <Download className="mr-2 h-4 w-4" />
-          Export this column
-        </ContextMenuItem>
-        {/* No "add a deal here": the + button in this header does exactly that and is always
+              {canWrite && stage.terminal !== 'lost' && (
+                <NewLeadDialog defaultStage={stage.id} defaultStageLabel={stage.label}>
+                  <button
+                    type="button"
+                    aria-label={`Add a deal to ${stage.label}`}
+                    title={`Add a deal to ${stage.label}`}
+                    className="-mr-1 shrink-0 rounded p-1 text-bx-muted transition-colors hover:bg-bx-board hover:text-bx-link"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </NewLeadDialog>
+              )}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuLabel className="truncate">{stage.label}</ContextMenuLabel>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={leads.length === 0}
+            onSelect={() => selection.selectAll(leads)}
+          >
+            <CheckSquare className="mr-2 h-4 w-4" />
+            Select all {leads.length} {leads.length === 1 ? 'deal' : 'deals'}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={leads.length === 0} onSelect={() => onExportColumn(leads)}>
+            <Download className="mr-2 h-4 w-4" />
+            Export this column
+          </ContextMenuItem>
+          {/* No "add a deal here": the + button in this header does exactly that and is always
             visible. A menu item duplicating a control the cursor is already next to adds a place
             to look without adding anything to do. */}
-      </ContextMenuContent>
+        </ContextMenuContent>
       </ContextMenu>
 
       {/* The droppable and the scroll container are deliberately separate elements now. They used
@@ -192,7 +195,8 @@ function DroppableColumn({
 function moveErrorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : '';
   if (/forbidden/i.test(raw)) return 'Your role cannot move deals between stages.';
-  if (/not found/i.test(raw)) return 'This deal is assigned to someone else, so you cannot move it.';
+  if (/not found/i.test(raw))
+    return 'This deal is assigned to someone else, so you cannot move it.';
   return raw || 'Failed to move deal';
 }
 
@@ -207,14 +211,22 @@ export default function PipelinePage() {
 
   const [localGroups, setLocalGroups] = useState<PipelineGroup[]>([]);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
-  const [pendingConfirmation,setPendingConfirmation]=useState<{lead:Lead;stage:string;message:string}|null>(null);
-  const [confirmationReason,setConfirmationReason]=useState('');
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    lead: Lead;
+    stage: string;
+    message: string;
+  } | null>(null);
+  const [confirmationReason, setConfirmationReason] = useState('');
   const [pendingLostMove, setPendingLostMove] = useState<Lead | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
-  const [linkedLeadId,setLinkedLeadId] = useState('');
+  const [linkedLeadId, setLinkedLeadId] = useState('');
   const linkedLead = useLead(linkedLeadId);
-  useEffect(() => { setLinkedLeadId(new URLSearchParams(window.location.search).get('leadId') ?? ''); }, []);
-  useEffect(() => { if (linkedLead.data) setDetailLead(linkedLead.data); }, [linkedLead.data]);
+  useEffect(() => {
+    setLinkedLeadId(new URLSearchParams(window.location.search).get('leadId') ?? '');
+  }, []);
+  useEffect(() => {
+    if (linkedLead.data) setDetailLead(linkedLead.data);
+  }, [linkedLead.data]);
   const selection = useBoardSelection();
   const exportLeads = useExportLeads();
   /**
@@ -267,13 +279,22 @@ export default function PipelinePage() {
   // Optimistically moves `lead` to `toStage` and persists it, reverting to the
   // last known-good server state on failure. Shared by the plain drag-and-drop
   // path and the lost-reason-confirmed path below.
-  async function commitMove(lead: Lead, toStage: string, extra?: { lostReason?: string; note?: string; confirmSuspicious?:boolean }) {
-    if (!canWrite) { toast.error('Your profile has read-only access to deals.'); return; }
+  async function commitMove(
+    lead: Lead,
+    toStage: string,
+    extra?: { lostReason?: string; note?: string; confirmSuspicious?: boolean },
+  ) {
+    if (!canWrite) {
+      toast.error('Your profile has read-only access to deals.');
+      return;
+    }
     const fromStage = lead.stage;
     setLocalGroups((prev) =>
       prev.map((g) => {
-        if (g.stage === fromStage) return { ...g, leads: (g.leads as Lead[]).filter((l) => l.id !== lead.id) };
-        if (g.stage === toStage) return { ...g, leads: [...(g.leads as Lead[]), { ...lead, stage: toStage }] };
+        if (g.stage === fromStage)
+          return { ...g, leads: (g.leads as Lead[]).filter((l) => l.id !== lead.id) };
+        if (g.stage === toStage)
+          return { ...g, leads: [...(g.leads as Lead[]), { ...lead, stage: toStage }] };
         return g;
       }),
     );
@@ -291,7 +312,12 @@ export default function PipelinePage() {
       // The API's reason is the useful part. A blanket "Failed to move deal" hid the two things
       // that actually go wrong here — the user's role cannot move cards, or the lead belongs to a
       // colleague — leaving people to guess why the card kept snapping back.
-      if (e instanceof Error && e.message.startsWith('PIPELINE_CONFIRMATION_REQUIRED:')) setPendingConfirmation({lead,stage:toStage,message:e.message.replace('PIPELINE_CONFIRMATION_REQUIRED:','')});
+      if (e instanceof Error && e.message.startsWith('PIPELINE_CONFIRMATION_REQUIRED:'))
+        setPendingConfirmation({
+          lead,
+          stage: toStage,
+          message: e.message.replace('PIPELINE_CONFIRMATION_REQUIRED:', ''),
+        });
       else toast.error(moveErrorMessage(e));
       if (groups) setLocalGroups(groups);
     }
@@ -309,7 +335,10 @@ export default function PipelinePage() {
    * costs the ability to say which ones failed.
    */
   async function moveMany(leads: Lead[], toStage: string) {
-    if (!canWrite) { toast.error('Your profile has read-only access to deals.'); return; }
+    if (!canWrite) {
+      toast.error('Your profile has read-only access to deals.');
+      return;
+    }
     if (leads.length === 0) return;
 
     const before = leads.map((l) => ({ id: l.id, fromStage: l.stage }));
@@ -318,7 +347,10 @@ export default function PipelinePage() {
       prev.map((g) => {
         const ids = new Set(leads.map((l) => l.id));
         if (g.stage === toStage) {
-          return { ...g, leads: [...(g.leads as Lead[]), ...leads.map((l) => ({ ...l, stage: toStage }))] };
+          return {
+            ...g,
+            leads: [...(g.leads as Lead[]), ...leads.map((l) => ({ ...l, stage: toStage }))],
+          };
         }
         return { ...g, leads: (g.leads as Lead[]).filter((l) => !ids.has(l.id)) };
       }),
@@ -401,7 +433,8 @@ export default function PipelinePage() {
      * Only the cards that would actually change column are moved; a selection spanning several
      * columns can include deals already in the target.
      */
-    const dragging = selection.isSelected(lead.id) && selectedLeads.length > 1 ? selectedLeads : [lead];
+    const dragging =
+      selection.isSelected(lead.id) && selectedLeads.length > 1 ? selectedLeads : [lead];
     const moving = dragging.filter((l) => l.stage !== toGroup.stage);
     if (moving.length === 0) return;
 
@@ -437,7 +470,7 @@ export default function PipelinePage() {
     // shell's padding for this page only, rather than making every other page fight for it.
     // The min-height keeps the columns usable on a short window: past that point the board grows
     // and the dashboard shell scrolls, rather than the columns collapsing to nothing.
-    <div className="-m-6 flex h-[calc(100vh-4rem)] min-h-[560px] flex-col bg-bx-board">
+    <div className="-m-3 sm:-m-6 flex h-[calc(100dvh-4rem)] min-h-[400px] flex-col bg-bx-board">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bx-line bg-bx-surface px-4 py-2">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold text-bx-text">Deals</h1>
@@ -473,18 +506,22 @@ export default function PipelinePage() {
               </Button>
             </DuplicatesDialog>
           )}
-          {canWrite && <ImportLeadsDialog>
-            <Button variant="outline" size="sm">
-              <Upload className="mr-2 h-4 w-4" />
-              Import CSV
-            </Button>
-          </ImportLeadsDialog>}
-          {canWrite && <NewLeadDialog>
-            <Button size="sm">
-              <UserPlus className="mr-2 h-4 w-4" />
-              New Deal
-            </Button>
-          </NewLeadDialog>}
+          {canWrite && (
+            <ImportLeadsDialog>
+              <Button variant="outline" size="sm">
+                <Upload className="mr-2 h-4 w-4" />
+                Import CSV
+              </Button>
+            </ImportLeadsDialog>
+          )}
+          {canWrite && (
+            <NewLeadDialog>
+              <Button size="sm">
+                <UserPlus className="mr-2 h-4 w-4" />
+                New Deal
+              </Button>
+            </NewLeadDialog>
+          )}
         </div>
       </div>
 
@@ -495,7 +532,11 @@ export default function PipelinePage() {
       {isLoading ? (
         <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3">
           {STAGES.map((s) => (
-            <Skeleton key={s.id} className="h-full shrink-0 rounded-[3px]" style={{ width: COLUMN_WIDTH }} />
+            <Skeleton
+              key={s.id}
+              className="h-full shrink-0 rounded-[3px]"
+              style={{ width: COLUMN_WIDTH }}
+            />
           ))}
         </div>
       ) : boardQuery.isError && localGroups.length === 0 ? (
@@ -504,76 +545,145 @@ export default function PipelinePage() {
         // the cards on screen were real a minute ago.
         <QueryError error={boardQuery.error} onRetry={boardQuery.refetch} variant="page" />
       ) : (
-        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3">
-            {STAGES.map((stage) => {
-              const group = localGroups.find((g) => g.stage === stage.id);
-              return (
-                <DroppableColumn
-                  key={stage.id}
-                  stage={stage}
-                  leads={(group?.leads as Lead[]) ?? []}
-                  activeId={activeLead?.id ?? null}
-                  selection={selection}
-                  selectedLeads={selectedLeads}
-                  onLeadClick={setDetailLead}
-                  onMoveToStage={(leads, toStage) => {
-                    void moveMany(leads, toStage);
-                    selection.clear();
-                  }}
-                  // Right-clicking a card and choosing one of these opens the same dialog the
-                  // bulk bar uses, on the cards the menu named — so the selection has to become
-                  // that set first, or the dialog would act on whatever was highlighted before.
-                  onChangeResponsible={(leads) => {
-                    if (!canAssign) { toast.error('Your profile cannot reassign leads.'); return; }
-                    selection.selectAll(leads);
-                    setBulkIntent('reassign');
-                  }}
-                  onTag={(leads) => {
-                    selection.selectAll(leads);
-                    setBulkIntent('tag');
-                  }}
-                  onExportColumn={(leads) =>
-                    exportLeads.mutate(
-                      { leadIds: leads.map((l) => l.id) },
-                      {
-                        onSuccess: (r) =>
-                          toast.success(`Exported ${r.count ?? leads.length} from ${stage.label}`),
-                        onError: (e) => toast.error(e.message || 'Could not export this column'),
-                      },
-                    )
-                  }
-                />
-              );
-            })}
+        <>
+          <div
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 md:hidden"
+            aria-label="Mobile lead list"
+          >
+            {allLeads.map((lead) => (
+              <article key={lead.id} className="rounded-lg border bg-background p-3">
+                <button
+                  className="block w-full text-start font-semibold"
+                  onClick={() => setDetailLead(lead)}
+                >
+                  {lead.firstName} {lead.lastName}
+                </button>
+                <p className="text-sm text-muted-foreground">
+                  {lead.preferredLanguage ?? '—'} ·{' '}
+                  {STAGES.find((s) => s.id === lead.stage)?.label ?? lead.stage}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setDetailLead(lead)}>
+                    Open lead
+                  </Button>
+                  {canWrite && (
+                    <select
+                      aria-label={`Pipeline stage for ${lead.firstName}`}
+                      value={lead.stage}
+                      className="min-h-11 max-w-full rounded border bg-background px-2 text-sm"
+                      onChange={(e) => void moveMany([lead], e.target.value)}
+                    >
+                      {STAGES.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {canAssign && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        selection.selectAll([lead]);
+                        setBulkIntent('reassign');
+                      }}
+                    >
+                      Reassign
+                    </Button>
+                  )}
+                </div>
+              </article>
+            ))}
+            {!allLeads.length && (
+              <p className="p-6 text-center text-muted-foreground">No leads match your filters.</p>
+            )}
           </div>
-          <DragOverlay>
-            {activeLead && (
-              <div className="relative w-[252px] rotate-1 opacity-95 shadow-md">
-                {/* A dragged selection needs to look like more than one card, or the count in the
+          <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+            <div className="hidden min-h-0 flex-1 gap-2 overflow-x-auto px-4 pb-4 pt-3 md:flex">
+              {STAGES.map((stage) => {
+                const group = localGroups.find((g) => g.stage === stage.id);
+                return (
+                  <DroppableColumn
+                    key={stage.id}
+                    stage={stage}
+                    leads={(group?.leads as Lead[]) ?? []}
+                    activeId={activeLead?.id ?? null}
+                    selection={selection}
+                    selectedLeads={selectedLeads}
+                    onLeadClick={setDetailLead}
+                    onMoveToStage={(leads, toStage) => {
+                      void moveMany(leads, toStage);
+                      selection.clear();
+                    }}
+                    // Right-clicking a card and choosing one of these opens the same dialog the
+                    // bulk bar uses, on the cards the menu named — so the selection has to become
+                    // that set first, or the dialog would act on whatever was highlighted before.
+                    onChangeResponsible={(leads) => {
+                      if (!canAssign) {
+                        toast.error('Your profile cannot reassign leads.');
+                        return;
+                      }
+                      selection.selectAll(leads);
+                      setBulkIntent('reassign');
+                    }}
+                    onTag={(leads) => {
+                      selection.selectAll(leads);
+                      setBulkIntent('tag');
+                    }}
+                    onExportColumn={(leads) =>
+                      exportLeads.mutate(
+                        { leadIds: leads.map((l) => l.id) },
+                        {
+                          onSuccess: (r) =>
+                            toast.success(
+                              `Exported ${r.count ?? leads.length} from ${stage.label}`,
+                            ),
+                          onError: (e) => toast.error(e.message || 'Could not export this column'),
+                        },
+                      )
+                    }
+                  />
+                );
+              })}
+            </div>
+            <DragOverlay>
+              {activeLead && (
+                <div className="relative w-[252px] rotate-1 opacity-95 shadow-md">
+                  {/* A dragged selection needs to look like more than one card, or the count in the
                     toast afterwards is the first anyone learns that twelve deals moved. Two
                     offset shells behind the real card read as a stack without needing twelve. */}
-                {draggingCount > 1 && (
-                  <>
-                    <div className="absolute inset-0 -z-20 translate-x-2 translate-y-2 rounded-[3px] border border-bx-line bg-bx-surface" />
-                    <div className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-[3px] border border-bx-line bg-bx-surface" />
-                  </>
-                )}
-                <LeadCard lead={activeLead} onClick={() => {}} />
-                {draggingCount > 1 && (
-                  <span className="absolute -right-2 -top-2 rounded-full bg-bx-link px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white shadow">
-                    {draggingCount}
-                  </span>
-                )}
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
+                  {draggingCount > 1 && (
+                    <>
+                      <div className="absolute inset-0 -z-20 translate-x-2 translate-y-2 rounded-[3px] border border-bx-line bg-bx-surface" />
+                      <div className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-[3px] border border-bx-line bg-bx-surface" />
+                    </>
+                  )}
+                  <LeadCard lead={activeLead} onClick={() => {}} />
+                  {draggingCount > 1 && (
+                    <span className="absolute -right-2 -top-2 rounded-full bg-bx-link px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white shadow">
+                      {draggingCount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        </>
       )}
 
+      {linkedLead.isError && (
+        <p role="alert" className="p-3">
+          This lead could not be opened. It may be unavailable or outside your access.
+        </p>
+      )}
       <LostReasonDialog
         open={!!pendingLostMove}
-        leadName={pendingLostMove ? `${pendingLostMove.firstName} ${pendingLostMove.lastName ?? ''}`.trim() : ''}
+        leadName={
+          pendingLostMove
+            ? `${pendingLostMove.firstName} ${pendingLostMove.lastName ?? ''}`.trim()
+            : ''
+        }
         onCancel={() => setPendingLostMove(null)}
         onConfirm={async (reason, note) => {
           const lead = pendingLostMove;
@@ -596,13 +706,48 @@ export default function PipelinePage() {
         }}
       />
 
-      <Dialog open={!!pendingConfirmation} onOpenChange={(open)=>{if(!open){setPendingConfirmation(null);setConfirmationReason('');}}}>
-        <DialogContent><DialogTitle>Review this pipeline move</DialogTitle><p className="text-sm">{pendingConfirmation?.message}</p><Input aria-label="Pipeline exception reason" placeholder="Explain why this move is appropriate" value={confirmationReason} onChange={(e)=>setConfirmationReason(e.target.value)}/><Button disabled={confirmationReason.trim().length<3 || updateStage.isPending} onClick={()=>{if(pendingConfirmation){const move=pendingConfirmation;setPendingConfirmation(null);void commitMove(move.lead,move.stage,{confirmSuspicious:true,note:confirmationReason});setConfirmationReason('');}}}>Confirm move with reason</Button></DialogContent>
+      <Dialog
+        open={!!pendingConfirmation}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingConfirmation(null);
+            setConfirmationReason('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Review this pipeline move</DialogTitle>
+          <p className="text-sm">{pendingConfirmation?.message}</p>
+          <Input
+            aria-label="Pipeline exception reason"
+            placeholder="Explain why this move is appropriate"
+            value={confirmationReason}
+            onChange={(e) => setConfirmationReason(e.target.value)}
+          />
+          <Button
+            disabled={confirmationReason.trim().length < 3 || updateStage.isPending}
+            onClick={() => {
+              if (pendingConfirmation) {
+                const move = pendingConfirmation;
+                setPendingConfirmation(null);
+                void commitMove(move.lead, move.stage, {
+                  confirmSuspicious: true,
+                  note: confirmationReason,
+                });
+                setConfirmationReason('');
+              }
+            }}
+          >
+            Confirm move with reason
+          </Button>
+        </DialogContent>
       </Dialog>
       <LeadDetailSheet
         lead={detailLead}
         open={!!detailLead}
-        onOpenChange={(open) => { if (!open) setDetailLead(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDetailLead(null);
+        }}
       />
     </div>
   );

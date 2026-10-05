@@ -1,0 +1,27 @@
+name: CRM operations scheduler
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crm-operations-scheduler
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch persistent CRM work
+        env:
+          API_ORIGIN: ${{ secrets.CRM_API_ORIGIN }}
+          WORKER_KEY: ${{ secrets.CRM_OPERATIONS_WORKER_SECRET }}
+        run: |
+          if [ -z "$API_ORIGIN" ] || [ -z "$WORKER_KEY" ]; then
+            echo 'Scheduler is not configured; no request was sent.'
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 2 --max-time 90 \
+            -X POST -H "x-crm-worker-key: $WORKER_KEY" \
+            "${API_ORIGIN%/}/api/operations-jobs/run"

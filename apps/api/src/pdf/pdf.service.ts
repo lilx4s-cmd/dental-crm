@@ -1,3 +1,5 @@
+import { ConsultationSchema, DocumentConfigurationSchema } from '@dental-crm/shared';
+import { renderConsultationPdf } from '../documents/consultation-pdf';
 import { Injectable } from '@nestjs/common';
 import { Document, Page, Text, View, StyleSheet, Image, renderToBuffer } from '@react-pdf/renderer';
 import * as QRCode from 'qrcode';
@@ -25,6 +27,7 @@ const styles = StyleSheet.create({
 
 interface WarrantyPdfInput {
   durationMonths: number;
+  lifetime?: boolean;
   startDate: Date | string;
   termsAndConditions: string;
   maintenanceRequirements?: string | null;
@@ -54,10 +57,21 @@ async function buildQrDataUrl(portalUrl?: string): Promise<string | undefined> {
 @Injectable()
 export class PdfService {
   async generateTreatmentPlanPdf(
-    plan: PlanDocumentInput,
-    branding: ClinicBranding,
+    plan: PlanDocumentInput & { consultation?: unknown },
+    branding: ClinicBranding & { documentConfiguration?: unknown },
     portalUrl?: string,
   ): Promise<Buffer> {
+    if (plan.consultation)
+      return renderConsultationPdf({
+        patient: {
+          ...plan.patient,
+          id: (plan.patient as typeof plan.patient & { id?: string }).id ?? '',
+        },
+        clinic: branding,
+        config: DocumentConfigurationSchema.parse(branding.documentConfiguration ?? {}),
+        plan: ConsultationSchema.parse(plan.consultation),
+        generatedAt: new Date().toISOString(),
+      });
     const qrDataUrl = await buildQrDataUrl(portalUrl);
     const doc = TreatmentPlanDocument(plan, branding, qrDataUrl, portalUrl);
     return renderToBuffer(doc as never);
@@ -114,7 +128,13 @@ export class PdfService {
           View,
           { style: styles.row },
           React.createElement(Text, { style: styles.label }, 'Duration'),
-          React.createElement(Text, {}, `${warranty.durationMonths} months`),
+          React.createElement(
+            Text,
+            {},
+            warranty.lifetime
+              ? 'Lifetime (subject to certificate terms)'
+              : `${warranty.durationMonths} months`,
+          ),
         ),
         React.createElement(
           View,
@@ -123,7 +143,7 @@ export class PdfService {
           React.createElement(
             Text,
             {},
-            `${startDate.toDateString()} - ${expiresDate.toDateString()}`,
+            warranty.lifetime ? `From ${startDate.toDateString()} · Lifetime, subject to terms` : `${startDate.toDateString()} - ${expiresDate.toDateString()}`,
           ),
         ),
         React.createElement(

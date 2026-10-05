@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
+  STAFF_ALERTS_WORKER_ENABLED: z.string().optional(),
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid URL'),
   PORT: z.string().optional(),
   NODE_ENV: z.enum(['development', 'production', 'test']).optional(),
@@ -60,6 +64,11 @@ const envSchema = z.object({
   WEB_APP_URL: z.string().optional(),
   // Optional: AI features (treatment plan summaries, WhatsApp drafts, item suggestions) via
   // xAI's Grok API degrade gracefully when unset — see ai/ai.service.ts.
+  GOOGLE_CALENDAR_CLIENT_ID: z.string().optional(),
+  GOOGLE_CALENDAR_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALENDAR_REDIRECT_URI: z.string().optional(),
+  OPERATIONS_WORKER_SECRET: z.string().optional(),
+  TRAVEL_WORKER_ENABLED: z.string().optional(),
   XAI_API_KEY: z.string().optional(),
   XAI_MODEL: z.string().optional(),
   XAI_BASE_URL: z.string().optional(),

@@ -1,4 +1,6 @@
 'use client';
+import { RecordContact } from '@/components/notifications/record-contact';
+import { ClinicalDocuments } from '@/components/treatment-plans/clinical-documents';
 import { LeadCoach } from '@/components/coaching/lead-coach';
 import { hasPermission } from '@dental-crm/shared';
 
@@ -6,10 +8,24 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import {
-  Phone, Mail, MessageCircle, DollarSign, ArrowRight, UserCheck, ExternalLink, Loader2, Languages,
+  Phone,
+  Mail,
+  MessageCircle,
+  DollarSign,
+  ArrowRight,
+  UserCheck,
+  ExternalLink,
+  Loader2,
+  Languages,
   Tag as TagIcon,
 } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 import { DealDocuments } from './deal-documents';
 import { LeadTagsSection } from '@/components/tags/lead-tags-section';
 import { IntakeAnswers } from './intake-answers';
@@ -48,14 +64,21 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
   const mayReadClinical = (CLINICAL as readonly string[]).includes(user?.role ?? '');
 
   const { data: patient, isLoading, isError } = usePatient(patientId, mayReadClinical);
-  const { data: appointments, isLoading: apptsLoading } = useAppointments(undefined, undefined, undefined, patientId, true);
+  const { data: appointments, isLoading: apptsLoading } = useAppointments(
+    undefined,
+    undefined,
+    undefined,
+    patientId,
+    true,
+  );
   const { data: plans, isLoading: plansLoading } = useTreatmentPlans(patientId);
 
   // Only the clinical block depends on that fetch. It used to return early on failure, so one call
   // this role is not allowed to make took the appointments and the treatment plans down with it —
   // both of which a salesperson may see, and the plans are why they open this panel at all.
   const hasClinicalDetails =
-    !!patient && (patient.dateOfBirth || patient.gender || patient.diagnosis || patient.insuranceInfo);
+    !!patient &&
+    (patient.dateOfBirth || patient.gender || patient.diagnosis || patient.insuranceInfo);
 
   return (
     <div className="space-y-4">
@@ -68,7 +91,9 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading patient record…
         </div>
       ) : isError ? (
-        <p className="text-xs text-destructive">Couldn&apos;t load the clinical record. Please try again shortly.</p>
+        <p className="text-xs text-destructive">
+          Couldn&apos;t load the clinical record. Please try again shortly.
+        </p>
       ) : hasClinicalDetails && patient ? (
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
           {patient.dateOfBirth && (
@@ -108,8 +133,12 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
           <ul className="space-y-1.5">
             {appointments.map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate">{format(new Date(a.startTime), 'MMM d, yyyy')} · {humanize(a.type)}</span>
-                <Badge variant="outline" className="capitalize shrink-0">{humanize(a.status)}</Badge>
+                <span className="truncate">
+                  {format(new Date(a.startTime), 'MMM d, yyyy')} · {humanize(a.type)}
+                </span>
+                <Badge variant="outline" className="capitalize shrink-0">
+                  {humanize(a.status)}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -128,8 +157,12 @@ function PatientRecordSection({ patientId }: { patientId: string }) {
               <li key={p.id} className="flex items-center justify-between gap-2 text-xs">
                 <span className="truncate">{p.title}</span>
                 <span className="flex items-center gap-1.5 shrink-0">
-                  <Badge variant="outline" className="capitalize">{humanize(p.status)}</Badge>
-                  <span className="text-muted-foreground">{formatMoney(Number(p.totalCost), p.currency)}</span>
+                  <Badge variant="outline" className="capitalize">
+                    {humanize(p.status)}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {formatMoney(Number(p.totalCost), p.currency)}
+                  </span>
                 </span>
               </li>
             ))}
@@ -153,7 +186,9 @@ export function LeadDetailSheet({
 }) {
   // The merged history. `useLeadActivities` still exists for the sales feed, which must keep
   // meaning "stage changes only" — merging messages into that would change what it reports.
-  const { data: timeline, isLoading: timelineLoading } = useLeadTimeline(open ? lead?.id ?? null : null);
+  const { data: timeline, isLoading: timelineLoading } = useLeadTimeline(
+    open ? (lead?.id ?? null) : null,
+  );
   // The board's payload deliberately omits the enquiry questionnaire — it would ship every
   // patient's medical history just to draw the cards — so the sheet fetches the full record.
   const { data: fullLead } = useLead(open && lead ? lead.id : '');
@@ -181,7 +216,13 @@ export function LeadDetailSheet({
    */
   async function handleOpenThread() {
     if (!lead) return;
-    if (!hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION')) {
+    if (
+      !hasPermission(
+        user,
+        'conversations.send',
+        user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION',
+      )
+    ) {
       onOpenChange(false);
       router.push(`/inbox?lead=${lead.id}`);
       return;
@@ -217,7 +258,9 @@ export function LeadDetailSheet({
                   <AvatarFallback>{initials(lead.firstName, lead.lastName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <SheetTitle>{lead.firstName} {lead.lastName ?? ''}</SheetTitle>
+                  <SheetTitle>
+                    {lead.firstName} {lead.lastName ?? ''}
+                  </SheetTitle>
                   <SheetDescription>{STAGE_LABELS[lead.stage] ?? lead.stage}</SheetDescription>
                 </div>
               </div>
@@ -283,7 +326,9 @@ export function LeadDetailSheet({
                 {lead.country && <Badge variant="outline">{lead.country}</Badge>}
                 {lead.source && <Badge variant="outline">{lead.source}</Badge>}
                 {lead.assignedTo && (
-                  <Badge variant="secondary">{lead.assignedTo.firstName} {lead.assignedTo.lastName}</Badge>
+                  <Badge variant="secondary">
+                    {lead.assignedTo.firstName} {lead.assignedTo.lastName}
+                  </Badge>
                 )}
                 {lead.lostReason && <Badge variant="destructive">{lead.lostReason}</Badge>}
               </div>
@@ -303,7 +348,15 @@ export function LeadDetailSheet({
                   disabled={startConversation.isPending}
                 >
                   <MessageCircle className="mr-2 h-4 w-4" />
-                  {startConversation.isPending ? 'Opening…' : !hasPermission(user, 'conversations.send', user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION') ? 'View patient conversations' : 'Message in CRM inbox'}
+                  {startConversation.isPending
+                    ? 'Opening…'
+                    : !hasPermission(
+                          user,
+                          'conversations.send',
+                          user?.role === 'SALES_CONSULTANT' || user?.role === 'RECEPTION',
+                        )
+                      ? 'View patient conversations'
+                      : 'Message in CRM inbox'}
                 </Button>
               )}
 
@@ -313,7 +366,12 @@ export function LeadDetailSheet({
                 </Badge>
               ) : (
                 lead.stage !== 'LOST' && (
-                  <Button size="sm" onClick={handleConvert} disabled={convert.isPending} className="w-full">
+                  <Button
+                    size="sm"
+                    onClick={handleConvert}
+                    disabled={convert.isPending}
+                    className="w-full"
+                  >
                     {convert.isPending ? 'Converting…' : 'Convert to Patient'}
                   </Button>
                 )
@@ -333,12 +391,17 @@ export function LeadDetailSheet({
               </>
             )}
 
+            <Button variant="outline" onClick={() => router.push(`/travel?leadId=${lead.id}`)}>
+              Flight tickets and travel visits
+            </Button>
+            <ClinicalDocuments leadId={lead.id} />
             <DealDocuments dealId={lead.id} stage={lead.stage} />
 
             <Separator className="my-4" />
 
             <LeadCoach leadId={lead.id} />
-              <LeadTasksSection leadId={lead.id} />
+            <RecordContact leadId={lead.id} />
+            <LeadTasksSection leadId={lead.id} />
 
             <Separator className="my-4" />
 
@@ -359,7 +422,9 @@ export function LeadDetailSheet({
                             <MessageCircle
                               className={cn(
                                 'h-3 w-3 shrink-0',
-                                e.direction === 'INBOUND' ? 'text-success' : 'text-muted-foreground',
+                                e.direction === 'INBOUND'
+                                  ? 'text-success'
+                                  : 'text-muted-foreground',
                               )}
                             />
                             <span className="font-medium">
@@ -369,7 +434,9 @@ export function LeadDetailSheet({
                                 Silence after a treatment quote means something very different
                                 depending on whether the quote arrived. */}
                             {e.status === 'FAILED' && (
-                              <span className="text-destructive-muted-foreground">· not delivered</span>
+                              <span className="text-destructive-muted-foreground">
+                                · not delivered
+                              </span>
                             )}
                           </div>
                           <p className="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">
@@ -390,7 +457,9 @@ export function LeadDetailSheet({
                               stage on both ends, and "Contacted → Contacted" is noise. */}
                           {e.toStage && (
                             <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <span>{e.fromStage ? (STAGE_LABELS[e.fromStage] ?? e.fromStage) : '—'}</span>
+                              <span>
+                                {e.fromStage ? (STAGE_LABELS[e.fromStage] ?? e.fromStage) : '—'}
+                              </span>
                               <ArrowRight className="h-3 w-3" />
                               <span className="font-medium text-foreground">
                                 {STAGE_LABELS[e.toStage] ?? e.toStage}
@@ -401,14 +470,20 @@ export function LeadDetailSheet({
                         </>
                       )}
                       <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                        {e.user ? `${e.user.firstName} ${e.user.lastName}` : e.kind === 'message' ? 'Patient' : 'System'} ·{' '}
-                        {new Date(e.at).toLocaleString()}
+                        {e.user
+                          ? `${e.user.firstName} ${e.user.lastName}`
+                          : e.kind === 'message'
+                            ? 'Patient'
+                            : 'System'}{' '}
+                        · {new Date(e.at).toLocaleString()}
                       </p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">Nothing has happened on this deal yet</p>
+                <p className="text-xs text-muted-foreground">
+                  Nothing has happened on this deal yet
+                </p>
               )}
             </div>
 
@@ -420,7 +495,8 @@ export function LeadDetailSheet({
                 <PatientRecordSection patientId={lead.patient.id} />
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Not yet converted to a patient — clinical details and appointment history will appear here once they are.
+                  Not yet converted to a patient — clinical details and appointment history will
+                  appear here once they are.
                 </p>
               )}
             </div>

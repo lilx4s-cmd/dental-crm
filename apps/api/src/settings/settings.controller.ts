@@ -1,12 +1,13 @@
 import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { IsArray, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsObject, IsArray, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Permission } from '../common/decorators/permission.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ALL_STAFF, CLINIC_SETTINGS_WRITE } from '../common/access-policy';
 import { SettingsService } from './settings.service';
 
 class UpdateSettingsDto {
+  @IsObject() @IsOptional() documentConfiguration?: Record<string, unknown>;
   @IsString() @IsOptional() clinicName?: string;
   @IsString() @IsOptional() address?: string;
   @IsString() @IsOptional() city?: string;

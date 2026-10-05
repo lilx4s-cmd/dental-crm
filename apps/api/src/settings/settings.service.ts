@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { DocumentConfigurationSchema } from '@dental-crm/shared';
+import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -10,6 +12,7 @@ export class SettingsService {
   }
 
   async update(data: {
+    documentConfiguration?: Record<string, unknown>;
     clinicName?: string;
     address?: string;
     city?: string;
@@ -28,9 +31,17 @@ export class SettingsService {
     defaultPaymentTerms?: string;
     defaultWarrantyTerms?: string;
   }) {
+    if (data.documentConfiguration) {
+      const check = DocumentConfigurationSchema.safeParse(data.documentConfiguration);
+      if (!check.success) throw new BadRequestException(check.error.issues.map((i) => i.message));
+      data.documentConfiguration = check.data;
+    }
     return this.prisma.clinicSettings.update({
       where: { id: 'singleton' },
-      data,
+      data: {
+        ...data,
+        documentConfiguration: data.documentConfiguration as Prisma.InputJsonValue | undefined,
+      },
     });
   }
 }

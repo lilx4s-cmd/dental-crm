@@ -47,7 +47,12 @@ export const FINANCE = MANAGEMENT;
  * patient already answered. Sales is not: they sell the trip, and a patient's medical history is
  * not theirs to read.
  */
-export const CLINICAL = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.DENTIST, Role.RECEPTION] as const;
+export const CLINICAL = [
+  Role.SUPER_ADMIN,
+  Role.CLINIC_MANAGER,
+  Role.DENTIST,
+  Role.RECEPTION,
+] as const;
 
 /** The sales pipeline: deals, campaigns, lead reporting. */
 export const PIPELINE = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT] as const;
@@ -141,9 +146,23 @@ export const FILE_OWNER_ACCESS: Record<string, readonly Role[]> = {
 };
 
 /** Whether this role may read or write files hanging off this kind of record. */
-export function canAccessFilesFor(ownerType: string, role: string | undefined, permissions?: Record<string, boolean>, write = false): boolean {
+export function canAccessFilesFor(
+  ownerType: string,
+  role: string | undefined,
+  permissions?: Record<string, boolean>,
+  write = false,
+): boolean {
   if (!role) return false;
-  const resource: Record<string, string> = { PATIENT: 'patients', LEAD: 'leads', CONVERSATION: 'conversations', TREATMENT_PLAN: 'plans', TREATMENT_PLAN_ITEM: 'plans', WARRANTY: 'plans', INVOICE: 'finance', APPOINTMENT: 'appointments' };
+  const resource: Record<string, string> = {
+    PATIENT: 'patients',
+    LEAD: 'leads',
+    CONVERSATION: 'conversations',
+    TREATMENT_PLAN: 'plans',
+    TREATMENT_PLAN_ITEM: 'plans',
+    WARRANTY: 'plans',
+    INVOICE: 'finance',
+    APPOINTMENT: 'appointments',
+  };
   const key = resource[ownerType] && `${resource[ownerType]}.${write ? 'write' : 'read'}`;
   if (key && typeof permissions?.[key] === 'boolean') return permissions[key];
   const allowed = FILE_OWNER_ACCESS[ownerType];
@@ -160,6 +179,9 @@ export function canAccessFilesFor(ownerType: string, role: string | undefined, p
  * actually load is worse than no page at all: it offers the work and then refuses it.
  */
 export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
+  '/notifications': ALL_STAFF,
+  '/travel': PIPELINE_WRITE,
+  '/operations-finance': FINANCE,
   '/dashboard': MANAGEMENT,
   '/my-day': ALL_STAFF,
   '/patients': CLINICAL,
@@ -178,7 +200,11 @@ export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
   '/access': CLINIC_ADMIN,
 };
 
-export function canAccessRoute(path: string, role: string | undefined, permissions?: Record<string, boolean>): boolean {
+export function canAccessRoute(
+  path: string,
+  role: string | undefined,
+  permissions?: Record<string, boolean>,
+): boolean {
   if (!role) return false;
   const key = ROUTE_PERMISSIONS[path];
   if (key && typeof permissions?.[key] === 'boolean') return permissions[key];
@@ -197,6 +223,14 @@ export function canAccessRoute(path: string, role: string | undefined, permissio
 export function landingRoute(role: string | undefined): string {
   if (role === 'SALES_CONSULTANT') return '/my-day';
   if (role === 'DENTIST') return '/appointments';
-  const order = ['/dashboard', '/my-day', '/pipeline', '/appointments', '/patients', '/inbox', '/settings'];
+  const order = [
+    '/dashboard',
+    '/my-day',
+    '/pipeline',
+    '/appointments',
+    '/patients',
+    '/inbox',
+    '/settings',
+  ];
   return order.find((r) => canAccessRoute(r, role)) ?? '/settings';
 }

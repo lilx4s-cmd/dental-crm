@@ -46,4 +46,6 @@ __exportStar(require("./types/user.types"), exports);
 __exportStar(require("./types/api-response.types"), exports);
 __exportStar(require("./types/pagination.types"), exports);
 __exportStar(require("./access/permissions"), exports);
+__exportStar(require("./treatment-plan/consultation"), exports);
+__exportStar(require("./treatment-plan/consultation-copy"), exports);
 //# sourceMappingURL=index.js.map

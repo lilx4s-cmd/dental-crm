@@ -19,6 +19,8 @@ const toDate = (value?: string) => (value ? new Date(value) : undefined);
 
 const PLAN_SELECT = {
   id: true,
+  consultation: true,
+  approvedDocumentVersionId: true,
   title: true,
   status: true,
   totalCost: true,
@@ -58,6 +60,10 @@ const PLAN_SELECT = {
       // point-in-time quote, but an allergy list printed on a clinical document must never be
       // stale. If it changes, every document reprinted from here should reflect that immediately.
       allergies: true,
+      diagnosis: true,
+      medicalConditions: true,
+      medications: true,
+      previousSurgeries: true,
     },
   },
   createdBy: { select: { id: true, firstName: true, lastName: true } },
@@ -76,6 +82,7 @@ const PLAN_SELECT = {
       brand: true,
       clinicalNotes: true,
       status: true,
+      completedAt: true,
       phaseNumber: true,
       toothCondition: true,
       treatmentCategory: { select: { id: true, name: true } },
@@ -242,7 +249,8 @@ export class TreatmentPlansService {
         packageIncludes: dto.packageIncludes ?? settings?.defaultPackageIncludes ?? [],
         depositAmount: dto.depositAmount ?? depositFromPercent,
         cardFeePercent: dto.cardFeePercent ?? settings?.defaultCardFeePercent ?? undefined,
-        cashDiscountPercent: dto.cashDiscountPercent ?? settings?.defaultCashDiscountPercent ?? undefined,
+        cashDiscountPercent:
+          dto.cashDiscountPercent ?? settings?.defaultCashDiscountPercent ?? undefined,
         flightRefundNote: dto.flightRefundNote,
         paymentTerms: dto.paymentTerms ?? settings?.defaultPaymentTerms ?? undefined,
         language: dto.language ?? 'en',
@@ -452,16 +460,39 @@ export class TreatmentPlansService {
     return this.findOne(id);
   }
 
+  async documentPdf(id: string) {
+    const plan = await this.findOne(id);
+    if (!plan.consultation) return null;
+    const document = await this.prisma.documentVersion.findFirst({
+      where: {
+        kind: 'PLAN',
+        sourceId: id,
+        ...(plan.approvedDocumentVersionId ? { id: plan.approvedDocumentVersionId } : {}),
+      },
+      orderBy: { version: 'desc' },
+      select: { pdfData: true },
+    });
+    return document?.pdfData ?? null;
+  }
+
   async update(id: string, dto: UpdateTreatmentPlanDto) {
-    await this.findOne(id);
+    const plan = await this.findOne(id);
+    const document =
+      plan.consultation && dto.approvalStatus === 'APPROVED'
+        ? await this.prisma.documentVersion.findFirst({
+            where: { kind: 'PLAN', sourceId: id },
+            orderBy: { version: 'desc' },
+            select: { id: true },
+          })
+        : null;
 
     // When a patient/staff approval decision comes through, keep approvedAt in sync so the
     // portal + dashboard can show when it happened. Clear the stamp if it swings back to PENDING.
     const approvalPatch =
       dto.approvalStatus === 'APPROVED'
-        ? { approvedAt: new Date() }
+        ? { approvedAt: new Date(), approvedDocumentVersionId: document?.id ?? null }
         : dto.approvalStatus && dto.approvalStatus !== 'APPROVED'
-          ? { approvedAt: null }
+          ? { approvedAt: null, approvedDocumentVersionId: null }
           : {};
 
     // Empty-string assignment id means "unassign" → store null (a real FK can't be ''), while

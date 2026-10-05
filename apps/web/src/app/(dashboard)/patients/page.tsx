@@ -49,13 +49,32 @@ export default function PatientsPage() {
           placeholder="Search by name, email or phone…"
           className="pl-9"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
         />
       </div>
 
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <div className="space-y-2 p-3 md:hidden">
+            {patients.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => router.push(`/patients/${p.id}`)}
+                className="block w-full rounded-lg border p-4 text-start"
+              >
+                <span className="block font-semibold">
+                  {p.firstName} {p.lastName}
+                </span>
+                <span className="mt-1 block text-sm text-muted-foreground">
+                  {p.phone ?? '—'} · {p.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </button>
+            ))}
+          </div>
+          <table className="hidden w-full text-sm md:table">
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
@@ -113,11 +132,15 @@ export default function PatientsPage() {
 
           {/* A failed list is not an empty one. Telling a clinic with a thousand records that it
               has "no patients yet" is worse than saying nothing, because it looks like an answer. */}
-          {query.isError && <QueryError error={query.error} onRetry={query.refetch} className="py-16" />}
+          {query.isError && (
+            <QueryError error={query.error} onRetry={query.refetch} className="py-16" />
+          )}
 
           {!isLoading && !query.isError && patients.length === 0 && (
             <div className="py-16 text-center text-muted-foreground">
-              {search ? `No patients matching "${search}"` : 'No patients yet. Add your first patient.'}
+              {search
+                ? `No patients matching "${search}"`
+                : 'No patients yet. Add your first patient.'}
             </div>
           )}
         </div>
@@ -128,10 +151,20 @@ export default function PatientsPage() {
               Page {meta.page} of {meta.totalPages}
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(page + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= meta.totalPages}
+                onClick={() => setPage(page + 1)}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>

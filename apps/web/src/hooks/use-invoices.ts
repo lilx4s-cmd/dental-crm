@@ -84,7 +84,7 @@ export function useRecordPayment(invoiceId: string) {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { amount: number; method: string; reference?: string }) =>
+    mutationFn: (data: { amount: number; method: string; reference?: string; visitNumber?: number }) =>
       apiRequest(`/api/invoices/${invoiceId}/payments`, { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices'] }),
   });

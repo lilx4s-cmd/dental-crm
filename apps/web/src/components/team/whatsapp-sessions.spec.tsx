@@ -1,3 +1,4 @@
+// Phone fixtures use the reserved NANPA 202-555-0100 through 0199 example range.
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WhatsAppSessions } from './whatsapp-sessions';
@@ -31,11 +32,11 @@ describe('work WhatsApp setup', () => {
   });
   it('lets the owner pair a clinic work number and keeps the team oversight panel', async () => {
     mockRole = 'SUPER_ADMIN';
-    (apiRequest as jest.Mock).mockImplementation(async (path: string) => path.endsWith('/sessions') ? [] : { sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'connected', error: null, linkedNumber: '905550000000' });
+    (apiRequest as jest.Mock).mockImplementation(async (path: string) => path.endsWith('/sessions') ? [] : { sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'connected', error: null, linkedNumber: '12025550100' });
     show();
     expect(screen.getByText('Clinic work WhatsApp')).toBeInTheDocument();
     expect(screen.getByText('Team WhatsApp connections')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('+905550000000')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('+12025550100')).toBeInTheDocument());
   });
   it('requests fresh pairing from a stuck connection and displays the returned QR', async () => {
     let paired = false;
@@ -47,6 +48,23 @@ describe('work WhatsApp setup', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Get a new QR code' }));
     expect(await screen.findByAltText('Link your work WhatsApp account')).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/new-qr', { method: 'POST' }, 'test-token');
+  });
+
+  it('allows signing out and resetting a disconnected session before requesting a new QR', async () => {
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    (apiRequest as jest.Mock).mockResolvedValue({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'disconnected', error: null });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/logout', { method: 'POST' }, 'test-token'));
+    expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
+  });
+
+  it('syncs missing names without requesting a new pairing code', async () => {
+    (apiRequest as jest.Mock).mockResolvedValue({ sessionId: 'user:test-staff', enabled: true, needsSetup: false, state: 'connected', error: null, linkedNumber: '12025550100' });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync contact names' }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/sync-contacts', { method: 'POST' }, 'test-token'));
+    expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/new-qr') || path.endsWith('/logout'))).toBe(false);
   });
 
 });

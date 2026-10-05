@@ -1,3 +1,7 @@
+import { OperationsJobsModule } from './operations-jobs/operations-jobs.module';
+import { TravelFinanceModule } from './travel-finance/travel-finance.module';
+import { StaffAlertsModule } from './staff-alerts/staff-alerts.module';
+import { DocumentsModule } from './documents/documents.module';
 import { CoachingModule } from './coaching/coaching.module';
 import { AccessModule } from './access/access.module';
 import { SupervisionModule } from './supervision/supervision.module';
@@ -69,6 +73,10 @@ import { HealthController } from './health/health.controller';
     FacebookModule,
     AppointmentsModule,
     TreatmentPlansModule,
+    DocumentsModule,
+    StaffAlertsModule,
+    TravelFinanceModule,
+    OperationsJobsModule,
     WarrantiesModule,
     LabOrdersModule,
     InvoicesModule,

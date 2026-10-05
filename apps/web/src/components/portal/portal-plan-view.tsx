@@ -21,17 +21,26 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 import { PlanAftercare, PlanSchedule, PlanStay } from '@/components/treatment-plans/plan-itinerary';
+import { ConsultationPatientView } from '@/components/treatment-plans/consultation-patient-view';
 import { PlanDiagnoses, PlanProcedures } from '@/components/treatment-plans/plan-summary';
 import { TimelineStepper } from '@/components/treatment-plans/timeline-stepper';
 
-import { usePortalApprove, usePortalReject, portalPdfUrl, type PortalResponse } from '@/hooks/use-portal';
+import {
+  usePortalApprove,
+  usePortalReject,
+  portalPdfUrl,
+  type PortalResponse,
+} from '@/hooks/use-portal';
 import { PortalCommentThread } from './portal-comment-thread';
 import { PortalWarrantySection } from './portal-warranty-section';
 import { formatMoney } from '@/lib/money';
 
 const fmt = formatMoney;
 
-const APPROVAL_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive'; label: string }> = {
+const APPROVAL_BADGE: Record<
+  string,
+  { variant: 'warning' | 'success' | 'destructive'; label: string }
+> = {
   PENDING: { variant: 'warning', label: 'Awaiting your decision' },
   APPROVED: { variant: 'success', label: 'Approved' },
   REJECTED: { variant: 'destructive', label: 'Declined' },
@@ -84,11 +93,14 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
           <div>
             <p className="text-lg font-semibold">{plan.title}</p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Prepared for {plan.patient.firstName} {plan.patient.lastName} · {format(new Date(plan.createdAt), 'MMM d, yyyy')}
+              Prepared for {plan.patient.firstName} {plan.patient.lastName} ·{' '}
+              {format(new Date(plan.createdAt), 'MMM d, yyyy')}
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <span className="text-lg font-semibold">{fmt(Number(plan.totalCost), plan.currency)}</span>
+            <span className="text-lg font-semibold">
+              {fmt(Number(plan.totalCost), plan.currency)}
+            </span>
             <Badge variant={approval.variant}>{approval.label}</Badge>
           </div>
         </CardHeader>
@@ -104,7 +116,9 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
 
           {plan.doctorRecommendation && (
             <div className="rounded-md border-l-2 border-primary/40 bg-muted/30 px-3 py-2">
-              <p className="text-xs font-semibold text-muted-foreground">Doctor&apos;s recommendation</p>
+              <p className="text-xs font-semibold text-muted-foreground">
+                Doctor&apos;s recommendation
+              </p>
               <p className="mt-0.5 text-sm whitespace-pre-wrap">{plan.doctorRecommendation}</p>
             </div>
           )}
@@ -118,7 +132,11 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
 
           {/* The same charts and phased pricing the printed document shows, rendered from the
               same components — a patient comparing the two should see one plan, not two. */}
-          <PlanDiagnoses plan={plan} />
+          {plan.consultation ? (
+            <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} />
+          ) : (
+            <PlanDiagnoses plan={plan} />
+          )}
 
           {plan.items.length > 0 && (
             <Link href={`/portal/${token}/animation`} className="block">
@@ -134,13 +152,17 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
             </Link>
           )}
 
-          <PlanProcedures plan={plan} />
+          {!plan.consultation && <PlanProcedures plan={plan} />}
 
           {/* The travel and aftercare pages of the printed dossier, so the link and the paper
               agree. */}
-          <PlanStay stay={plan.stay} />
-          <PlanSchedule items={plan.scheduleItems} />
-          <PlanAftercare items={plan.items} />
+          {!plan.consultation && (
+            <>
+              <PlanStay stay={plan.stay} />
+              <PlanSchedule items={plan.scheduleItems} />
+              <PlanAftercare items={plan.items} />
+            </>
+          )}
 
           <div className="space-y-2">
             <p className="text-sm font-semibold text-muted-foreground">Treatment Timeline</p>
@@ -162,7 +184,11 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
                 <Button onClick={handleApprove} disabled={approve.isPending}>
                   <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
                 </Button>
-                <Button variant="destructive" onClick={() => setRejectOpen(true)} disabled={reject.isPending}>
+                <Button
+                  variant="destructive"
+                  onClick={() => setRejectOpen(true)}
+                  disabled={reject.isPending}
+                >
                   <XCircle className="mr-2 h-4 w-4" /> Decline
                 </Button>
               </>

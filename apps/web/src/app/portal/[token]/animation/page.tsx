@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { usePortalPlan } from '@/hooks/use-portal';
+import { ConsultationPatientView } from '@/components/treatment-plans/consultation-patient-view';
 import { TreatmentAnimation } from '@/components/portal/treatment-animation';
 
 export default function PortalAnimationPage({ params }: { params: Promise<{ token: string }> }) {
@@ -50,7 +51,11 @@ export default function PortalAnimationPage({ params }: { params: Promise<{ toke
         </p>
       </div>
 
-      <TreatmentAnimation plan={plan} />
+      {plan.consultation ? (
+        <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} />
+      ) : (
+        <TreatmentAnimation plan={plan} />
+      )}
 
       <div className="flex justify-center pt-2">
         <Link href={`/portal/${token}`}>

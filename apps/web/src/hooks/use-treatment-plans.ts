@@ -20,6 +20,7 @@ export interface TreatmentPlanItem {
   brand: string | null;
   clinicalNotes: string | null;
   status: string;
+  completedAt?: string | null;
   phaseNumber: number;
   toothCondition: ToothCondition | null;
   treatmentCategory: TreatmentCategory | null;
@@ -107,6 +108,7 @@ interface AssignedStaff {
 }
 
 export interface TreatmentPlan {
+  consultation?: import('@dental-crm/shared').Consultation | null;
   id: string;
   title: string;
   status: string;
@@ -265,7 +267,11 @@ export function useCreateTreatmentPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateTreatmentPlanInput) =>
-      apiRequest('/api/treatment-plans', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
+      apiRequest(
+        '/api/treatment-plans',
+        { method: 'POST', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: ['treatment-plans', vars.patientId] }),
   });
@@ -324,9 +330,16 @@ export function useDownloadPlanPdf() {
   // `portalToken` is the raw share-link token — only available in memory right after
   // useCreateShareLink resolves (it's never persisted, only its hash is). If the caller
   // doesn't have one on hand, we still download the PDF; it just won't have a QR code.
-  return async (planId: string, fileName = `treatment-plan-${planId}.pdf`, portalToken?: string) => {
+  return async (
+    planId: string,
+    fileName = `treatment-plan-${planId}.pdf`,
+    portalToken?: string,
+  ) => {
     const query = portalToken ? `?portalToken=${encodeURIComponent(portalToken)}` : '';
-    const blob = await apiRequestBlob(`/api/treatment-plans/${planId}/pdf${query}`, accessToken ?? undefined);
+    const blob = await apiRequestBlob(
+      `/api/treatment-plans/${planId}/pdf${query}`,
+      accessToken ?? undefined,
+    );
 
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -386,7 +399,17 @@ export function useUpdateTimelineStep(patientId: string) {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ planId, stepId, ...data }: { planId: string; stepId: string; status?: string; title?: string; description?: string }) =>
+    mutationFn: ({
+      planId,
+      stepId,
+      ...data
+    }: {
+      planId: string;
+      stepId: string;
+      status?: string;
+      title?: string;
+      description?: string;
+    }) =>
       apiRequest(
         `/api/treatment-plans/${planId}/timeline-steps/${stepId}`,
         { method: 'PATCH', body: JSON.stringify(data) },

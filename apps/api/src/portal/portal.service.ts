@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { DocumentConfigurationSchema } from '@dental-crm/shared';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -10,6 +11,8 @@ import { AddPortalCommentDto } from './dto/add-portal-comment.dto';
 // phone, or address (mirrors the "generic 404, don't leak existence" posture of this whole module).
 const PORTAL_PLAN_SELECT = {
   id: true,
+  consultation: true,
+  approvedDocumentVersionId: true,
   title: true,
   status: true,
   totalCost: true,
@@ -91,7 +94,15 @@ const PORTAL_PLAN_SELECT = {
     orderBy: { phaseNumber: 'asc' as const },
   },
   timelineSteps: {
-    select: { id: true, title: true, description: true, status: true, order: true, dueDate: true, completedAt: true },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      order: true,
+      dueDate: true,
+      completedAt: true,
+    },
     orderBy: { order: 'asc' as const },
   },
   comments: {
@@ -120,7 +131,8 @@ export class PortalService {
     const link = await this.prisma.treatmentPlanShareLink.findUnique({ where: { tokenHash } });
     if (!link) throw new NotFoundException('Link not found');
     if (link.revokedAt) throw new NotFoundException('Link not found');
-    if (link.expiresAt && link.expiresAt <= new Date()) throw new NotFoundException('Link not found');
+    if (link.expiresAt && link.expiresAt <= new Date())
+      throw new NotFoundException('Link not found');
     return link;
   }
 
@@ -141,10 +153,14 @@ export class PortalService {
 
     const clinicSettings = await this.settingsService.get();
 
+    const documentConfig = DocumentConfigurationSchema.safeParse(
+      clinicSettings?.documentConfiguration ?? {},
+    );
     return {
       plan,
       clinic: {
         clinicName: clinicSettings?.clinicName ?? 'Dental Clinic',
+        coverPhoto: documentConfig.success ? (documentConfig.data.coverPhoto ?? null) : null,
         logoUrl: clinicSettings?.logoUrl ?? null,
         address: clinicSettings?.address ?? null,
         city: clinicSettings?.city ?? null,
@@ -155,10 +171,18 @@ export class PortalService {
 
   async approve(token: string) {
     const link = await this.findActiveLink(token);
-    // Mirrors treatment-plans.service.ts's update() approvedAt-sync logic exactly.
+    const document = await this.prisma.documentVersion.findFirst({
+      where: { kind: 'PLAN', sourceId: link.treatmentPlanId },
+      orderBy: { version: 'desc' },
+      select: { id: true },
+    });
     await this.prisma.treatmentPlan.update({
       where: { id: link.treatmentPlanId },
-      data: { approvalStatus: 'APPROVED', approvedAt: new Date() },
+      data: {
+        approvalStatus: 'APPROVED',
+        approvedAt: new Date(),
+        approvedDocumentVersionId: document?.id ?? null,
+      },
     });
     return { success: true };
   }
@@ -167,7 +191,12 @@ export class PortalService {
     const link = await this.findActiveLink(token);
     await this.prisma.treatmentPlan.update({
       where: { id: link.treatmentPlanId },
-      data: { approvalStatus: 'REJECTED', approvedAt: null, rejectionReason: dto.reason },
+      data: {
+        approvalStatus: 'REJECTED',
+        approvedAt: null,
+        approvedDocumentVersionId: null,
+        rejectionReason: dto.reason,
+      },
     });
     return { success: true };
   }
@@ -198,10 +227,24 @@ export class PortalService {
     });
     if (!plan) throw new NotFoundException('Link not found');
 
+    if (plan.consultation) {
+      const document = await this.prisma.documentVersion.findFirst({
+        where: {
+          kind: 'PLAN',
+          sourceId: plan.id,
+          ...(plan.approvedDocumentVersionId ? { id: plan.approvedDocumentVersionId } : {}),
+        },
+        orderBy: { version: 'desc' },
+        select: { pdfData: true },
+      });
+      if (document) return document.pdfData;
+    }
+
     const clinicSettings = await this.settingsService.get();
 
     return this.pdfService.generateTreatmentPlanPdf(plan, {
       clinicName: clinicSettings?.clinicName ?? 'Dental Clinic',
+      documentConfiguration: clinicSettings?.documentConfiguration,
       address: clinicSettings?.address,
       city: clinicSettings?.city,
       country: clinicSettings?.country,

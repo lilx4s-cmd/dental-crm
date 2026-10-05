@@ -108,19 +108,22 @@ export class TreatmentPlansController {
     // link — see pdf.service.ts's buildQrDataUrl, which already handles undefined portalUrl.
     const portalUrl = portalToken ? `${this.webBaseUrl()}/portal/${portalToken}` : undefined;
 
-    const buffer = await this.pdfService.generateTreatmentPlanPdf(
-      plan,
-      {
-        clinicName: clinicSettings?.clinicName ?? 'Dental Clinic',
-        address: clinicSettings?.address,
-        city: clinicSettings?.city,
-        country: clinicSettings?.country,
-        phone: clinicSettings?.phone,
-        email: clinicSettings?.email,
-        website: clinicSettings?.website,
-      },
-      portalUrl,
-    );
+    const buffer =
+      (await this.service.documentPdf(id)) ??
+      (await this.pdfService.generateTreatmentPlanPdf(
+        plan,
+        {
+          clinicName: clinicSettings?.clinicName ?? 'Dental Clinic',
+          documentConfiguration: clinicSettings?.documentConfiguration,
+          address: clinicSettings?.address,
+          city: clinicSettings?.city,
+          country: clinicSettings?.country,
+          phone: clinicSettings?.phone,
+          email: clinicSettings?.email,
+          website: clinicSettings?.website,
+        },
+        portalUrl,
+      ));
 
     res.set({
       'Content-Type': 'application/pdf',

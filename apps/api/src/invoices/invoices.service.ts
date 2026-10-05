@@ -120,18 +120,19 @@ export class InvoicesService {
   async recordPayment(invoiceId: string, dto: RecordPaymentDto, createdById: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      select: { total: true, status: true, payments: { select: { amount: true, status: true } } },
+      select: { total: true, currency: true, status: true, payments: { select: { amount: true, currency: true, status: true } } },
     });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status === $Enums.InvoiceStatus.PAID) throw new BadRequestException('Invoice is already fully paid');
 
+    if (invoice.payments.some(p=>p.status === $Enums.PaymentStatus.COMPLETED && p.currency!==invoice.currency))
+      throw new BadRequestException('Existing payments use different currencies; reconcile with a recorded exchange rate before adding another payment');
     const paidSoFar = invoice.payments
       .filter((p) => p.status === $Enums.PaymentStatus.COMPLETED)
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+      .reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
 
-    const newTotal = paidSoFar + dto.amount;
-    const invoiceTotal = Number(invoice.total);
-    const newStatus = newTotal >= invoiceTotal ? $Enums.InvoiceStatus.PAID : $Enums.InvoiceStatus.PARTIALLY_PAID;
+    const newTotal = paidSoFar.add(dto.amount.toString());
+    const newStatus = newTotal.gte(invoice.total) ? $Enums.InvoiceStatus.PAID : $Enums.InvoiceStatus.PARTIALLY_PAID;
 
     // One transaction. These were two unsynchronised statements: a failure between them left the
     // money recorded against an invoice still marked unpaid, which is the worst of both — the
@@ -141,7 +142,9 @@ export class InvoicesService {
         data: {
           invoiceId,
           createdById,
-          amount: dto.amount,
+          amount: new Prisma.Decimal(dto.amount.toString()),
+          currency: invoice.currency,
+          visitNumber: dto.visitNumber,
           method: dto.method as $Enums.PaymentMethod,
           status: $Enums.PaymentStatus.COMPLETED,
           paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),

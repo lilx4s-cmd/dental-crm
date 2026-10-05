@@ -51,6 +51,8 @@ function canSeeAllLeads(user) {
     return hasPermission(user, 'leads.all', user?.role === enums_1.Role.SUPER_ADMIN);
 }
 exports.ROUTE_PERMISSIONS = {
+    '/travel': 'leads.read',
+    '/operations-finance': 'finance.read',
     '/team': 'leads.assign',
     '/dashboard': 'reports.read',
     '/pipeline': 'leads.read',

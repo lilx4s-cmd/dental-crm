@@ -1,3 +1,4 @@
+import { conditionFromText } from '@dental-crm/shared';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWarrantyTemplateDto } from './dto/create-warranty-template.dto';
@@ -5,6 +6,8 @@ import { UpdateWarrantyTemplateDto } from './dto/update-warranty-template.dto';
 import { IssueWarrantyDto } from './dto/issue-warranty.dto';
 
 const WARRANTY_SELECT = {
+  lifetime: true,
+  certificateNumber: true,
   id: true,
   treatmentPlanItemId: true,
   warrantyTemplateId: true,
@@ -43,9 +46,12 @@ export class WarrantiesService {
   async createTemplate(dto: CreateWarrantyTemplateDto) {
     return this.prisma.warrantyTemplate.create({
       data: {
+        isActive: dto.isActive,
         name: dto.name,
         treatmentCategoryId: dto.treatmentCategoryId,
         durationMonths: dto.durationMonths,
+        lifetime: dto.lifetime,
+        procedureType: dto.procedureType,
         termsAndConditions: dto.termsAndConditions,
         maintenanceRequirements: dto.maintenanceRequirements,
         exclusions: dto.exclusions,
@@ -63,6 +69,8 @@ export class WarrantiesService {
         name: dto.name,
         treatmentCategoryId: dto.treatmentCategoryId,
         durationMonths: dto.durationMonths,
+        lifetime: dto.lifetime,
+        procedureType: dto.procedureType,
         termsAndConditions: dto.termsAndConditions,
         maintenanceRequirements: dto.maintenanceRequirements,
         exclusions: dto.exclusions,
@@ -81,7 +89,10 @@ export class WarrantiesService {
   }
 
   async findOne(id: string) {
-    const warranty = await this.prisma.warranty.findUnique({ where: { id }, select: WARRANTY_SELECT });
+    const warranty = await this.prisma.warranty.findUnique({
+      where: { id },
+      select: WARRANTY_SELECT,
+    });
     if (!warranty) throw new NotFoundException('Warranty not found');
     return warranty;
   }
@@ -91,34 +102,75 @@ export class WarrantiesService {
   // template, durationMonths + termsAndConditions must come from the body directly since there's
   // no fallback source for them.
   async issue(treatmentPlanItemId: string, dto: IssueWarrantyDto) {
-    const item = await this.prisma.treatmentPlanItem.findUnique({ where: { id: treatmentPlanItemId } });
+    const item = await this.prisma.treatmentPlanItem.findUnique({
+      where: { id: treatmentPlanItemId },
+    });
     if (!item) throw new NotFoundException('Treatment plan item not found');
+    if (item.status !== 'COMPLETED' || !item.completedAt)
+      throw new BadRequestException('Record the actual completion date before issuing a warranty');
 
-    let template = null as Awaited<ReturnType<typeof this.prisma.warrantyTemplate.findUnique>> | null;
+    let template = null as Awaited<
+      ReturnType<typeof this.prisma.warrantyTemplate.findUnique>
+    > | null;
     if (dto.warrantyTemplateId) {
-      template = await this.prisma.warrantyTemplate.findUnique({ where: { id: dto.warrantyTemplateId } });
+      template = await this.prisma.warrantyTemplate.findUnique({
+        where: { id: dto.warrantyTemplateId },
+      });
       if (!template) throw new NotFoundException('Warranty template not found');
+      if (!template.isActive)
+        throw new BadRequestException('Use an active clinic-approved warranty template');
+      const expected =
+        template.procedureType === 'implantCrown'
+          ? 'CROWN'
+          : template.procedureType === 'rootCanal'
+            ? 'ROOT_CANAL'
+            : template.procedureType?.toUpperCase();
+      if (
+        expected &&
+        (item.toothCondition ?? conditionFromText(undefined, item.description)) !== expected
+      )
+        throw new BadRequestException(
+          'This warranty template does not cover the selected treatment',
+        );
+      if (template.treatmentCategoryId && template.treatmentCategoryId !== item.treatmentCategoryId)
+        throw new BadRequestException(
+          'This warranty template belongs to a different treatment category',
+        );
     }
 
+    if (
+      dto.startDate &&
+      (new Date(dto.startDate) < item.completedAt || new Date(dto.startDate) > new Date())
+    )
+      throw new BadRequestException(
+        'Warranty start date must be on or after treatment completion and cannot be in the future',
+      );
     const durationMonths = dto.durationMonths ?? template?.durationMonths;
     const termsAndConditions = dto.termsAndConditions ?? template?.termsAndConditions;
 
     if (durationMonths === undefined || durationMonths === null) {
-      throw new BadRequestException('durationMonths is required when no warrantyTemplateId is given');
+      throw new BadRequestException(
+        'durationMonths is required when no warrantyTemplateId is given',
+      );
     }
     if (!termsAndConditions) {
-      throw new BadRequestException('termsAndConditions is required when no warrantyTemplateId is given');
+      throw new BadRequestException(
+        'termsAndConditions is required when no warrantyTemplateId is given',
+      );
     }
 
-    const maintenanceRequirements = dto.maintenanceRequirements ?? template?.maintenanceRequirements ?? undefined;
+    const maintenanceRequirements =
+      dto.maintenanceRequirements ?? template?.maintenanceRequirements ?? undefined;
     const exclusions = dto.exclusions ?? template?.exclusions ?? undefined;
-    const annualCheckupRequired = dto.annualCheckupRequired ?? template?.annualCheckupRequired ?? false;
+    const annualCheckupRequired =
+      dto.annualCheckupRequired ?? template?.annualCheckupRequired ?? false;
 
     const warranty = await this.prisma.warranty.create({
       data: {
         treatmentPlanItemId,
         warrantyTemplateId: dto.warrantyTemplateId,
-        startDate: dto.startDate ? new Date(dto.startDate) : new Date(),
+        startDate: dto.startDate ? new Date(dto.startDate) : item.completedAt,
+        lifetime: dto.lifetime ?? template?.lifetime ?? false,
         durationMonths,
         termsAndConditions,
         maintenanceRequirements,

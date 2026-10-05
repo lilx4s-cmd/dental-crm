@@ -54,6 +54,8 @@ export function canSeeAllLeads(
   return hasPermission(user, 'leads.all', user?.role === Role.SUPER_ADMIN);
 }
 export const ROUTE_PERMISSIONS: Record<string, string> = {
+  '/travel': 'leads.read',
+  '/operations-finance': 'finance.read',
   '/team': 'leads.assign',
   '/dashboard': 'reports.read',
   '/pipeline': 'leads.read',
