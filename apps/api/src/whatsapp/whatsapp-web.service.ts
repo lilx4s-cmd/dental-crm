@@ -213,8 +213,10 @@ class WhatsAppConnection {
         auth: state,
         // Nothing renders a terminal here; the QR goes to the browser instead.
         printQRInTerminal: false,
-        // Advertise a supported companion browser; Desktop can be refused before the first QR.
-        browser: Browsers.macOS('Chrome'),
+        // With full history enabled, Baileys forces Mac/Windows into the rejected DARWIN/WIN32
+        // web sub-platform even when their device descriptor says Chrome. Linux keeps
+        // WEB_BROWSER while still requesting the available history through requireFullSync.
+        browser: Browsers.ubuntu('Chrome'),
         // Request the history WhatsApp makes available during pairing; deduplicate replayed IDs.
         syncFullHistory: true,
       });

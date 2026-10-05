@@ -4,7 +4,7 @@ jest.mock('@whiskeysockets/baileys', () => ({
   default: jest.fn(),
   fetchLatestBaileysVersion: jest.fn(),
   fetchLatestWaWebVersion: jest.fn(),
-  Browsers: { macOS: (name: string) => ['Mac OS', name, '14.4.1'] },
+  Browsers: { ubuntu: (name: string) => ['Ubuntu', name, '22.04'] },
   DisconnectReason: { loggedOut: 401, connectionReplaced: 440, badSession: 500, forbidden: 403, multideviceMismatch: 411, restartRequired: 515, connectionClosed: 428 },
 }));
 jest.mock('./baileys-auth-state', () => ({ usePrismaAuthState: jest.fn() }));
@@ -14,6 +14,7 @@ import makeWASocket, { fetchLatestBaileysVersion, fetchLatestWaWebVersion } from
 import { WhatsAppWebService } from './whatsapp-web.service';
 import { Role } from '@dental-crm/shared';
 import { usePrismaAuthState } from './baileys-auth-state';
+import { execFileSync } from 'node:child_process';
 
 describe('QR-only work-account setup', () => {
   const user = { sub: 'staff', email: 'staff@test.invalid', role: Role.SALES_CONSULTANT };
@@ -54,9 +55,29 @@ describe('QR-only work-account setup', () => {
   it('prepares a QR for an authenticated work account without cloud tokens or server setup', async () => {
     expect(await service.ownStatus(user)).toMatchObject({ enabled: true, needsSetup: true, state: 'disconnected' });
     await service.connectOwn(user);
-    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ browser: ['Mac OS', 'Chrome', '14.4.1'], version: [2, 3000, 10], syncFullHistory: true }));
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ browser: ['Ubuntu', 'Chrome', '22.04'], version: [2, 3000, 10], syncFullHistory: true }));
     await handlers['connection.update']({ qr: 'internal-test-pairing-code' });
     expect(await service.ownStatus(user)).toMatchObject({ state: 'awaiting_scan', qrDataUrl: expect.stringMatching(/^data:image\/png;base64,/) });
+  });
+
+  it('advertises WEB_BROWSER in the real registration payload while requesting full history', async () => {
+    await service.connectOwn(user);
+    const { browser, version, syncFullHistory } = (makeWASocket as jest.Mock).mock.calls[0][0];
+    // A separate Node process loads the installed library without this suite's Jest mock.
+    // Generate disposable in-memory keys only; never open a socket or print auth material.
+    const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { DEFAULT_CONNECTION_CONFIG, generateRegistrationNode, initAuthCreds, proto } from '@whiskeysockets/baileys';
+      const config = JSON.parse(readFileSync(0, 'utf8'));
+      const payload = generateRegistrationNode(initAuthCreds(), { ...DEFAULT_CONNECTION_CONFIG, ...config });
+      const companion = proto.DeviceProps.decode(payload.devicePairingData.deviceProps);
+      process.stdout.write(JSON.stringify({
+        webSubPlatform: proto.ClientPayload.WebInfo.WebSubPlatform[payload.webInfo.webSubPlatform],
+        companionPlatform: proto.DeviceProps.PlatformType[companion.platformType],
+        fullHistory: companion.requireFullSync,
+      }));
+    `], { encoding: 'utf8', input: JSON.stringify({ browser, version, syncFullHistory }) });
+    expect(JSON.parse(result)).toEqual({ webSubPlatform: 'WEB_BROWSER', companionPlatform: 'CHROME', fullHistory: true });
   });
 
   it('uses the live WhatsApp revision instead of the older repository version', async () => {
