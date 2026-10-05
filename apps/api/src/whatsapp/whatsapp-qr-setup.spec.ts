@@ -2,14 +2,15 @@
 jest.mock('@whiskeysockets/baileys', () => ({
   __esModule: true,
   default: jest.fn(),
-  fetchLatestBaileysVersion: jest.fn().mockResolvedValue({ version: [2, 3000, 1] }),
+  fetchLatestBaileysVersion: jest.fn(),
+  fetchLatestWaWebVersion: jest.fn(),
   Browsers: { macOS: (name: string) => ['Mac OS', name, '14.4.1'] },
-  DisconnectReason: { loggedOut: 401, connectionReplaced: 440, badSession: 500, forbidden: 403, multideviceMismatch: 411, restartRequired: 515 },
+  DisconnectReason: { loggedOut: 401, connectionReplaced: 440, badSession: 500, forbidden: 403, multideviceMismatch: 411, restartRequired: 515, connectionClosed: 428 },
 }));
 jest.mock('./baileys-auth-state', () => ({ usePrismaAuthState: jest.fn() }));
 jest.mock('./whatsapp.service', () => ({ WhatsAppService: class {} }));
 
-import makeWASocket from '@whiskeysockets/baileys';
+import makeWASocket, { fetchLatestBaileysVersion, fetchLatestWaWebVersion } from '@whiskeysockets/baileys';
 import { WhatsAppWebService } from './whatsapp-web.service';
 import { Role } from '@dental-crm/shared';
 import { usePrismaAuthState } from './baileys-auth-state';
@@ -25,6 +26,8 @@ describe('QR-only work-account setup', () => {
   let accounts: { findUnique: jest.Mock; upsert: jest.Mock; updateMany: jest.Mock };
   beforeEach(() => {
     jest.clearAllMocks();
+    (fetchLatestWaWebVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, 10], isLatest: true });
+    (fetchLatestBaileysVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, 1], isLatest: true });
     (usePrismaAuthState as jest.Mock).mockResolvedValue({ state: { creds: {} }, saveCreds: jest.fn().mockResolvedValue(undefined), flush: jest.fn().mockResolvedValue(undefined), close: jest.fn().mockResolvedValue(undefined), clear: jest.fn().mockResolvedValue(undefined) });
     handlers = {};
     values = {};
@@ -51,9 +54,45 @@ describe('QR-only work-account setup', () => {
   it('prepares a QR for an authenticated work account without cloud tokens or server setup', async () => {
     expect(await service.ownStatus(user)).toMatchObject({ enabled: true, needsSetup: true, state: 'disconnected' });
     await service.connectOwn(user);
-    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ browser: ['Mac OS', 'Desktop', '14.4.1'], syncFullHistory: true }));
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ browser: ['Mac OS', 'Chrome', '14.4.1'], version: [2, 3000, 10], syncFullHistory: true }));
     await handlers['connection.update']({ qr: 'internal-test-pairing-code' });
     expect(await service.ownStatus(user)).toMatchObject({ state: 'awaiting_scan', qrDataUrl: expect.stringMatching(/^data:image\/png;base64,/) });
+  });
+
+  it('uses the live WhatsApp revision instead of the older repository version', async () => {
+    await service.connectOwn(user);
+    expect(fetchLatestWaWebVersion).toHaveBeenCalledWith({ timeout: 10_000 });
+    expect(fetchLatestBaileysVersion).not.toHaveBeenCalled();
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ version: [2, 3000, 10] }));
+  });
+
+  it('uses a fetched repository version when WhatsApp revision lookup is unavailable', async () => {
+    (fetchLatestWaWebVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, 0], isLatest: false });
+    await service.connectOwn(user);
+    expect(fetchLatestBaileysVersion).toHaveBeenCalledWith({ timeout: 10_000 });
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ version: [2, 3000, 1] }));
+  });
+
+  it('does not silently connect with stale bundled defaults when both version lookups fail', async () => {
+    (fetchLatestWaWebVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, 0], isLatest: false });
+    (fetchLatestBaileysVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, 0], isLatest: false });
+    expect(await service.connectOwn(user)).toMatchObject({ state: 'disconnected', error: expect.stringContaining('connection settings') });
+    expect(makeWASocket).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed live revision and tries the repository source', async () => {
+    (fetchLatestWaWebVersion as jest.Mock).mockResolvedValue({ version: [2, 3000, Number.NaN], isLatest: true });
+    await service.connectOwn(user);
+    expect(makeWASocket).toHaveBeenCalledWith(expect.objectContaining({ version: [2, 3000, 1] }));
+  });
+
+  it('tells the user that an early socket termination is retrying instead of leaving a raw error', async () => {
+    jest.useFakeTimers();
+    await service.connectOwn(user);
+    await handlers['connection.update']({ connection: 'close', lastDisconnect: { error: { message: 'Connection Terminated', output: { statusCode: 428 } } } });
+    expect(await service.ownStatus(user)).toMatchObject({ state: 'disconnected', error: expect.stringContaining('Retrying automatically') });
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
   });
   it('honors explicit administrator disablement for team pairing', () => {
     values['whatsapp.teamWebEnabled'] = 'false';

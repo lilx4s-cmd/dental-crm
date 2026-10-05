@@ -4,6 +4,7 @@ import { Boom } from '@hapi/boom';
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  fetchLatestWaWebVersion,
   type WASocket,
   type WAVersion,
   generateMessageID,
@@ -212,9 +213,8 @@ class WhatsAppConnection {
         auth: state,
         // Nothing renders a terminal here; the QR goes to the browser instead.
         printQRInTerminal: false,
-        // Identifies the linked device in the patient's WhatsApp app, so staff can see what it is
-        // and revoke it from the phone if they ever need to.
-        browser: Browsers.macOS('Desktop'),
+        // Advertise a supported companion browser; Desktop can be refused before the first QR.
+        browser: Browsers.macOS('Chrome'),
         // Request the history WhatsApp makes available during pairing; deduplicate replayed IDs.
         syncFullHistory: true,
       });
@@ -309,8 +309,10 @@ class WhatsAppConnection {
           // naming it the failure reads as "the code never appeared".
           this.lastError =
             code === 405
-              ? 'WhatsApp refused the connection (405). This usually means its web protocol moved on — the API fetches the current version on each attempt, so retrying, or a redeploy, normally clears it.'
-              : (lastDisconnect?.error?.message ?? 'Connection closed');
+              ? 'WhatsApp refused the connection settings. Try Get a new QR code again shortly.'
+              : code === DisconnectReason.connectionClosed
+                ? 'WhatsApp closed the connection. Retrying automatically; choose Get a new QR code to restart pairing.'
+                : (lastDisconnect?.error?.message ?? 'Connection closed');
 
           if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
             this.stopped = true;
@@ -364,29 +366,32 @@ class WhatsAppConnection {
   /**
    * The WhatsApp Web protocol version to announce when connecting.
    *
-   * Baileys bundles a version constant that goes stale as WhatsApp ships, and WhatsApp refuses a
-   * connection announcing an old one with status 405 — before emitting any QR at all. The symptom
-   * is not "version mismatch" but "the code never appears": the card sits on Connecting, the
-   * socket closes, and nothing in the flow says why. That is what was happening here; fetching the
-   * current version produced a pairing code immediately.
-   *
-   * Fetched per connect rather than cached, because the process can outlive a WhatsApp release and
-   * a reconnect is exactly when a refreshed version matters. On failure we fall back to whatever
-   * Baileys bundles: a stale version might still work, whereas refusing to start definitely does
-   * not.
+   * A stale protocol version can be refused before WhatsApp emits a QR. Read WhatsApp's live
+   * revision first. The Baileys repository can lag behind while its helper
+   * still reports isLatest: true. Both helpers resolve with bundled defaults on fetch failure,
+   * so catching rejected promises alone silently advertised a stale version to WhatsApp.
    */
-  private async currentWebVersion(): Promise<WAVersion | undefined> {
-    try {
-      const { version } = await fetchLatestBaileysVersion({ timeout: 10_000 });
-      return version;
-    } catch (e) {
-      this.logger.warn(
-        `Could not fetch the current WhatsApp Web version (${
-          e instanceof Error ? e.message : 'unknown error'
-        }) — falling back to the one bundled with Baileys.`,
-      );
-      return undefined;
+  private async currentWebVersion(): Promise<WAVersion> {
+    for (const [source, fetchVersion] of [
+      ['whatsapp', fetchLatestWaWebVersion],
+      ['baileys', fetchLatestBaileysVersion],
+    ] as const) {
+      try {
+        const result = await fetchVersion({ timeout: 10_000 });
+        if (
+          result.isLatest &&
+          result.version.length === 3 &&
+          result.version.every(part => Number.isSafeInteger(part) && part >= 0)
+        ) {
+          this.logger.log(`WhatsApp protocol version resolved from ${source}: ${result.version.join('.')}`);
+          return result.version;
+        }
+      } catch {
+        // Try the other source; neither transport errors nor credentials belong in the UI.
+      }
+      this.logger.warn(`Could not resolve a current WhatsApp protocol version from ${source}`);
     }
+    throw new ServiceUnavailableException('Could not check WhatsApp connection settings. Try Get a new QR code again shortly.');
   }
 
   private scheduleReconnect(delayMs: number) {
