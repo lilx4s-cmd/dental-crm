@@ -6,6 +6,7 @@ export type ContactSnapshot = {
   name?: string | null; notify?: string | null; verifiedName?: string | null;
   conversationTimestamp?: unknown;
   pinned?: unknown;
+  archived?: boolean | null;
 };
 
 const PREFIX = 'crm-contact:';

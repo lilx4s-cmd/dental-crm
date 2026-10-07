@@ -624,11 +624,14 @@ class WhatsAppConnection {
     const hasPin = fullChatSnapshot || contact.pinned !== undefined;
     const whatsappPinnedAt = Number.isFinite(pinMillis) && pinMillis > 0 && pinMillis <= Date.now() + 300_000
       ? new Date(pinMillis) : null;
+    const archiveData = fullChatSnapshot || contact.archived !== undefined
+      ? { isArchived: contact.archived === true } : {};
     if (rows.length === 0 && create) {
       await this.prisma.conversation.create({ data: {
         channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: threadId,
         assignedToId: this.ownerUserId, lastMessageAt,
         whatsappActivityAt: lastMessageAt, ...(hasPin ? { whatsappPinnedAt } : {}),
+        ...archiveData,
         whatsappContactName: label?.name, whatsappNameIsSaved: label?.saved ?? false,
       } });
     }
@@ -637,6 +640,7 @@ class WhatsAppConnection {
       const nameData = label && (label.saved || !row.whatsappNameIsSaved) ? { whatsappContactName: label.name, whatsappNameIsSaved: label.saved } : {};
       await this.prisma.conversation.update({ where: { id: row.id }, data: {
         ...nameData,
+        ...archiveData,
         ...(hasPin ? { whatsappPinnedAt } : {}),
         ...(lastMessageAt && (!row.whatsappActivityAt || row.whatsappActivityAt < lastMessageAt) ? { whatsappActivityAt: lastMessageAt } : {}),
         ...(rows.length === 1 && threadId !== row.externalThreadId ? { externalThreadId: threadId } : {}),

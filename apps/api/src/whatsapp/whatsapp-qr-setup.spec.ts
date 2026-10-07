@@ -237,6 +237,16 @@ describe('QR-only work-account setup', () => {
     expect(chats[1]).toMatchObject({ externalThreadId: '12025550102', whatsappActivityAt: new Date(1700000500000) });
     expect(storeSessionMessage).not.toHaveBeenCalled();
   });
+  it('matches phone archive state without contact-name or call events unarchiving a chat', async () => {
+    await service.connectOwn(user);
+    await handlers['chats.upsert']([{ id: '12025550101@s.whatsapp.net', archived: true, conversationTimestamp: 1700000000 }]);
+    expect(chats[0].isArchived).toBe(true);
+    await handlers['contacts.update']([{ id: '12025550101@s.whatsapp.net', notify: 'Profile' }]);
+    await handlers['call']([{ chatId: '12025550101@s.whatsapp.net', date: new Date(1700001000000), isGroup: false }]);
+    expect(chats[0].isArchived).toBe(true);
+    await handlers['chats.update']([{ id: '12025550101@s.whatsapp.net', archived: false }]);
+    expect(chats[0].isArchived).toBe(false);
+  });
   it('backfills saved names and phone addresses without changing another work account', async () => {
     chats.push({ id: 'old', externalThreadId: '999@lid', whatsappSessionId: 'user:staff', whatsappContactName: 'Push name', whatsappNameIsSaved: false });
     chats.push({ id: 'other', externalThreadId: '999@lid', whatsappSessionId: 'user:other', whatsappContactName: 'Other account' });
