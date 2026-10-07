@@ -1430,6 +1430,9 @@ model Conversation {
   assignedToId        String?
   assignedTo          User?               @relation("ConversationAssignee", fields: [assignedToId], references: [id])
   lastMessageAt       DateTime?
+  /// Phone activity is independent of when old history was imported into the CRM.
+  whatsappActivityAt  DateTime?
+  whatsappPinnedAt    DateTime?
   // When a member of staff last opened this thread.
   //
   // Distinct from Message.readAt, which is WhatsApp's delivery receipt — the *patient* reading

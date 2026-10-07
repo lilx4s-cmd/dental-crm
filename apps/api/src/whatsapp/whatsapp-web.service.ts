@@ -595,10 +595,17 @@ class WhatsAppConnection {
     const label = this.roster.label(jid) ?? this.roster.label(raw);
     const seconds = Number(contact.conversationTimestamp);
     const lastMessageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
+    const pinSeconds = Number(contact.pinned);
+    // Complete chat snapshots omit the pin for an unpinned chat; partial contact/name
+    // updates must leave the phone pin alone. App-state unpin events explicitly send null.
+    const hasPin = create || contact.pinned !== undefined;
+    const whatsappPinnedAt = Number.isFinite(pinSeconds) && pinSeconds > 0 && pinSeconds <= Date.now() / 1000 + 300
+      ? new Date(pinSeconds * 1000) : null;
     if (rows.length === 0 && create) {
       await this.prisma.conversation.create({ data: {
         channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: threadId,
         assignedToId: this.ownerUserId, lastMessageAt,
+        whatsappActivityAt: lastMessageAt, ...(hasPin ? { whatsappPinnedAt } : {}),
         whatsappContactName: label?.name, whatsappNameIsSaved: label?.saved ?? false,
       } });
     }
@@ -607,6 +614,8 @@ class WhatsAppConnection {
       const nameData = label && (label.saved || !row.whatsappNameIsSaved) ? { whatsappContactName: label.name, whatsappNameIsSaved: label.saved } : {};
       await this.prisma.conversation.update({ where: { id: row.id }, data: {
         ...nameData,
+        ...(hasPin ? { whatsappPinnedAt } : {}),
+        ...(lastMessageAt && (!row.whatsappActivityAt || row.whatsappActivityAt < lastMessageAt) ? { whatsappActivityAt: lastMessageAt } : {}),
         ...(rows.length === 1 && threadId !== row.externalThreadId ? { externalThreadId: threadId } : {}),
         ...(lastMessageAt && (!row.lastMessageAt || row.lastMessageAt < lastMessageAt) ? { lastMessageAt } : {}),
       } });
@@ -654,7 +663,7 @@ class WhatsAppConnection {
     if (!active()) return;
     await this.roster.persist(contact);
     if (!active()) return;
-    await this.syncChat(contact, false, active);
+    await this.syncChat({ ...contact, conversationTimestamp: msg.messageTimestamp }, false, active);
     if (!active()) return;
     this.captureError = null;
     await this.onUpdate({ lastMessageAt: new Date() });

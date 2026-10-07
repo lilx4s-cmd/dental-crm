@@ -194,6 +194,20 @@ describe('QR-only work-account setup', () => {
     await handlers['chats.upsert'](roster);
     expect(chats).toHaveLength(35);
   });
+  it('syncs phone order independently of import time and keeps live activity ahead of delayed history', async () => {
+    chats.push({ id: 'existing', externalThreadId: '12025550101', whatsappSessionId: 'user:staff', lastMessageAt: new Date(), isPinned: true });
+    await service.connectOwn(user);
+    await handlers['chats.upsert']([{ id: '12025550101@s.whatsapp.net', conversationTimestamp: 1700000000, pinned: 1699990000 }]);
+    expect(chats[0]).toMatchObject({ whatsappActivityAt: new Date(1700000000000), whatsappPinnedAt: new Date(1699990000000), isPinned: true });
+    await handlers['messages.upsert']({ type: 'notify', messages: [{ key: { remoteJid: '12025550101@s.whatsapp.net', id: 'fresh-order' }, message: { conversation: 'Reply' }, messageTimestamp: 1700001000 }] });
+    await handlers['chats.upsert']([{ id: '12025550101@s.whatsapp.net', conversationTimestamp: 1700000000, pinned: 1699990000 }]);
+    expect(chats[0].whatsappActivityAt).toEqual(new Date(1700001000000));
+    await handlers['contacts.update']([{ id: '12025550101@s.whatsapp.net', notify: 'Profile name' }]);
+    expect(chats[0].whatsappPinnedAt).toEqual(new Date(1699990000000));
+    await handlers['chats.update']([{ id: '12025550101@s.whatsapp.net', pinned: null }]);
+    expect(chats[0].whatsappPinnedAt).toBeNull();
+    expect(chats[0].isPinned).toBe(true);
+  });
   it('backfills saved names and phone addresses without changing another work account', async () => {
     chats.push({ id: 'old', externalThreadId: '999@lid', whatsappSessionId: 'user:staff', whatsappContactName: 'Push name', whatsappNameIsSaved: false });
     chats.push({ id: 'other', externalThreadId: '999@lid', whatsappSessionId: 'user:other', whatsappContactName: 'Other account' });

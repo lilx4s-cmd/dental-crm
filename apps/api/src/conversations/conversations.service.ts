@@ -68,6 +68,8 @@ const CONVERSATION_SELECT = {
   isPinned: true,
   pinnedAt: true,
   lastMessageAt: true,
+  whatsappActivityAt: true,
+  whatsappPinnedAt: true,
   lastReadAt: true,
   createdAt: true,
   patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -163,7 +165,27 @@ export class ConversationsService {
       orderBy: [{ isPinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }],
     });
 
-    const withCounts = await this.withUnreadCounts(conversations);
+    // Sort the complete result before unread filtering or the web's virtual list. A
+    // phone timestamp must beat an import-time lastMessageAt, even when it is older.
+    // Keep explicit CRM pins; phone pins additionally follow their actual pin order.
+    const ordered = conversations.map((c) => {
+      if (c.channel !== 'WHATSAPP') return c;
+      return { ...c,
+        lastMessageAt: c.whatsappActivityAt ?? c.messages?.[0]?.createdAt ?? c.lastMessageAt,
+        isPinned: c.isPinned || !!c.whatsappPinnedAt,
+        pinnedAt: c.whatsappPinnedAt ?? c.pinnedAt,
+      };
+    }).sort((a, b) => {
+      const pin = Number(b.isPinned) - Number(a.isPinned);
+      if (pin) return pin;
+      if (a.isPinned && b.isPinned && a.channel === 'WHATSAPP' && b.channel === 'WHATSAPP') {
+        const pinned = (b.pinnedAt?.getTime() ?? 0) - (a.pinnedAt?.getTime() ?? 0);
+        if (pinned) return pinned;
+      }
+      return (b.lastMessageAt?.getTime() ?? 0) - (a.lastMessageAt?.getTime() ?? 0)
+        || a.id.localeCompare(b.id);
+    });
+    const withCounts = await this.withUnreadCounts(ordered);
 
     // Filtered after counting rather than in SQL: "unread" is derived from lastReadAt against each
     // thread's messages, which is the grouped query below and not a column anything can filter on.
@@ -173,9 +195,8 @@ export class ConversationsService {
   /**
    * Pins or unpins a thread.
    *
-   * Clinic-wide, not per person — see the schema. `pinnedAt` is recorded so a future ordering can
-   * put the most recently pinned first; today they sort by last message like everything else,
-   * because a clinic with three pinned threads does not need them ranked among themselves.
+   * Clinic-wide, not per person — see the schema. An explicit CRM change overrides
+   * the last imported phone pin until WhatsApp next delivers its pin state.
    */
   async setPinned(id: string, isPinned: boolean) {
     const existing = await this.prisma.conversation.findUnique({ where: { id }, select: { id: true } });
@@ -183,7 +204,7 @@ export class ConversationsService {
 
     return this.prisma.conversation.update({
       where: { id },
-      data: { isPinned, pinnedAt: isPinned ? new Date() : null },
+      data: { isPinned, pinnedAt: isPinned ? new Date() : null, whatsappPinnedAt: null },
       select: CONVERSATION_SELECT,
     });
   }

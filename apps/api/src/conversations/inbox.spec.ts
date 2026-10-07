@@ -39,6 +39,26 @@ describe('ConversationsService — the inbox', () => {
   const orderOf = () => mockPrisma.conversation.findMany.mock.calls[0][0].orderBy;
 
   describe('ordering', () => {
+    it('uses phone activity rather than import dates, puts phone pins in pin order, and leaves undated chats last', async () => {
+      const date = (day: number) => new Date(`2026-10-${String(day).padStart(2, '0')}T12:00:00Z`);
+      const chat = (id: string, activity: Date | null, extra = {}) => ({
+        id, channel: 'WHATSAPP', isPinned: false, pinnedAt: null, lastReadAt: null,
+        lastMessageAt: date(7), whatsappActivityAt: activity, whatsappPinnedAt: null, messages: [], ...extra,
+      });
+      mockPrisma.conversation.findMany.mockResolvedValue([
+        chat('imported-old', date(1)),
+        chat('pin-earlier', date(7), { whatsappPinnedAt: date(4) }),
+        chat('undated', null, { lastMessageAt: null }),
+        chat('latest', date(6)),
+        chat('pin-later', date(2), { whatsappPinnedAt: date(5) }),
+        chat('stored-before-phone-sync', null, { messages: [{ createdAt: date(3) }] }),
+      ]);
+      const result = await service.findAll({});
+      expect(result.map(c => c.id)).toEqual(['pin-later', 'pin-earlier', 'latest', 'stored-before-phone-sync', 'imported-old', 'undated']);
+      expect(result.find(c => c.id === 'imported-old')?.lastMessageAt).toEqual(date(1));
+      expect(result[0].isPinned).toBe(true);
+    });
+
     it('floats pinned threads to the top and places undated chats last within each group', async () => {
       await service.findAll({});
       expect(orderOf()).toEqual([{ isPinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }]);
@@ -140,6 +160,7 @@ describe('ConversationsService — the inbox', () => {
       expect(mockPrisma.conversation.update.mock.calls[0][0].data).toEqual({
         isPinned: false,
         pinnedAt: null,
+        whatsappPinnedAt: null,
       });
     });
 
