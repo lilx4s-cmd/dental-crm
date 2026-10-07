@@ -357,6 +357,8 @@ enum ToothCondition {
 // ─────────────────────────── CORE / AUTH ───────────────────────────
 
 model User {
+  voiceAgent VoiceAgent?
+  voiceAttempts VoiceAttempt[]
   notificationPhone       String?           @unique
   notificationPreferences Json?
   pushDevices             PushDevice[]
@@ -738,6 +740,7 @@ model Campaign {
 }
 
 model Lead {
+  voiceAttempts VoiceAttempt[]
   travelBookings     TravelBooking[]
   assignmentRevision Int                   @default(0)
   assignmentEvents   LeadAssignmentEvent[]
@@ -1523,6 +1526,7 @@ model MessageAttachment {
 }
 
 model CallLog {
+  voiceAttempt VoiceAttempt?
   id              String        @id @default(uuid())
   patientId       String?
   patient         Patient?      @relation(fields: [patientId], references: [id])
@@ -2291,4 +2295,48 @@ model TicketExtraction {
  @@id([bookingId, fileId])
  @@index([state, requestedAt])
  @@map("ticket_extractions")
+}
+
+
+/// One short-lived browser credential per staff member. API keys never reach the browser.
+model VoiceAgent {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String
+  sipUsername String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+  @@map("voice_agents")
+}
+
+/// Durable call lifecycle; activeUserId prevents simultaneous calls from multiple tabs.
+model VoiceAttempt {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  leadId String
+  lead Lead @relation(fields: [leadId], references: [id])
+  phoneNumber String
+  status String @default("STAFF_RINGING")
+  activeUserId String? @unique
+  staffDestination String
+  staffCallId String?
+  patientCallId String?
+  patientDialUnconfirmed Boolean @default(false)
+  answeredAt DateTime?
+  endedAt DateTime?
+  failureReason String?
+  callLogId String? @unique
+  callLog CallLog? @relation(fields: [callLogId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, createdAt])
+  @@map("voice_attempts")
+}
+
+/// Inserted in the same transaction as state changes; provider retries are safe.
+model VoiceWebhookEvent {
+  id String @id
+  receivedAt DateTime @default(now())
+  @@map("voice_webhook_events")
 }

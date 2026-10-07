@@ -28,6 +28,8 @@ export const SPECIAL_PERMISSIONS = [
   ['leads.review', 'Supervise leads and review corrections'],
   ['conversations.all', 'See all work-account conversations'],
   ['conversations.supervise', 'Inspect and disconnect team WhatsApp sessions'],
+  ['calls.read', 'View calling queue and call history'],
+  ['calls.place', 'Place patient calls'],
   ['conversations.send', 'Send and retry WhatsApp messages'],
 ] as const;
 export const PERMISSION_KEYS = [
@@ -63,6 +65,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/patients': 'patients.read',
   '/inbox': 'conversations.read',
   '/whatsapp': 'conversations.read',
+  '/calling': 'calls.read',
   '/appointments': 'appointments.read',
   '/finance': 'finance.read',
   '/reports': 'reports.read',

@@ -45,6 +45,8 @@ export interface AuditRule {
 const ID = ':id';
 
 export const AUDIT_RULES: readonly AuditRule[] = [
+  { path: /^calling\/attempts$/, methods: ['POST'], entityType: 'VoiceAttempt' },
+  { path: /^calling\/attempts\/[^/]+(?:\/stop)?$/, methods: ['POST', 'PATCH'], entityType: 'VoiceAttempt', idParam: ID, action: 'UPDATE' },
   // Commands first: `ruleFor` takes the first match, so anything more specific than the
   // entity-wide rules below has to be listed above them.
   {

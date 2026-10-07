@@ -24,6 +24,7 @@ function template(supervisor: boolean) {
     'leads.write',
     'conversations.read',
     'settings.read',
+    'calls.read',
     ...(supervisor
       ? [
           'leads.all',
@@ -35,6 +36,7 @@ function template(supervisor: boolean) {
       : [
           'conversations.write',
           'conversations.send',
+          'calls.place',
           'plans.read',
           'plans.write',
           'appointments.read',

@@ -17,6 +17,7 @@ import {
   ArrowLeftRight,
   Sunrise,
   Smartphone,
+  Phone,
 } from 'lucide-react';
 import { canAccessRoute } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
@@ -36,6 +37,7 @@ const navItems = [
   { href: '/team', label: 'Sales Team', icon: ArrowLeftRight },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/inbox', label: 'Conversations', icon: MessageSquare },
+  { href: '/calling', label: 'Calling', icon: Phone },
   { href: '/whatsapp', label: 'Work WhatsApp', icon: Smartphone },
   { href: '/appointments', label: 'Appointments', icon: Calendar },
   { href: '/finance', label: 'Finance', icon: DollarSign },

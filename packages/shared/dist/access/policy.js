@@ -179,6 +179,7 @@ exports.ROUTE_ACCESS = {
     '/campaigns': exports.PIPELINE,
     '/inbox': exports.PATIENT_FACING,
     '/whatsapp': exports.PATIENT_FACING,
+    '/calling': [enums_1.Role.SUPER_ADMIN, enums_1.Role.CLINIC_MANAGER, enums_1.Role.SALES_CONSULTANT, enums_1.Role.RECEPTION],
     '/appointments': exports.SCHEDULING,
     '/finance': exports.FINANCE,
     '/reports': exports.MANAGEMENT,

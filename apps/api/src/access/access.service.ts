@@ -40,6 +40,8 @@ export class AccessService {
       if (permissions[key] && !permissions['conversations.read'])
         throw new BadRequestException('Conversation actions require view access.');
     }
+    if (permissions['calls.place'] && (!permissions['calls.read'] || !permissions['leads.read']))
+      throw new BadRequestException('Patient calling requires calling and lead view access.');
     if (permissions['conversations.supervise'] && !permissions['conversations.all'])
       throw new BadRequestException('Team supervision requires all-conversation access.');
   }

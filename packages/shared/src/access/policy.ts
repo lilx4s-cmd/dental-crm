@@ -190,6 +190,7 @@ export const ROUTE_ACCESS: Record<string, readonly Role[]> = {
   '/campaigns': PIPELINE,
   '/inbox': PATIENT_FACING,
   '/whatsapp': PATIENT_FACING,
+  '/calling': [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION],
   '/appointments': SCHEDULING,
   '/finance': FINANCE,
   '/reports': MANAGEMENT,

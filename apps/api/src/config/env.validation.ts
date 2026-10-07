@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
+  TELNYX_ENABLED: z.string().optional(),
+  TELNYX_API_KEY: z.string().optional(),
+  TELNYX_PUBLIC_KEY: z.string().optional(),
+  TELNYX_CALL_CONTROL_CONNECTION_ID: z.string().optional(),
+  TELNYX_CREDENTIAL_CONNECTION_ID: z.string().optional(),
+  TELNYX_CALLER_NUMBER: z.string().optional(),
+  TELNYX_WEBHOOK_URL: z.string().optional(),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),

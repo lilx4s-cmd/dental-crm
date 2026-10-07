@@ -44,10 +44,20 @@ async function bootstrap() {
     rateLimit({
       windowMs: 15 * 60 * 1000,
       max: 300,
+      // Calling has frequent status checks and signed provider callbacks. Keep it in
+      // its own bounded bucket so these do not consume ordinary CRM requests.
+      skip: (req) => req.path.startsWith('/api/calling/'),
       standardHeaders: true,
       legacyHeaders: false,
     }),
   );
+
+  app.use('/api/calling', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 2000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }));
 
   // Sign-in, which was the loosest door in the building: it sat under the global 300 above — the
   // same budget as browsing the app — so one address could try three hundred passwords a quarter
