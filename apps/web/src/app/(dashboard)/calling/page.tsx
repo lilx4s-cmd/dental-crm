@@ -185,6 +185,29 @@ function CallingWorkspace() {
     {statusError && <p role="alert">Could not load calling status. Please try again.</p>}
     {status && !status.ready && <div className="rounded-lg border bg-background p-4"><h2 className="font-semibold">Calling awaits clinic activation</h2><p className="mt-1 text-sm text-muted-foreground">Your Telnyx account, caller number, and secure connection need to be configured before live calls can start.</p>{user?.role === 'SUPER_ADMIN' && <a className="mt-2 inline-block text-sm text-primary underline" href="https://portal.telnyx.com/" target="_blank" rel="noopener noreferrer">Open Telnyx account setup</a>}</div>}
     {status && !status.canPlaceCalls && <p className="text-sm text-muted-foreground">Your profile can review calling activity. Calls are placed by authorized sales or reception staff.</p>}
+    <details className="rounded-lg border bg-background p-4">
+      <summary className="cursor-pointer font-semibold">How to call a patient manually</summary>
+      <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+        <li>Sign in with an authorized sales or reception profile and open Calling. Use a headset and keep this page open during the call.</li>
+        <li>Press Connect headset and allow microphone access when your browser asks.</li>
+        <li>Find and select your assigned patient, then press Call patient.</li>
+        <li>Press Answer headset when the CRM rings you. The patient’s regular phone is dialed after you answer.</li>
+        <li>Press End call, choose the outcome, add notes or a follow-up date, and press Save call outcome.</li>
+        <li>Leave Call next patient after saving unchecked for manual calling. Use Open WhatsApp chat to follow up separately.</li>
+      </ol>
+      <p className="mt-3 text-sm text-muted-foreground">If the call button is disabled, check clinic activation, your access profile, headset connection, and patient selection. If you cannot hear the patient, check your headset volume and the Patient call audio control. If microphone access was denied, allow it in your browser’s settings for this CRM and reconnect.</p>
+    </details>
+    {user?.role === 'SUPER_ADMIN' && <details className="rounded-lg border bg-background p-4">
+      <summary className="cursor-pointer font-semibold">Clinic activation instructions</summary>
+      <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+        <li>Create and verify the clinic’s Telnyx account, add billing, and obtain a US or Canadian caller number.</li>
+        <li>Set up the browser staff connection and Voice API application in Telnyx using the setup guide below.</li>
+        <li>Add the Telnyx credentials and connection settings securely in the API hosting settings. Credentials cannot be entered on this CRM page.</li>
+        <li>Enable calling after configuration, then test with a clinic-owned phone number before calling patients.</li>
+        <li>Staff need calling and lead access. Owners and managers review activity; authorized sales or reception profiles place calls.</li>
+      </ol>
+      <a className="mt-3 inline-block text-sm text-primary underline" href="https://github.com/lilx4s-cmd/dental-crm/blob/main/docs/TELNYX_CALLING.md" target="_blank" rel="noopener noreferrer">Open full Telnyx setup guide</a>
+    </details>}
     {status?.canPlaceCalls && <div className="flex flex-wrap items-center gap-3"><Button onClick={connect} disabled={!canCall || connected || connecting || !!client.current}>{connecting ? 'Connecting…' : connected ? 'Headset connected' : 'Connect headset'}</Button><Button variant="outline" onClick={disconnect} disabled={active || (!connected && !client.current)}>Disconnect headset</Button>{status.callerNumber && <span className="text-sm text-muted-foreground">Caller number: {status.callerNumber}</span>}</div>}
     <audio ref={remoteAudio} autoPlay controls className="h-8 w-full max-w-sm" aria-label="Patient call audio" />
     <div className="grid gap-4 lg:grid-cols-2">
