@@ -2323,6 +2323,8 @@ model VoiceAttempt {
   staffCallId String?
   patientCallId String?
   patientDialUnconfirmed Boolean @default(false)
+  recordingStatus String @default("NONE")
+  recordingConsentAt DateTime?
   answeredAt DateTime?
   endedAt DateTime?
   failureReason String?

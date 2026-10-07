@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createPublicKey, verify } from 'crypto';
 export function commandId(attemptId: string, action: string) {
@@ -72,6 +72,23 @@ export class TelnyxProvider {
       if (result.data?.is_alive === false) return;
       throw error;
     }
+  }
+  async record(id: string, callId: string, stop = false) {
+    const result = await this.request(`/calls/${encodeURIComponent(callId)}/actions/${stop ? 'record_stop' : 'record_start'}`, {
+      command_id: commandId(id, stop ? 'record-stop' : 'record-start'),
+      ...(!stop ? { format: 'mp3', channels: 'dual', play_beep: true, max_length: 900, transcription: false } : {}),
+    }) as { data?: { result?: string } };
+    if (result.data?.result !== 'ok') throw new CallingProviderError('Recording command was not confirmed.', true);
+  }
+  async recordingUrl(callId: string) {
+    const query = new URLSearchParams({ 'filter[call_control_id]': callId, 'filter[connection_id]': this.value('TELNYX_CALL_CONTROL_CONNECTION_ID'), 'page[size]': '20' });
+    const result = await this.request(`/recordings?${query}`, undefined, 'GET') as { data?: { call_control_id?: string; connection_id?: string; status?: string; download_urls?: { mp3?: string } }[] };
+    const row = result.data?.find(item => item.call_control_id === callId && item.connection_id === this.value('TELNYX_CALL_CONTROL_CONNECTION_ID') && item.status === 'completed');
+    const url = row?.download_urls?.mp3;
+    if (!url) throw new NotFoundException('Recording is not available yet, or has expired from Telnyx storage.');
+    try { const parsed = new URL(url); if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error('invalid'); }
+    catch { throw new ServiceUnavailableException('Calling service returned an invalid recording link.'); }
+    return url;
   }
   verifyWebhook(raw: Buffer | undefined, timestamp: string | undefined, signature: string | undefined) {
     if (!raw || !timestamp || !signature || !/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) throw new BadRequestException('Invalid calling webhook.');

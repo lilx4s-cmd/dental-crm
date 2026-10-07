@@ -33,3 +33,22 @@ describe('Telnyx connection safety', () => {
     expect(p.request).toHaveBeenCalledWith('/telephony_credentials/credential/token');
   });
 });
+
+it('records both directions with a beep and stable commands, without transcription', async () => {
+  const p = provider(); jest.spyOn(p, 'request').mockResolvedValue({ data: { result: 'ok' } });
+  await p.record('attempt', 'patient/call');
+  expect(p.request).toHaveBeenCalledWith('/calls/patient%2Fcall/actions/record_start', expect.objectContaining({ format: 'mp3', channels: 'dual', play_beep: true, transcription: false, command_id: commandId('attempt', 'record-start') }));
+  await p.record('attempt', 'patient/call', true);
+  expect(p.request).toHaveBeenLastCalledWith('/calls/patient%2Fcall/actions/record_stop', { command_id: commandId('attempt', 'record-stop') });
+});
+it('does not return another call’s recording even if provider ignores its filter', async () => {
+  const p = provider({ TELNYX_CALL_CONTROL_CONNECTION_ID: 'connection' });
+  jest.spyOn(p, 'request').mockResolvedValue({ data: [{ call_control_id: 'other', connection_id: 'connection', status: 'completed', download_urls: { mp3: 'https://example.org/other' } }] });
+  await expect(p.recordingUrl('patient-call')).rejects.toThrow('not available');
+  expect(p.request).toHaveBeenCalledWith(expect.stringContaining('filter%5Bcall_control_id%5D=patient-call'), undefined, 'GET');
+});
+it('returns a refreshed HTTPS recording link only for the matching completed call', async () => {
+  const p = provider({ TELNYX_CALL_CONTROL_CONNECTION_ID: 'connection' });
+  jest.spyOn(p, 'request').mockResolvedValue({ data: [{ call_control_id: 'patient-call', connection_id: 'connection', status: 'completed', download_urls: { mp3: 'https://example.org/private?signature=temporary' } }] });
+  expect(await p.recordingUrl('patient-call')).toContain('https://example.org/private');
+});

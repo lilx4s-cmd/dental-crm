@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 
 type QueueRow = { id: string; name: string; phone: string; canCall: boolean; lastCall: { occurredAt: string; outcome: string } | null };
 type Status = { ready: boolean; configured: boolean; enabled: boolean; canPlaceCalls: boolean; callerNumber: string | null };
-type Attempt = { userId: string; id: string; leadId: string; phoneNumber: string; status: string; answeredAt: string | null; failureReason: string | null; callLog: { outcome: string; notes: string | null; durationSeconds: number } | null };
+type Attempt = { userId: string; id: string; leadId: string; phoneNumber: string; status: string; recordingStatus?: string; recordingConsentAt?: string | null; answeredAt: string | null; failureReason: string | null; callLog: { outcome: string; notes: string | null; durationSeconds: number } | null };
 const terminal = (status?: string) => !!status && ['ENDED', 'FAILED', 'CANCELLED'].includes(status);
 const labels: Record<string, string> = { STAFF_RINGING: 'Answer on your headset to dial the patient', PATIENT_RINGING: 'Patient is ringing', PATIENT_CONNECTING: 'Waiting for patient call confirmation', CONNECTED: 'Connected', CANCELLING: 'Cancelling call…', ENDED: 'Call ended', FAILED: 'Call failed', CANCELLED: 'Call ended by staff' };
 
@@ -40,6 +40,9 @@ function CallingWorkspace() {
   const [outcome, setOutcome] = useState('ANSWERED');
   const [followUp, setFollowUp] = useState('');
   const [advance, setAdvance] = useState(false);
+  const [recordingConsent, setRecordingConsent] = useState(false);
+  const [playback, setPlayback] = useState<{ id: string; url: string } | null>(null);
+  const [loadingRecording, setLoadingRecording] = useState<string | null>(null);
   const client = useRef<TelnyxRTC | null>(null);
   const call = useRef<Call | null>(null);
   const currentAttempt = useRef<string | null>(null);
@@ -134,7 +137,7 @@ function CallingWorkspace() {
   async function dial(row = selected, fromQueue = false) {
     if (!row || !row.canCall || !connected || !canCall || (busy && !fromQueue) || currentAttempt.current) return;
     const id = crypto.randomUUID(); currentAttempt.current = id;
-    setBusy(true); setSelected(row); setAttemptId(id); setNotes(''); setFollowUp(''); setMuted(false);
+    setBusy(true); setSelected(row); setAttemptId(id); setNotes(''); setFollowUp(''); setMuted(false); setRecordingConsent(false); setPlayback(null);
     try {
       const result = await request<Attempt>('attempts', { method: 'POST', body: JSON.stringify({ id, leadId: row.id }) });
       queryClient.setQueryData(['calling-attempt', scope, id], result);
@@ -161,6 +164,26 @@ function CallingWorkspace() {
       void queryClient.invalidateQueries({ queryKey: ['calling-history', scope] });
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not confirm the call ended. Try again.'); }
     finally { setBusy(false); }
+  }
+  async function record(stopRecording = false) {
+    if (!attemptId || busy || (!stopRecording && !recordingConsent)) return;
+    setBusy(true);
+    try {
+      const result = await request<Attempt>(`attempts/${attemptId}/recording${stopRecording ? '/stop' : ''}`, { method: 'POST', ...(!stopRecording ? { body: JSON.stringify({ consent: true }) } : {}) });
+      queryClient.setQueryData(['calling-attempt', scope, attemptId], result);
+      void queryClient.invalidateQueries({ queryKey: ['calling-history', scope] });
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not confirm recording status.'); }
+    finally { setBusy(false); }
+  }
+  async function listen(id: string) {
+    if (loadingRecording || active) return;
+    setLoadingRecording(id); setPlayback(null);
+    const ownGeneration = generation.current;
+    try {
+      const result = await request<{ url: string }>(`attempts/${id}/recording`, { cache: 'no-store' });
+      if (mounted.current && ownGeneration === generation.current) setPlayback({ id, url: result.url });
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Recording is not available yet. Try again later.'); }
+    finally { if (mounted.current) setLoadingRecording(null); }
   }
   async function save() {
     if (!attemptId || !terminal(attempt?.status)) return;
@@ -192,10 +215,12 @@ function CallingWorkspace() {
         <li>Press Connect headset and allow microphone access when your browser asks.</li>
         <li>Find and select your assigned patient, then press Call patient.</li>
         <li>Press Answer headset when the CRM rings you. The patient’s regular phone is dialed after you answer.</li>
+        <li>To record, ask the patient’s permission after connecting, check Patient agreed to recording, then press Start recording. A beep marks the start. Recording stops when the call ends, or press Stop recording sooner.</li>
         <li>Press End call, choose the outcome, add notes or a follow-up date, and press Save call outcome.</li>
         <li>Leave Call next patient after saving unchecked for manual calling. Use Open WhatsApp chat to follow up separately.</li>
       </ol>
       <p className="mt-3 text-sm text-muted-foreground">If the call button is disabled, check clinic activation, your access profile, headset connection, and patient selection. If you cannot hear the patient, check your headset volume and the Patient call audio control. If microphone access was denied, allow it in your browser’s settings for this CRM and reconnect.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Use Listen to recording in Recent call activity after the call. Audio is stored by Telnyx and may take time to process. Recording and storage may add provider charges.</p>
     </details>
     {user?.role === 'SUPER_ADMIN' && <details className="rounded-lg border bg-background p-4">
       <summary className="cursor-pointer font-semibold">Clinic activation instructions</summary>
@@ -204,6 +229,7 @@ function CallingWorkspace() {
         <li>Set up the browser staff connection and Voice API application in Telnyx using the setup guide below.</li>
         <li>Add the Telnyx credentials and connection settings securely in the API hosting settings. Credentials cannot be entered on this CRM page.</li>
         <li>Enable calling after configuration, then test with a clinic-owned phone number before calling patients.</li>
+        <li>For call recordings, confirm Telnyx recording/storage charges and set the clinic’s retention period in Telnyx. Test both voices, the start beep, and playback.</li>
         <li>Staff need calling and lead access. Owners and managers review activity; authorized sales or reception profiles place calls.</li>
       </ol>
       <a className="mt-3 inline-block text-sm text-primary underline" href="https://github.com/lilx4s-cmd/dental-crm/blob/main/docs/TELNYX_CALLING.md" target="_blank" rel="noopener noreferrer">Open full Telnyx setup guide</a>
@@ -220,10 +246,15 @@ function CallingWorkspace() {
       <section className="space-y-4 rounded-lg border bg-background p-4"><h2 className="font-semibold">{selected?.name ?? 'Select a patient'}</h2>{selected && <p>{selected.phone}</p>}
         {status?.canPlaceCalls && <div className="flex flex-wrap gap-2"><Button onClick={() => dial()} disabled={!canCall || !connected || !selected?.canCall || active || busy}><Phone className="mr-2 h-4 w-4" />Call patient</Button>{incoming && <Button onClick={answer} disabled={busy}>Answer headset</Button>}{active && <><Button variant="destructive" onClick={stop} disabled={busy}><PhoneOff className="mr-2 h-4 w-4" />End call</Button><Button variant="outline" disabled={!call.current || incoming} onClick={() => { if (muted) call.current?.unmuteAudio(); else call.current?.muteAudio(); setMuted(!muted); }}>{muted ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}{muted ? 'Unmute' : 'Mute'}</Button></>}</div>}
         {attemptId && <p role="status">{labels[attempt?.status ?? 'STAFF_RINGING'] ?? 'Checking call status…'}</p>}{attempt?.failureReason && <p role="alert" className="text-sm">{attempt.failureReason}</p>}{attemptError && <p role="alert" className="text-sm">Call status is unavailable. End the call before trying another patient.</p>}
+        {status?.canPlaceCalls && attempt?.status === 'CONNECTED' && <div className="space-y-2 rounded border p-3">
+          {(!attempt.recordingStatus || ['NONE', 'FAILED', 'REQUESTED'].includes(attempt.recordingStatus)) && <><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={recordingConsent} onChange={event => setRecordingConsent(event.target.checked)} />Patient agreed to recording</label><Button variant="outline" disabled={busy || !recordingConsent} onClick={() => record()}>{attempt.recordingStatus === 'REQUESTED' ? 'Check recording request' : 'Start recording'}</Button></>}
+          {['RECORDING', 'REQUESTED', 'STOPPING', 'ERROR'].includes(attempt.recordingStatus ?? '') && <Button variant="outline" disabled={busy} onClick={() => record(true)}>Stop recording</Button>}
+          <p className="text-sm" role="status">{attempt.recordingStatus === 'RECORDING' ? 'Recording is active' : attempt.recordingStatus === 'REQUESTED' ? 'Recording confirmation is delayed. Recording may be active; retry the request or stop recording.' : attempt.recordingStatus === 'STOPPING' ? 'Recording stop is not confirmed. Retry Stop recording or end the call.' : attempt.recordingStatus === 'STOPPED' ? 'Recording stopped' : ['FAILED', 'ERROR'].includes(attempt.recordingStatus ?? '') ? 'Recording failed. Check Telnyx configuration; stop recording or end the call.' : 'Recording is off until the patient agrees and you start it.'}</p>
+        </div>}
         {selected && <a className="inline-block text-sm text-primary underline" href={`https://wa.me/${selected.phone.slice(1)}`} target="_blank" rel="noopener noreferrer">Open WhatsApp chat</a>}
         {status?.canPlaceCalls && terminal(attempt?.status) && <div className="space-y-3"><div><Label htmlFor="call-outcome">Call outcome</Label><select id="call-outcome" className="mt-1 w-full rounded border bg-background p-2" value={outcome} onChange={event => setOutcome(event.target.value)}>{['ANSWERED', 'MISSED', 'VOICEMAIL', 'BUSY', 'FAILED'].map(value => <option key={value} value={value}>{value.toLowerCase()}</option>)}</select></div><div><Label htmlFor="call-notes">Notes</Label><textarea id="call-notes" className="mt-1 min-h-24 w-full rounded border bg-background p-2" maxLength={2000} value={notes} onChange={event => setNotes(event.target.value)} /></div><div><Label htmlFor="call-follow-up">Follow-up date (optional)</Label><Input id="call-follow-up" type="datetime-local" value={followUp} onChange={event => setFollowUp(event.target.value)} /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={advance} onChange={event => setAdvance(event.target.checked)} />Call next patient after saving</label><Button onClick={save} disabled={busy}>Save call outcome</Button></div>}
       </section>
     </div>
-    <section className="rounded-lg border bg-background p-4"><h2 className="mb-3 font-semibold">Recent call activity</h2>{!history.length && <p className="text-sm text-muted-foreground">No calls recorded yet.</p>}<ul className="space-y-2">{history.map(row => <li key={row.id} className="border-b py-2 text-sm"><span>{row.phoneNumber} · {labels[row.status] ?? row.status}</span>{row.callLog && <span> · {row.callLog.outcome.toLowerCase()} · {row.callLog.durationSeconds}s</span>}{row.callLog?.notes && <p className="text-muted-foreground">{row.callLog.notes}</p>}</li>)}</ul></section>
+    <section className="rounded-lg border bg-background p-4"><h2 className="mb-3 font-semibold">Recent call activity</h2>{!history.length && <p className="text-sm text-muted-foreground">No calls recorded yet.</p>}<ul className="space-y-2">{history.map(row => <li key={row.id} className="border-b py-2 text-sm"><span>{row.phoneNumber} · {labels[row.status] ?? row.status}</span>{row.callLog && <span> · {row.callLog.outcome.toLowerCase()} · {row.callLog.durationSeconds}s</span>}{row.callLog?.notes && <p className="text-muted-foreground">{row.callLog.notes}</p>}{row.recordingConsentAt && row.recordingStatus !== 'NONE' && <div className="mt-2"><Button variant="outline" size="sm" disabled={active || !!loadingRecording} onClick={() => listen(row.id)}>{loadingRecording === row.id ? 'Loading recording…' : 'Listen to recording'}</Button>{playback?.id === row.id && <audio controls preload="none" src={playback.url} className="mt-2 w-full max-w-sm" aria-label="Saved call recording" onError={() => { setPlayback(null); toast.error('Recording playback failed. Press Listen to recording to refresh the link.'); }} />}</div>}</li>)}</ul></section>
   </div>;
 }

@@ -38,3 +38,13 @@ Automated tests use example numbers and mocked provider calls. A real audio brid
 - https://developers.telnyx.com/docs/voice/webrtc/use-cases/outbound-dialer
 - https://developers.telnyx.com/docs/development/api-fundamentals/webhooks/receiving-webhooks
 - https://telnyx.com/pricing/voice-api
+
+## Call recording
+
+Recording controls are available to authorized callers during a connected patient call. Ask the patient for permission, check **Patient agreed to recording**, then press **Start recording**. Telnyx plays a start beep and records both directions as a dual-channel MP3. Press **Stop recording**, or end the call to stop it. One recording segment is supported per call; recording does not restart after Stop recording.
+
+The consent timestamp and request status are saved on the existing call attempt. Network timeouts show an uncertain status; retry uses the same provider command identifier. Ending the call also ends provider recording. No recording starts automatically and transcription is disabled.
+
+After processing, **Listen to recording** in Recent call activity retrieves a fresh provider download link through an authenticated endpoint. Staff can access recordings of their own calls on currently assigned leads; owners and authorized managers can review under existing management visibility. Links are not stored in the CRM database or returned in history, and playback responses are not cached. Audio remains in Telnyx storage, so clinic administrators must configure retention/access there and confirm any recording/storage charges. No permanent public recording URLs are enabled by the CRM. If a recording has expired or been removed, the CRM reports it unavailable.
+
+Before rollout, test patient and staff audio channels, start beep, stopping, playback, and storage retention with a clinic-owned number. Confirm the clinic’s recording consent procedure for the countries involved. Existing calls are not retroactively recorded.

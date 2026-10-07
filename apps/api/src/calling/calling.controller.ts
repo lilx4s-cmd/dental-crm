@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, RawBodyRequest, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, RawBodyRequest, Req } from '@nestjs/common';
 import { Request } from 'express';
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Equals, IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { ALL_STAFF, JwtPayload } from '@dental-crm/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -18,6 +18,9 @@ class SaveCallDto {
   @IsString() @MaxLength(2000) @IsOptional() notes?: string;
   @IsDateString() @IsOptional() followUpAt?: string;
 }
+class RecordingDto {
+  @IsBoolean() @Equals(true) consent: boolean;
+}
 @Controller('calling')
 @Roles(...CALL_ROLES)
 export class CallingController {
@@ -28,6 +31,9 @@ export class CallingController {
   @Post('session') @Permission('calls.place') @Roles('SALES_CONSULTANT', 'RECEPTION') session(@CurrentUser() user: JwtPayload) { return this.service.session(user); }
   @Post('attempts') @Permission('calls.place') @Roles('SALES_CONSULTANT', 'RECEPTION') start(@Body() dto: StartCallDto, @CurrentUser() user: JwtPayload) { return this.service.start(dto.id, dto.leadId, user); }
   @Get('attempts/:id') @Permission('calls.read') attempt(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) { return this.service.findAttempt(id, user); }
+  @Post('attempts/:id/recording') @Permission('calls.place') @Roles('SALES_CONSULTANT', 'RECEPTION') record(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RecordingDto, @CurrentUser() user: JwtPayload) { return this.service.record(id, dto.consent, user); }
+  @Post('attempts/:id/recording/stop') @Permission('calls.place') @Roles('SALES_CONSULTANT', 'RECEPTION') stopRecording(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) { return this.service.record(id, false, user, true); }
+  @Get('attempts/:id/recording') @Permission('calls.read') @Header('Cache-Control', 'no-store') recording(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) { return this.service.recording(id, user); }
   @Post('attempts/:id/stop') @Roles(...ALL_STAFF) stop(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) { return this.service.stop(id, user); }
   @Patch('attempts/:id') @Permission('calls.place') @Roles('SALES_CONSULTANT', 'RECEPTION') save(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveCallDto, @CurrentUser() user: JwtPayload) { return this.service.save(id, dto, user); }
 }

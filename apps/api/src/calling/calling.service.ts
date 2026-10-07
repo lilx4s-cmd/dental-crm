@@ -5,7 +5,7 @@ import { CallOutcome, Prisma, VoiceAttempt } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertPlaceCalls, callableNumber, canPlaceCalls, TERMINAL } from './calling.policy';
 import { CallingProviderError, TelnyxProvider } from './telnyx.provider';
-const ATTEMPT_SELECT = { id: true, leadId: true, userId: true, phoneNumber: true, status: true, answeredAt: true, endedAt: true, failureReason: true, createdAt: true, callLog: { select: { outcome: true, notes: true, durationSeconds: true } } } as const;
+const ATTEMPT_SELECT = { id: true, leadId: true, userId: true, phoneNumber: true, status: true, recordingStatus: true, recordingConsentAt: true, answeredAt: true, endedAt: true, failureReason: true, createdAt: true, callLog: { select: { outcome: true, notes: true, durationSeconds: true } } } as const;
 type Tx = Prisma.TransactionClient;
 function duplicate(error: unknown) { return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'; }
 function eventDate(value: unknown): Date | null {
@@ -142,6 +142,33 @@ export class CallingService {
       return { saved: true };
     });
   }
+  async record(id: string, consent: boolean, user: JwtPayload, stop = false) {
+    assertPlaceCalls(user); this.provider.assertReady();
+    await this.findAttempt(id, user);
+    if (!stop && consent !== true) throw new BadRequestException('Confirm the patient agreed before recording.');
+    await this.locked(id, async (tx, attempt) => {
+      await this.assertLead(attempt.leadId, user);
+      if (attempt.status !== 'CONNECTED' || !attempt.patientCallId) throw new ConflictException('Recording requires a connected patient call.');
+      if (stop && !['REQUESTED', 'RECORDING', 'STOPPING', 'ERROR'].includes(attempt.recordingStatus)) return;
+      if (!stop && ['RECORDING', 'STOPPED', 'STOPPING', 'ERROR'].includes(attempt.recordingStatus)) return;
+      // Store consent and intent even if the provider acknowledgement is delayed.
+      await tx.voiceAttempt.update({ where: { id }, data: stop ? { recordingStatus: 'STOPPING' } : { recordingConsentAt: attempt.recordingConsentAt ?? new Date(), recordingStatus: 'REQUESTED' } });
+      try {
+        await this.provider.record(id, attempt.patientCallId, stop);
+        await tx.voiceAttempt.update({ where: { id }, data: { recordingStatus: stop ? 'STOPPED' : 'RECORDING' } });
+      } catch (error) {
+        await tx.voiceAttempt.update({ where: { id }, data: { recordingStatus: stop ? 'STOPPING' : error instanceof CallingProviderError && !error.unconfirmed ? 'FAILED' : 'REQUESTED' } });
+      }
+    });
+    return this.findAttempt(id, user);
+  }
+  async recording(id: string, user: JwtPayload) {
+    if (!hasPermission(user, 'calls.read', true) || !hasPermission(user, 'leads.read', ['SUPER_ADMIN', 'SALES_CONSULTANT', 'RECEPTION'].includes(user.role))) throw new NotFoundException('Recording not found.');
+    const management = ['SUPER_ADMIN', 'CLINIC_MANAGER'].includes(user.role) && canSeeAllLeads(user);
+    const attempt = await this.prisma.voiceAttempt.findFirst({ where: { id, ...(management ? {} : { userId: user.sub, lead: { assignedToId: user.sub, mergedIntoId: null } }) } });
+    if (!attempt?.patientCallId || !attempt.recordingConsentAt || attempt.recordingStatus === 'NONE') throw new NotFoundException('Recording not found.');
+    return { url: await this.provider.recordingUrl(attempt.patientCallId) };
+  }
   async webhook(body: unknown) {
     const data = (body as { data?: { id?: string; event_type?: string; occurred_at?: string; payload?: Record<string, unknown> } })?.data;
     if (!data?.id || typeof data.id !== 'string' || data.id.length > 100 || !data.payload || !data.event_type || !eventDate(data.occurred_at)) throw new BadRequestException('Invalid calling event.');
@@ -160,6 +187,12 @@ export class CallingService {
         const leg = state.leg;
         const storedId = leg === 'staff' ? attempt.staffCallId : attempt.patientCallId;
         if (storedId && storedId !== callId) throw new BadRequestException('Call identifier mismatch.');
+        // Recording callbacks do not carry the dial destination and can arrive after hangup.
+        if (data.event_type === 'call.recording.error') {
+          if (leg === 'patient' && storedId === callId && attempt.recordingConsentAt) await tx.voiceAttempt.update({ where: { id }, data: { recordingStatus: 'ERROR' } });
+          return;
+        }
+        if (data.event_type?.startsWith('call.recording.')) return;
         if (p.to !== (leg === 'staff' ? attempt.staffDestination : attempt.phoneNumber)) throw new BadRequestException('Call destination mismatch.');
         if (TERMINAL.includes(attempt.status)) {
           if (data.event_type !== 'call.hangup') await this.provider.hangup(id, callId);
