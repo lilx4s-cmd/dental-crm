@@ -158,9 +158,9 @@ export class ConversationsService {
     const conversations = await this.prisma.conversation.findMany({
       where,
       select: CONVERSATION_SELECT,
-      // Pinned first, then most recently spoken. A pin that did not float the thread to the top
-      // would be a flag, not a pin.
-      orderBy: [{ isPinned: 'desc' }, { lastMessageAt: 'desc' }],
+      // Pinned first, then most recently spoken. Imported chats without a timestamp stay
+      // after dated chats within each pin group while their history is still arriving.
+      orderBy: [{ isPinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }],
     });
 
     const withCounts = await this.withUnreadCounts(conversations);

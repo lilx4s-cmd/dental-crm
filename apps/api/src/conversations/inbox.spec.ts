@@ -39,10 +39,9 @@ describe('ConversationsService — the inbox', () => {
   const orderOf = () => mockPrisma.conversation.findMany.mock.calls[0][0].orderBy;
 
   describe('ordering', () => {
-    it('floats pinned threads to the top', async () => {
-      // A pin that did not move the thread up would be a flag, not a pin.
+    it('floats pinned threads to the top and places undated chats last within each group', async () => {
       await service.findAll({});
-      expect(orderOf()).toEqual([{ isPinned: 'desc' }, { lastMessageAt: 'desc' }]);
+      expect(orderOf()).toEqual([{ isPinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }]);
     });
 
     it('hides archived threads unless asked', async () => {
