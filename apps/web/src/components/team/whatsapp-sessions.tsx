@@ -27,6 +27,8 @@ type Session = {
   historyReceived?: boolean;
   messageEventsSeen?: number;
   captureError?: string | null;
+  pendingLiveMessages?: number;
+  pendingHistoryItems?: number;
   syncingContacts?: boolean;
   contactSyncError?: string | null;
   state: 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
@@ -102,6 +104,8 @@ export function WhatsAppSessions() {
           <div className="flex items-center gap-3"><Badge variant={data.state === 'connected' ? 'success' : 'secondary'}>{stateLabels[data.state]}</Badge>{data.linkedNumber && <span>+{data.linkedNumber}</span>}</div>
           <div className="rounded-lg border p-3 text-sm"><strong>Saved chats: {data.storedConversations ?? 0}</strong> · Messages: {data.storedMessages ?? 0}<p className="mt-1 text-xs text-muted-foreground">{data.historyReceived ? 'WhatsApp chat history received.' : data.state === 'connected' ? 'Phone linked. Waiting for WhatsApp to provide chat history or new messages.' : 'Chat capture starts after the phone is linked.'}{typeof data.messageEventsSeen === 'number' && ` ${data.messageEventsSeen} message events received since this connection started.`}</p></div>
           {data.captureError && <p className="text-sm text-destructive" role="alert">{data.captureError}</p>}
+          {!!data.pendingHistoryItems && <p role="status" className="text-sm">Importing older chats and messages: {data.pendingHistoryItems} items remaining. New messages are saved first.</p>}
+          {!!data.pendingLiveMessages && <p role="status" className="text-sm">Saving {data.pendingLiveMessages} new messages…</p>}
           {data.contactSyncError && <p className="text-sm text-destructive" role="alert">{data.contactSyncError}</p>}
           {data.syncingContacts && <p role="status" className="text-sm">Syncing saved contact names… You can keep using the CRM.</p>}
           {!data.enabled && <p className="text-sm text-muted-foreground">Your administrator has disabled work WhatsApp linking.</p>}

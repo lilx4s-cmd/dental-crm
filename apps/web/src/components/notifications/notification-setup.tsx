@@ -147,10 +147,10 @@ export function NotificationSetup({ always = false }: { always?: boolean }) {
       <h2 className="font-semibold">Phone notifications</h2>
       <p>Enable notifications to receive new lead alerts and follow-up reminders on your phone.</p>
       {state === 'install' && (
-        <p>
+        <div className="space-y-2"><p>
           Open in Safari → Share → Add to Home Screen → Open the CRM icon. Then enable notifications
           here.
-        </p>
+        </p><Link href="/install" className="inline-flex min-h-11 items-center text-primary underline">Show iPhone installation steps</Link></div>
       )}
       {!ios && (
         <p className="text-sm text-muted-foreground">

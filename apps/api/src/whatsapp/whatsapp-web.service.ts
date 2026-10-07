@@ -17,6 +17,7 @@ import { usePrismaAuthState } from './baileys-auth-state';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtPayload, Role, hasPermission } from '@dental-crm/shared';
 import { ContactRoster, contactJid, ContactSnapshot } from './contact-roster';
+import { IngestionQueue } from './ingestion-queue';
 
 export type WebConnectionState = 'disabled' | 'disconnected' | 'connecting' | 'awaiting_scan' | 'connected';
 
@@ -100,7 +101,7 @@ class WhatsAppConnection {
   private readonly roster: ContactRoster;
   private syncingContacts: Promise<void> | null = null;
   private contactSyncError: string | null = null;
-  private ingestionQueue: Promise<void> = Promise.resolve();
+  private ingestionQueue = new IngestionQueue();
   private historyReceived = false;
   private messageEventsSeen = 0;
   private captureError: string | null = null;
@@ -139,6 +140,8 @@ class WhatsAppConnection {
       historyReceived: this.historyReceived,
       messageEventsSeen: this.messageEventsSeen,
       captureError: this.captureError,
+      pendingLiveMessages: this.ingestionQueue.pending('live'),
+      pendingHistoryItems: this.ingestionQueue.pending('history'),
       syncingContacts: !!this.syncingContacts,
       contactSyncError: this.contactSyncError,
     };
@@ -354,7 +357,7 @@ class WhatsAppConnection {
         this.queueRoster(chats, sock, true);
         return this.queueMessages(messages, sock);
       });
-      sock.ev.on('messages.upsert', ({ messages }) => this.queueMessages(messages, sock));
+      sock.ev.on('messages.upsert', ({ messages, type }) => this.queueMessages(messages, sock, type !== 'append'));
     } catch (e) {
       if (generation !== this.generation) return;
       this.state = 'disconnected';
@@ -447,8 +450,8 @@ class WhatsAppConnection {
     this.lastError = null;
     // Finish any already-started message save in the background. Old batches are guarded by
     // their socket and generation; a slow import must not block sign-out or the next connection.
-    void this.ingestionQueue.catch(() => undefined);
-    this.ingestionQueue = Promise.resolve();
+    void this.ingestionQueue.idle().catch(() => undefined);
+    this.ingestionQueue = new IngestionQueue();
     await this.onUpdate({ autoReconnect: false, linkedNumber: null, disconnectedAt: new Date() });
     const savedAuth = this.clearAuth ? null : await usePrismaAuthState(this.prisma, this.sessionId);
     wasLinked ||= !!savedAuth?.state.creds.me?.id || !!savedAuth?.state.creds.registered;
@@ -495,7 +498,7 @@ class WhatsAppConnection {
     this.cancelReconnect();
     try { this.socket?.end(undefined); } catch { /* Credentials still need to finish saving. */ }
     this.socket = null;
-    await this.ingestionQueue;
+    await this.ingestionQueue.idle();
     await this.closeAuth?.();
   }
 
@@ -530,7 +533,7 @@ class WhatsAppConnection {
       await sock.authState.keys.set({ 'app-state-sync-version': { critical_unblock_low: null } });
       if (this.stopped || this.socket !== sock || generation !== this.generation) return;
       await sock.resyncAppState(['critical_unblock_low'], false);
-      await this.ingestionQueue;
+      await this.ingestionQueue.idle();
       if (this.stopped || this.socket !== sock || generation !== this.generation) return;
       const synced = await sock.authState.keys.get('app-state-sync-version', ['critical_unblock_low']);
       if (!synced.critical_unblock_low) throw new ServiceUnavailableException('WhatsApp has not shared its contact names yet. Keep the phone online and retry.');
@@ -563,22 +566,18 @@ class WhatsAppConnection {
     if (this.stopped || this.socket !== sock) return Promise.resolve();
     const generation = this.generation;
     const active = () => !this.stopped && this.socket === sock && generation === this.generation;
-    this.ingestionQueue = this.ingestionQueue.then(async () => {
-      for (const contact of contacts) {
+    return this.ingestionQueue.enqueue(contacts, async contact => {
+      if (!active()) return;
+      try {
+        await this.roster.persist(contact);
         if (!active()) return;
-        try {
-          await this.roster.persist(contact);
-          if (!active()) return;
-          await this.syncChat(contact, create, active);
-        }
-        catch (e) {
-          if (!active()) return;
-          this.captureError = 'Some WhatsApp chats could not be saved. Check the connection status and retry.';
-          this.logger.error(`Failed to capture WhatsApp chat: ${(e as Error).message}`);
-        }
+        await this.syncChat(contact, create, active);
+      } catch (e) {
+        if (!active()) return;
+        this.captureError = 'Some WhatsApp chats could not be saved. Check the connection status and retry.';
+        this.logger.error(`Failed to capture WhatsApp chat: ${(e as Error).message}`);
       }
-    });
-    return this.ingestionQueue;
+    }, 'history');
   }
 
   private async syncChat(contact: ContactSnapshot, create: boolean, active: () => boolean) {
@@ -614,22 +613,19 @@ class WhatsAppConnection {
     }
   }
 
-  private queueMessages(messages: Parameters<WhatsAppConnection['ingest']>[0][], sock: WASocket) {
+  private queueMessages(messages: Parameters<WhatsAppConnection['ingest']>[0][], sock: WASocket, live = false) {
     if (this.stopped || this.socket !== sock) return Promise.resolve();
     const generation = this.generation;
     const active = () => !this.stopped && this.socket === sock && generation === this.generation;
     this.messageEventsSeen += messages.length;
-    this.ingestionQueue = this.ingestionQueue.then(async () => {
-      for (const msg of messages) {
+    return this.ingestionQueue.enqueue(messages, async msg => {
+      if (!active()) return;
+      await this.ingest(msg, active).catch((e) => {
         if (!active()) return;
-        await this.ingest(msg, active).catch((e) => {
-          if (!active()) return;
-          this.captureError = 'WhatsApp delivered a message, but the CRM could not save it. Retry linking or contact support.';
-          this.logger.error(`Failed to capture WhatsApp message: ${(e as Error).message}`);
-        });
-      }
-    });
-    return this.ingestionQueue;
+        this.captureError = 'WhatsApp delivered a message, but the CRM could not save it. Retry linking or contact support.';
+        this.logger.error(`Failed to capture WhatsApp message: ${(e as Error).message}`);
+      });
+    }, live ? 'live' : 'history');
   }
 
   private async ingest(msg: { key: { remoteJid?: string | null; remoteJidAlt?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; messageTimestamp?: unknown; pushName?: string | null }, active: () => boolean) {

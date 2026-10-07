@@ -149,7 +149,31 @@ describe('QR-only work-account setup', () => {
       handlers['messaging-history.set']({ contacts: [], messages: [{ key: { remoteJid: '12025550101@s.whatsapp.net', id: 'history' }, message: { conversation: 'Old' } }] }),
       handlers['messages.upsert']({ type: 'notify', messages: [{ key: { remoteJid: 'group@g.us', id: 'group' }, message: { conversation: 'Group' } }, { key: { remoteJid: '12025550101@s.whatsapp.net', id: 'live' }, message: { conversation: 'New' } }] }),
     ]);
-    expect(storeSessionMessage.mock.calls.map(call => call[2])).toEqual(['history', 'live']);
+    expect(storeSessionMessage.mock.calls.map(call => call[2])).toEqual(['live', 'history']);
+  });
+  it('saves a live reply before the rest of a blocked history import without concurrent writes', async () => {
+    await service.connectOwn(user);
+    let release!: () => void;
+    let started!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const firstStarted = new Promise<void>(resolve => { started = resolve; });
+    let writing = 0;
+    let maxWriting = 0;
+    storeSessionMessage.mockImplementation(async (_phone, _body, id) => {
+      maxWriting = Math.max(maxWriting, ++writing);
+      if (id === 'history-1') { started(); await blocked; }
+      writing -= 1;
+    });
+    const message = (id: string) => ({ key: { remoteJid: '12025550101@s.whatsapp.net', id }, message: { conversation: id } });
+    const history = handlers['messaging-history.set']({ messages: [message('history-1'), message('history-2')] });
+    await firstStarted;
+    const live = handlers['messages.upsert']({ type: 'notify', messages: [message('live-reply')] });
+    expect(await service.ownStatus(user)).toMatchObject({ pendingLiveMessages: 1, pendingHistoryItems: 2 });
+    release();
+    await Promise.all([history, live]);
+    expect(storeSessionMessage.mock.calls.map(call => call[2])).toEqual(['history-1', 'live-reply', 'history-2']);
+    expect(maxWriting).toBe(1);
+    expect(await service.ownStatus(user)).toMatchObject({ pendingLiveMessages: 0, pendingHistoryItems: 0 });
   });
   it('reports a capture failure separately from connection status without leaking database errors', async () => {
     await service.connectOwn(user);

@@ -43,7 +43,29 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(() => client.clear());
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return this.getAttribute('role') === 'listitem' ? 76 : 600; } });
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 360 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 360 });
+  HTMLElement.prototype.getBoundingClientRect = () => ({ width: 360, height: 76, top: 0, left: 0, bottom: 76, right: 360, x: 0, y: 0, toJSON: () => ({}) });
+});
 function view() { return <QueryClientProvider client={client}><InboxPage /></QueryClientProvider>; }
+
+it('keeps a large account accessible without mounting thousands of chat rows', async () => {
+  const chats = Array.from({ length: 2554 }, (_, index) => ({ ...ownChat, id: `chat-${index}`, whatsappContactName: `Contact ${index}` }));
+  (apiRequest as jest.Mock).mockImplementation((path: string) => path.startsWith('/api/conversations?') ? Promise.resolve(chats) : fixtureRequest(path));
+  render(view());
+  expect(await screen.findByText('Contact 0')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Chats 2554' })).toBeInTheDocument();
+  const rows = screen.getAllByRole('listitem');
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.length).toBeLessThan(40);
+  expect(screen.queryByText('Contact 2500')).not.toBeInTheDocument();
+  fireEvent.scroll(screen.getByRole('list', { name: 'WhatsApp chats' }), { target: { scrollTop: 190000 } });
+  expect(await screen.findByText('Contact 2500')).toBeInTheDocument();
+  expect(screen.getAllByRole('listitem').length).toBeLessThan(40);
+});
 
 it('opens only the signed-in user’s work account and displays the linked number', async () => {
   render(view());

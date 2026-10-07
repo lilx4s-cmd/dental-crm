@@ -3,6 +3,7 @@
 import { hasPermission } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { apiRequest } from '@/lib/api-client';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -254,6 +255,36 @@ function MessageBubble({
             </Button>}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ConversationList({ conversations, selectedId, onSelect }: {
+  conversations: ConversationSummary[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: conversations.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 76,
+    overscan: 6,
+    initialRect: { width: 360, height: 600 },
+    getItemKey: index => conversations[index].id,
+  });
+  return (
+    <div ref={scrollRef} role="list" tabIndex={0} aria-label="WhatsApp chats" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map(item => {
+          const conv = conversations[item.index];
+          return <div key={item.key} data-index={item.index} ref={virtualizer.measureElement}
+            role="listitem" aria-posinset={item.index + 1} aria-setsize={conversations.length}
+            className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${item.start}px)` }}>
+            <ConversationRow conv={conv} selected={conv.id === selectedId} onClick={() => onSelect(conv.id)} />
+          </div>;
+        })}
       </div>
     </div>
   );
@@ -558,7 +589,10 @@ function InboxView() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              {conversations?.length && !isLoading && scopeReady && !listQuery.isError ? (
+                <ConversationList key={`${sessionFilter ?? ''}:${leadFilter ?? ''}:${channel ?? ''}:${debouncedSearch}:${unreadOnly}:${unassignedOnly}:${archived}`}
+                  conversations={conversations} selectedId={activeThreadId} onSelect={setSelectedId} />
+              ) : <div className="min-h-0 flex-1 overflow-y-auto">
               {isLoading
                 || !scopeReady ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 m-2 rounded-lg" />)
                 : listQuery.isError
@@ -598,15 +632,8 @@ function InboxView() {
                     )}
                   </div>
                 )
-                : conversations?.map((conv) => (
-                    <ConversationRow
-                      key={conv.id}
-                      conv={conv}
-                      selected={conv.id === activeThreadId}
-                      onClick={() => setSelectedId(conv.id)}
-                    />
-                  ))}
-              </div>
+                : null}
+              </div>}
             </div>
 
             <div className={cn("flex-1 min-w-0", !activeThreadId && "hidden md:block")}>

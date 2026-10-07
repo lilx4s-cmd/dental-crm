@@ -5,6 +5,7 @@ import { useAuth } from '@/context/auth-context';
 import { CommandPalette } from './command-palette';
 import { ThemeToggle } from './theme-toggle';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -37,6 +38,7 @@ export function Topbar() {
 
       <CommandPalette />
       <div className="flex items-center gap-3">
+        <Link href="/install" className="inline-flex min-h-11 items-center rounded-md px-2 text-sm text-primary hover:bg-muted">Install CRM</Link>
         <ThemeToggle />
         {user && (
           <div className="flex items-center gap-3">

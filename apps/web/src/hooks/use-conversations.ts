@@ -95,7 +95,7 @@ export function useConversations(filters: InboxFilters | string = {}, enabled = 
     enabled: enabled && !!accessToken,
     // The inbox is a screen people leave open, so it polls. Kept even while a search is active:
     // a reply arriving to a thread that matches the search should still appear.
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
     // Keep search results steady within one account, but never show the previous account's
     // chats under a newly selected number while its request is still loading.
     placeholderData: (previous, previousQuery) => {
