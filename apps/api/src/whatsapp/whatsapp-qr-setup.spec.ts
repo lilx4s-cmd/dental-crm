@@ -212,7 +212,7 @@ describe('QR-only work-account setup', () => {
     chats.push({ id: 'pinned', externalThreadId: '12025550101', whatsappSessionId: 'user:staff' });
     await service.connectOwn(user);
     const sock = (makeWASocket as jest.Mock).mock.results[0].value;
-    sock.resyncAppState.mockImplementation(async () => handlers['chats.update']([{ id: '12025550101@s.whatsapp.net', pinned: 1700000000 }]));
+    sock.resyncAppState.mockImplementation(async () => handlers['chats.update']([{ id: '12025550101@s.whatsapp.net', pinned: 1700000000000 }]));
     await handlers['connection.update']({ connection: 'open' });
     await sock.resyncAppState.mock.results[0].value;
     expect(sock.authState.keys.set).toHaveBeenCalledWith({ 'app-state-sync-version': { regular_low: null } });

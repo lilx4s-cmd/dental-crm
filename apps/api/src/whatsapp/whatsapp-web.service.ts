@@ -617,11 +617,13 @@ class WhatsAppConnection {
     const seconds = Number(contact.conversationTimestamp);
     const lastMessageAt = Number.isFinite(seconds) && seconds > 0 && seconds <= Date.now() / 1000 + 300 ? new Date(seconds * 1000) : undefined;
     const pinSeconds = Number(contact.pinned);
+    // History snapshots use seconds; app-state pin actions carry Date.now() in ms.
+    const pinMillis = pinSeconds >= 1_000_000_000_000 ? pinSeconds : pinSeconds * 1000;
     // Complete chat snapshots omit the pin for an unpinned chat; partial contact/name
     // updates must leave the phone pin alone. App-state unpin events explicitly send null.
     const hasPin = fullChatSnapshot || contact.pinned !== undefined;
-    const whatsappPinnedAt = Number.isFinite(pinSeconds) && pinSeconds > 0 && pinSeconds <= Date.now() / 1000 + 300
-      ? new Date(pinSeconds * 1000) : null;
+    const whatsappPinnedAt = Number.isFinite(pinMillis) && pinMillis > 0 && pinMillis <= Date.now() + 300_000
+      ? new Date(pinMillis) : null;
     if (rows.length === 0 && create) {
       await this.prisma.conversation.create({ data: {
         channel: 'WHATSAPP', whatsappSessionId: this.sessionId, externalThreadId: threadId,
