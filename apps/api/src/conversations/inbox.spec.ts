@@ -51,7 +51,7 @@ describe('ConversationsService — the inbox', () => {
         chat('undated', null, { lastMessageAt: null }),
         chat('latest', date(6)),
         chat('pin-later', date(2), { whatsappPinnedAt: date(5) }),
-        chat('stored-before-phone-sync', null, { messages: [{ createdAt: date(3) }] }),
+        chat('stored-before-phone-sync', null, { lastMessageAt: null, messages: [{ createdAt: date(3) }] }),
       ]);
       const result = await service.findAll({});
       expect(result.map(c => c.id)).toEqual(['pin-later', 'pin-earlier', 'latest', 'stored-before-phone-sync', 'imported-old', 'undated']);
@@ -62,6 +62,13 @@ describe('ConversationsService — the inbox', () => {
     it('floats pinned threads to the top and places undated chats last within each group', async () => {
       await service.findAll({});
       expect(orderOf()).toEqual([{ isPinned: 'desc' }, { lastMessageAt: { sort: 'desc', nulls: 'last' } }]);
+    });
+    it('keeps a phone call newer than the text preview ahead of yesterday’s text chat', async () => {
+      mockPrisma.conversation.findMany.mockResolvedValue([
+        { id: 'text', channel: 'WHATSAPP', isPinned: false, lastReadAt: null, lastMessageAt: new Date('2026-10-06T12:00:00Z'), messages: [] },
+        { id: 'call', channel: 'WHATSAPP', isPinned: false, lastReadAt: null, lastMessageAt: new Date('2026-10-07T02:28:00Z'), messages: [{ createdAt: new Date('2026-10-05T12:00:00Z') }] },
+      ]);
+      expect((await service.findAll({})).map(c => c.id)).toEqual(['call', 'text']);
     });
 
     it('hides archived threads unless asked', async () => {

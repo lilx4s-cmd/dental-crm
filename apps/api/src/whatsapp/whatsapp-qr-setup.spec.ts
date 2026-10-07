@@ -208,6 +208,35 @@ describe('QR-only work-account setup', () => {
     expect(chats[0].whatsappPinnedAt).toBeNull();
     expect(chats[0].isPinned).toBe(true);
   });
+  it('replays cached phone pins on reconnect without logging out or clearing pairing keys', async () => {
+    chats.push({ id: 'pinned', externalThreadId: '12025550101', whatsappSessionId: 'user:staff' });
+    await service.connectOwn(user);
+    const sock = (makeWASocket as jest.Mock).mock.results[0].value;
+    sock.resyncAppState.mockImplementation(async () => handlers['chats.update']([{ id: '12025550101@s.whatsapp.net', pinned: 1700000000 }]));
+    await handlers['connection.update']({ connection: 'open' });
+    await sock.resyncAppState.mock.results[0].value;
+    expect(sock.authState.keys.set).toHaveBeenCalledWith({ 'app-state-sync-version': { regular_low: null } });
+    expect(sock.resyncAppState).toHaveBeenCalledWith(['regular_low'], false);
+    expect(chats[0].whatsappPinnedAt).toEqual(new Date(1700000000000));
+    expect(sock.logout).not.toHaveBeenCalled();
+    await handlers['connection.update']({ connection: 'open' });
+    expect(sock.resyncAppState).toHaveBeenCalledTimes(1);
+  });
+  it('includes calls and reactions in activity without inventing texts or losing a phone pin', async () => {
+    chats.push({ id: 'call-chat', externalThreadId: '12025550101', whatsappSessionId: 'user:staff', whatsappPinnedAt: new Date(1699990000000) });
+    await service.connectOwn(user);
+    await handlers['call']([{ chatId: '12025550101@s.whatsapp.net', date: new Date(1700000000000), isGroup: false }]);
+    expect(chats[0].whatsappActivityAt).toEqual(new Date(1700000000000));
+    expect(chats[0].whatsappPinnedAt).toEqual(new Date(1699990000000));
+    await handlers['messages.upsert']({ type: 'notify', messages: [
+      { key: { remoteJid: '12025550101@s.whatsapp.net', id: 'reaction' }, message: { reactionMessage: { text: '👍' } }, messageTimestamp: 1700001000 },
+      { key: { remoteJid: '12025550102@s.whatsapp.net', id: 'missed-call' }, messageStubType: 40, messageTimestamp: 1700000500 },
+      { key: { remoteJid: '12025550101@s.whatsapp.net', id: 'receipt' }, message: { protocolMessage: {} }, messageTimestamp: 1700002000 },
+    ] });
+    expect(chats[0].whatsappActivityAt).toEqual(new Date(1700001000000));
+    expect(chats[1]).toMatchObject({ externalThreadId: '12025550102', whatsappActivityAt: new Date(1700000500000) });
+    expect(storeSessionMessage).not.toHaveBeenCalled();
+  });
   it('backfills saved names and phone addresses without changing another work account', async () => {
     chats.push({ id: 'old', externalThreadId: '999@lid', whatsappSessionId: 'user:staff', whatsappContactName: 'Push name', whatsappNameIsSaved: false });
     chats.push({ id: 'other', externalThreadId: '999@lid', whatsappSessionId: 'user:other', whatsappContactName: 'Other account' });
@@ -292,7 +321,7 @@ describe('QR-only work-account setup', () => {
     const sock = (makeWASocket as jest.Mock).mock.results[0].value;
     sock.resyncAppState.mockImplementation(async () => handlers['contacts.upsert']([{ id: '12025550101@s.whatsapp.net', name: 'Name from phone' }]));
     await service.syncOwnContacts(user);
-    await sock.resyncAppState.mock.results[0].value;
+    await sock.resyncAppState.mock.results.at(-1).value;
     expect(sock.resyncAppState).toHaveBeenCalledWith(['critical_unblock_low'], false);
     expect(sock.logout).not.toHaveBeenCalled();
     expect(chats[0].whatsappContactName).toBe('Name from phone');
@@ -420,6 +449,7 @@ describe('QR-only work-account setup', () => {
     await handlers['connection.update']({ connection: 'open' });
     const sock = (makeWASocket as jest.Mock).mock.results[0].value;
     sock.authState.creds.myAppStateKeyId = undefined;
+    sock.authState.keys.set.mockClear();
     await expect(service.syncOwnContacts(user)).rejects.toThrow('still syncing');
     expect(sock.authState.keys.set).not.toHaveBeenCalled();
     expect(sock.logout).not.toHaveBeenCalled();

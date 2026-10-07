@@ -224,6 +224,22 @@ class WhatsAppConnection {
         syncFullHistory: true,
       });
       this.socket = sock;
+      let pinsRequested = false;
+      const restorePhonePins = () => {
+        if (pinsRequested || this.state !== 'connected' || !sock.authState.creds.myAppStateKeyId) return;
+        pinsRequested = true;
+        // Existing linked devices already cached this collection before CRM stored pins.
+        // Replay the phone's read-only pin snapshot; retain identity and pairing keys.
+        void (async () => {
+          await sock.authState.keys.set({ 'app-state-sync-version': { regular_low: null } });
+          if (this.stopped || this.socket !== sock || generation !== this.generation) return;
+          await sock.resyncAppState(['regular_low'], false);
+        })().catch(() => {
+          if (this.stopped || this.socket !== sock || generation !== this.generation) return;
+          pinsRequested = false;
+          this.logger.warn('Could not replay WhatsApp chat pins; they will retry on the next connection update.');
+        });
+      };
 
       sock.ev.on('creds.update', async (update) => {
         if (!this.stopped && this.socket === sock && generation === this.generation) {
@@ -233,6 +249,7 @@ class WhatsAppConnection {
             this.lastError = 'Could not save the WhatsApp connection. Retry connecting before closing this page.';
             this.logger.error(`Could not persist WhatsApp credentials (${this.sessionId})`);
           });
+          restorePhonePins();
         }
       });
 
@@ -264,6 +281,7 @@ class WhatsAppConnection {
           await this.onUpdate({ linkedNumber: this.linkedNumber, connectedAt: new Date(), autoReconnect: true });
           if (this.stopped || this.socket !== sock || generation !== this.generation) return;
           this.logger.log(`WhatsApp Web connected (${this.sessionId})`);
+          restorePhonePins();
         }
 
         if (connection === 'close') {
@@ -358,6 +376,9 @@ class WhatsAppConnection {
         return this.queueMessages(messages, sock);
       });
       sock.ev.on('messages.upsert', ({ messages, type }) => this.queueMessages(messages, sock, type !== 'append'));
+      sock.ev.on('call', (calls) => this.queueRoster(calls.filter(call => !call.isGroup).map(call => ({
+        id: call.chatId, conversationTimestamp: call.date.getTime() / 1000,
+      })), sock, true, false));
     } catch (e) {
       if (generation !== this.generation) return;
       this.state = 'disconnected';
@@ -562,7 +583,7 @@ class WhatsAppConnection {
    * Work-phone outgoing messages are captured as OUTBOUND. CRM send echoes are skipped.
    */
   /** Imports the chat roster even when WhatsApp supplies no messages for an older chat. */
-  private queueRoster(contacts: ContactSnapshot[], sock: WASocket, create: boolean) {
+  private queueRoster(contacts: ContactSnapshot[], sock: WASocket, create: boolean, fullChatSnapshot = create) {
     if (this.stopped || this.socket !== sock) return Promise.resolve();
     const generation = this.generation;
     const active = () => !this.stopped && this.socket === sock && generation === this.generation;
@@ -571,7 +592,7 @@ class WhatsAppConnection {
       try {
         await this.roster.persist(contact);
         if (!active()) return;
-        await this.syncChat(contact, create, active);
+        await this.syncChat(contact, create, active, fullChatSnapshot);
       } catch (e) {
         if (!active()) return;
         this.captureError = 'Some WhatsApp chats could not be saved. Check the connection status and retry.';
@@ -580,7 +601,7 @@ class WhatsAppConnection {
     }, 'history');
   }
 
-  private async syncChat(contact: ContactSnapshot, create: boolean, active: () => boolean) {
+  private async syncChat(contact: ContactSnapshot, create: boolean, active: () => boolean, fullChatSnapshot = create) {
     if (!active()) return;
     const raw = [contact.id, contact.pnJid, contact.jid, contact.lidJid, contact.lid].map(contactJid).find(Boolean) ?? '';
     const jid = this.roster.resolve(raw) ?? raw;
@@ -598,7 +619,7 @@ class WhatsAppConnection {
     const pinSeconds = Number(contact.pinned);
     // Complete chat snapshots omit the pin for an unpinned chat; partial contact/name
     // updates must leave the phone pin alone. App-state unpin events explicitly send null.
-    const hasPin = create || contact.pinned !== undefined;
+    const hasPin = fullChatSnapshot || contact.pinned !== undefined;
     const whatsappPinnedAt = Number.isFinite(pinSeconds) && pinSeconds > 0 && pinSeconds <= Date.now() / 1000 + 300
       ? new Date(pinSeconds * 1000) : null;
     if (rows.length === 0 && create) {
@@ -637,7 +658,7 @@ class WhatsAppConnection {
     }, live ? 'live' : 'history');
   }
 
-  private async ingest(msg: { key: { remoteJid?: string | null; remoteJidAlt?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; messageTimestamp?: unknown; pushName?: string | null }, active: () => boolean) {
+  private async ingest(msg: { key: { remoteJid?: string | null; remoteJidAlt?: string | null; fromMe?: boolean | null; id?: string | null }; message?: unknown; messageTimestamp?: unknown; messageStubType?: number | null; pushName?: string | null }, active: () => boolean) {
     if (!active()) return;
     if (msg.key.id && this.sentIds.has(msg.key.id)) return;
 
@@ -650,7 +671,16 @@ class WhatsAppConnection {
     if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
 
     const body = this.extractText(msg.message);
-    if (!body) return;
+    if (!body) {
+      // Calls and reactions affect the phone's chat activity without being a new
+      // patient text. Preserve their timestamp without creating fake chat messages.
+      const content = msg.message as Record<string, unknown> | undefined;
+      const callStub = [40, 41, 45, 46].includes(msg.messageStubType ?? -1);
+      if (callStub || content?.call || content?.callLogMesssage || content?.reactionMessage) {
+        await this.syncChat({ ...contact, conversationTimestamp: msg.messageTimestamp }, callStub || !!content?.call || !!content?.callLogMesssage, active, false);
+      }
+      return;
+    }
 
     // Without an id the message cannot be deduplicated, so a reconnect would store it again.
     if (!msg.key.id) return;

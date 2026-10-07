@@ -171,7 +171,9 @@ export class ConversationsService {
     const ordered = conversations.map((c) => {
       if (c.channel !== 'WHATSAPP') return c;
       return { ...c,
-        lastMessageAt: c.whatsappActivityAt ?? c.messages?.[0]?.createdAt ?? c.lastMessageAt,
+        // Previously saved chat timestamps also include phone calls. A text-only
+        // preview must not demote a chat whose latest activity was a call.
+        lastMessageAt: c.whatsappActivityAt ?? c.lastMessageAt ?? c.messages?.[0]?.createdAt,
         isPinned: c.isPinned || !!c.whatsappPinnedAt,
         pinnedAt: c.whatsappPinnedAt ?? c.pinnedAt,
       };
