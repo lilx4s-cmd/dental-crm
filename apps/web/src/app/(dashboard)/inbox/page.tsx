@@ -2,6 +2,8 @@
 
 import { hasPermission } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/api-client';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -53,6 +55,13 @@ const CHANNEL_LABELS: Record<string, string> = {
   EMAIL: 'Email',
   SMS: 'SMS',
   IN_APP: 'In-app',
+};
+
+type InboxSession = {
+  sessionId: string;
+  linkedNumber: string | null;
+  state: string;
+  user?: { firstName: string; lastName: string };
 };
 
 const CHANNEL_COLORS: Record<string, 'success' | 'info' | 'secondary' | 'warning' | 'default'> = {
@@ -419,6 +428,28 @@ function InboxView() {
   // from a lead, instead of dropping them at an inbox they then have to search.
   const params = useSearchParams();
   const router = useRouter();
+  const { user, accessToken } = useAuth();
+  const manager = hasPermission(user, 'conversations.supervise', user?.role === 'SUPER_ADMIN' || user?.role === 'CLINIC_MANAGER');
+  const ownSessionId = user ? `user:${user.sub}` : undefined;
+  const leadFilter = params.get('lead');
+  const selectedParam = params.get('c');
+  const requestedSession = params.get('session');
+  const directThread = useConversation(selectedParam ?? '');
+  const sessionFilter = requestedSession ?? directThread.data?.whatsappSessionId ?? (leadFilter ? undefined : ownSessionId);
+  const scopeReady = !!user && (!selectedParam || !!requestedSession || directThread.isSuccess || directThread.isError);
+  const mine = useQuery<InboxSession>({
+    queryKey: ['whatsapp-session', user?.sub],
+    queryFn: () => apiRequest('/api/whatsapp/sessions/me', {}, accessToken ?? undefined),
+    enabled: !!accessToken,
+    refetchInterval: 15_000,
+  });
+  const team = useQuery<InboxSession[]>({
+    queryKey: ['whatsapp-team', user?.sub],
+    queryFn: () => apiRequest('/api/whatsapp/sessions', {}, accessToken ?? undefined),
+    enabled: manager && !!accessToken,
+    refetchInterval: 15_000,
+  });
+  const selectedAccount = sessionFilter === ownSessionId ? mine.data : team.data?.find(account => account.sessionId === sessionFilter);
   const [channel, setChannel] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -435,27 +466,46 @@ function InboxView() {
 
   const listQuery = useConversations({
     channel,
-    whatsappSessionId: params.get('session') ?? undefined,
-    leadId: params.get('lead') ?? undefined,
+    whatsappSessionId: sessionFilter,
+    leadId: leadFilter ?? undefined,
     search: debouncedSearch,
     unreadOnly,
     unassignedOnly,
     isArchived: archived,
-  });
+  }, scopeReady);
   const { data: conversations, isLoading } = listQuery;
   const [selectedId, setSelectedId] = useState<string | null>(params.get('c'));
-  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly || archived || !!params.get('session') || !!params.get('lead');
-  const sessionFilter = params.get('session');
-  const leadFilter = params.get('lead');
-  const selectedParam = params.get('c');
+  const filtering = !!debouncedSearch.trim() || unreadOnly || unassignedOnly || archived || !!leadFilter;
   useEffect(() => { setSelectedId(selectedParam); }, [sessionFilter, leadFilter, selectedParam]);
+  const activeThreadId = selectedId && (
+    conversations?.some(conversation => conversation.id === selectedId && (!sessionFilter || conversation.whatsappSessionId === sessionFilter)) ||
+    (selectedId === selectedParam && directThread.data?.id === selectedId && (!sessionFilter || directThread.data.whatsappSessionId === sessionFilter))
+  ) ? selectedId : null;
 
   return (
     <div className="space-y-4 h-full">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">WhatsApp & conversations</h1>
-        <p className="text-muted-foreground mt-1">Review patient contact and handle replies</p>
-        {(sessionFilter || leadFilter) && <p className="mt-2 text-sm text-muted-foreground">Showing {sessionFilter ? "one team work account" : "this patient’s conversations"}. <Link href="/inbox" className="text-primary underline">Show all conversations</Link> · <Link href="/whatsapp" className="text-primary underline">Team connection status</Link></p>}
+        <p className="text-muted-foreground mt-1">{sessionFilter ? 'Chats for one linked WhatsApp work account' : 'Conversation history for this patient'}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor="inbox-work-account">WhatsApp account</label>
+          <select id="inbox-work-account" value={sessionFilter ?? ''} disabled={!user} className="h-9 max-w-full rounded-md border bg-background px-2" onChange={event => {
+            const next = new URLSearchParams(params.toString());
+            next.set('session', event.target.value);
+            next.delete('c'); next.delete('lead');
+            setSelectedId(null);
+            router.replace(`/inbox?${next.toString()}`);
+          }}>
+            {!sessionFilter && <option value="">Patient history across work accounts</option>}
+            <option value={ownSessionId ?? ''}>My WhatsApp{mine.data?.linkedNumber ? ` · +${mine.data.linkedNumber}` : ''}</option>
+            {manager && <option value="default">Shared clinic WhatsApp</option>}
+            {team.data?.filter(account => account.sessionId !== ownSessionId).map(account => <option key={account.sessionId} value={account.sessionId}>{account.user?.firstName} {account.user?.lastName}{account.linkedNumber ? ` · +${account.linkedNumber}` : ' · Not linked'}</option>)}
+            {sessionFilter && sessionFilter !== ownSessionId && sessionFilter !== 'default' && !team.data?.some(account => account.sessionId === sessionFilter) && <option value={sessionFilter}>Selected work account</option>}
+          </select>
+          {selectedAccount && <Badge variant={selectedAccount.state === 'connected' ? 'success' : 'secondary'}>{selectedAccount.state === 'connected' ? 'Connected' : 'Offline · saved chats'}</Badge>}
+          <Link href="/whatsapp" className="text-primary underline">Connections</Link>
+          {leadFilter && <Link href="/inbox" className="text-primary underline">My WhatsApp inbox</Link>}
+        </div>
       </div>
 
       <Tabs value={channel ?? 'ALL'} onValueChange={(v) => { setChannel(v === 'ALL' ? undefined : v); setSelectedId(null); }}>
@@ -466,7 +516,7 @@ function InboxView() {
 
         <TabsContent value={channel ?? 'ALL'} className="mt-0">
           <Card className="flex h-[calc(100dvh-235px)] min-h-[400px] overflow-hidden rounded-xl">
-            <div className={cn("flex w-full md:w-[360px] lg:w-[390px] shrink-0 flex-col border-r", selectedId && "hidden md:flex")}>
+            <div className={cn("flex w-full md:w-[360px] lg:w-[390px] shrink-0 flex-col border-r", activeThreadId && "hidden md:flex")}>
               <div className="flex items-center justify-between px-4 py-4">
                 <h2 className="text-xl font-semibold">Chats <span className="text-sm font-normal text-muted-foreground">{conversations?.length ?? 0}</span></h2>
                 <Link href="/whatsapp" className="text-xs text-success hover:underline">Connections</Link>
@@ -510,7 +560,7 @@ function InboxView() {
 
               <div className="min-h-0 flex-1 overflow-y-auto">
               {isLoading
-                ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 m-2 rounded-lg" />)
+                || !scopeReady ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 m-2 rounded-lg" />)
                 : listQuery.isError
                 ? <QueryError error={listQuery.error} onRetry={listQuery.refetch} className="px-4 py-16" />
                 : conversations?.length === 0
@@ -543,7 +593,7 @@ function InboxView() {
                       <>
                         No conversations yet.
                         <br />
-                        Link your work WhatsApp to sync available chat history and capture new messages. If you linked before history sync was added, disconnect and scan again once in <Link href="/whatsapp" className="text-primary underline">Work WhatsApp</Link>.
+                        This account has no synced chats yet. Check its connection in <Link href="/whatsapp" className="text-primary underline">Work WhatsApp</Link>.
                       </>
                     )}
                   </div>
@@ -552,22 +602,22 @@ function InboxView() {
                     <ConversationRow
                       key={conv.id}
                       conv={conv}
-                      selected={conv.id === selectedId}
+                      selected={conv.id === activeThreadId}
                       onClick={() => setSelectedId(conv.id)}
                     />
                   ))}
               </div>
             </div>
 
-            <div className={cn("flex-1 min-w-0", !selectedId && "hidden md:block")}>
-              {selectedId ? (
-                <MessageThread key={selectedId} conversationId={selectedId} onBack={() => setSelectedId(null)} />
+            <div className={cn("flex-1 min-w-0", !activeThreadId && "hidden md:block")}>
+              {activeThreadId ? (
+                <MessageThread key={activeThreadId} conversationId={activeThreadId} onBack={() => setSelectedId(null)} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageSquare className="h-12 w-12 mb-3 opacity-20" />
                   <p className="text-xl font-medium">Your work WhatsApp</p>
                   <p className="mt-2 text-sm">Select a chat to read the conversation</p>
-                  <p className="mt-3 max-w-sm px-4 text-center text-xs">All synced individual chats appear here. Scroll the chat list to see more. Older messages appear when WhatsApp shares them.</p>
+                  <p className="mt-3 max-w-sm px-4 text-center text-xs">{sessionFilter ? 'Only chats for the selected work account appear here. Sent messages and replies stay together in each contact’s chat.' : 'This patient’s history can include separate conversations on different work accounts.'} Older messages appear when WhatsApp shares them.</p>
                 </div>
               )}
             </div>

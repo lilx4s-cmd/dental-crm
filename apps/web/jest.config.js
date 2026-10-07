@@ -11,6 +11,7 @@ const config = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
     // The workspace package ships a committed dist/, but tests should fail against the source they
     // are meant to describe rather than against whatever was last built.
     '^@dental-crm/shared$': '<rootDir>/../../packages/shared/src/index.ts',

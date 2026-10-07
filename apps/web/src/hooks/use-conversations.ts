@@ -73,8 +73,8 @@ export interface InboxFilters {
   isArchived?: boolean;
 }
 
-export function useConversations(filters: InboxFilters | string = {}) {
-  const { accessToken } = useAuth();
+export function useConversations(filters: InboxFilters | string = {}, enabled = true) {
+  const { accessToken, user } = useAuth();
   // A bare string is the old signature — the inbox used to take a channel and nothing else. Kept
   // working rather than chased through every call site for a rename that changes no behaviour.
   const f: InboxFilters = typeof filters === 'string' ? { channel: filters } : filters;
@@ -90,14 +90,20 @@ export function useConversations(filters: InboxFilters | string = {}) {
   const qs = params.toString();
 
   return useQuery<ConversationSummary[]>({
-    queryKey: ['conversations', qs],
+    queryKey: ['conversations', qs, user?.sub],
     queryFn: () => apiRequest(`/api/conversations${qs ? `?${qs}` : ''}`, {}, accessToken ?? undefined),
+    enabled: enabled && !!accessToken,
     // The inbox is a screen people leave open, so it polls. Kept even while a search is active:
     // a reply arriving to a thread that matches the search should still appear.
     refetchInterval: 10_000,
-    // Otherwise the list empties for a moment on every keystroke, which reads as "no results" for
-    // long enough to be believed.
-    placeholderData: (previous) => previous,
+    // Keep search results steady within one account, but never show the previous account's
+    // chats under a newly selected number while its request is still loading.
+    placeholderData: (previous, previousQuery) => {
+      if (previousQuery?.queryKey[2] !== user?.sub) return undefined;
+      const prior = new URLSearchParams(String(previousQuery?.queryKey[1] ?? ''));
+      return ['whatsappSessionId', 'leadId', 'channel'].every(key => prior.get(key) === params.get(key))
+        ? previous : undefined;
+    },
   });
 }
 

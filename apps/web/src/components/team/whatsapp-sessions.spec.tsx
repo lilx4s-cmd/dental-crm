@@ -56,7 +56,7 @@ describe('work WhatsApp setup', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
     expect(screen.getByRole('alertdialog', { name: 'Sign out of WhatsApp?' })).toBeInTheDocument();
     expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/logout'))).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/me/logout', { method: 'POST' }, 'test-token'));
   });
 
@@ -79,7 +79,7 @@ describe('work WhatsApp setup', () => {
     });
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out & reset' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(await screen.findByText('Disconnected')).toBeInTheDocument();
     expect(screen.getByText('Saved chats: 12')).toBeInTheDocument();
     expect((apiRequest as jest.Mock).mock.calls.some(([path]) => path.endsWith('/connect'))).toBe(false);
@@ -96,7 +96,7 @@ describe('work WhatsApp setup', () => {
     });
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('/api/whatsapp/sessions/colleague/logout', { method: 'POST' }, 'test-token'));
     expect(await screen.findByText('Disconnected')).toBeInTheDocument();
   });
