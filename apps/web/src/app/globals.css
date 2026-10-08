@@ -156,10 +156,10 @@
 
 @font-face { font-family: "NotoSans"; src: url("/fonts/NotoSans-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "NotoSans"; src: url("/fonts/NotoSans-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "NotoSansArabic"; src: url("/fonts/NotoSansArabic-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "NotoSansArabic"; src: url("/fonts/NotoSansArabic-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Tajawal"; src: url("/fonts/Tajawal-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Tajawal"; src: url("/fonts/Tajawal-Bold.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; }
  .consultation-document { font-family: NotoSans, Arial, sans-serif; }
- .consultation-document[dir="rtl"] { font-family: DejaVuSans, Tahoma, Arial, sans-serif; }
+ .consultation-document[dir="rtl"] { font-family: Tajawal, NotoSans, Tahoma, Arial, sans-serif; }
 
 @font-face { font-family: "DejaVuSans"; src: url("/fonts/DejaVuSans-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
 
@@ -173,4 +173,11 @@
 }
 html { scroll-padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 body { font-family: Arial, Tahoma, sans-serif; }
-[dir="rtl"] { font-family: DejaVuSans, Tahoma, Arial, sans-serif; }
+[dir="rtl"] { font-family: Tajawal, NotoSans, Tahoma, Arial, sans-serif; }
+
+/* Arabic is joined by the shaping engine; tracking and synthetic weights harm readability. */
+[dir="rtl"] { font-synthesis: none; letter-spacing: normal; }
+[dir="rtl"] :is(h1,h2,h3,h4,p,label,button,input,textarea,select) { letter-spacing: normal; }
+.consultation-document[dir="rtl"] { line-height: 1.65; text-align: start; }
+.consultation-document[dir="rtl"] .text-xs { font-size: 0.875rem; line-height: 1.6; }
+.consultation-document[dir="rtl"] .text-sm { font-size: 1rem; line-height: 1.6; }

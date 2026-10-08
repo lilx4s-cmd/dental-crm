@@ -45,6 +45,6 @@ it('preserves Arabic direction and isolates FDI and financial numbers', () => {
   expect(container.querySelector('article')).toHaveAttribute('dir', 'rtl');
   expect(container.querySelector('bdi[dir="ltr"]')).toBeInTheDocument();
   expect(screen.getByRole('button', {
-    name: 'الحالة المسجلة'
+    name: 'النتائج السريرية المسجلة'
   })).toBeInTheDocument();
 });

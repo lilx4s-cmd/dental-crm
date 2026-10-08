@@ -37,4 +37,15 @@ for (const name of ['document-presentation', 'consultation-pdf']) {
   const many = shared.ConsultationSchema.parse({ ...oneVisit, lines: Array.from({ length: 25 }, (_, index) => ({ ...oneVisit.lines[0], id: `long-table-${index}`, positions: [], material: 'Fictional zirconia material with an extended description', brand: 'Fictional laboratory brand' })) });
   await render('treatment-long-table', { ...example, plan: many, clinic: { ...example.clinic, clinicName: 'Fictional International Dental and Medical Tourism Clinic - Long Name Layout Example', address: 'Fictional address for testing long clinic header details and correctly aligned document content', phone: '+1 202 555 0100' } });
   await render('treatment-long-ar', { ...shared.consultationExample('ar'), plan: shared.ConsultationSchema.parse({ ...long, language: 'ar', lines: long.lines.map(line => ({ ...line, description: 'هذه ملاحظة سريرية توضيحية لاختبار تنسيق المستند. يؤكد طبيب الأسنان الحالة المسجلة والعلاج المقترح قبل بدء العلاج. '.repeat(18) })) }) });
+  const arabic = shared.consultationExample('ar');
+  await render('treatment-one-visit-ar', { ...arabic, plan: { ...oneVisit, language: 'ar', treatmentText: 'تاجان على أسنان طبيعية' } });
+  await render('treatment-unpriced-ar', { ...arabic, plan: { ...unpriced, language: 'ar', treatmentText: 'تاجان على أسنان طبيعية' } });
+  await render('treatment-long-table-ar', { ...arabic, plan: { ...many, language: 'ar', treatmentText: 'مثال تجريبي لاختبار الجداول الطويلة' } });
+  await render('treatment-ar-typography', { ...arabic,
+    documentId: 'PLAN-2026-001 / AR',
+    patient: { ...arabic.patient, firstName: 'ليلى عبد الرحمن محمد', lastName: 'إبراهيم الشافعي — مريضة تجريبية',
+      diagnosis: 'نص تجريبي لاختبار الحروف والتشكيل: أ ب ت ث ج ح خ د ذ ر ز س ش ص ض ط ظ ع غ ف ق ك ل م ن ه و ي ء آ أ إ ؤ ئ ة ى. السَّلَامُ عَلَيْكُمْ. تَقْدِيرُ تَكْلِفَةِ العِلَاجِ. ببب تتت ثثث ججج ححح خخخ سسس ششش صصص ضضض ععع غغغ ففف ققق ككك للل ممم ننن ههه ييي لا لأ لإ لآ.' },
+    clinic: { ...arabic.clinic, phone: '+90 212 555 0100' },
+    plan: { ...arabic.plan, lines: arabic.plan.lines.map(line => ({ ...line, brand: 'Straumann BLX — علامة تجريبية', material: 'Titanium — مادة تجريبية' })) }
+  });
 })().catch(error => { console.error(error); process.exitCode = 1; });

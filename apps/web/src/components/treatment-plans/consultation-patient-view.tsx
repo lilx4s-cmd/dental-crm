@@ -35,6 +35,7 @@ export function ConsultationPatientView({
     p = consultationPresentationCopy(plan.language);
   const totals = consultationTotals(plan),
     quote = consultationQuotedPayment(plan, payment);
+  const nights = (count: number) => plan.language === 'ar' ? `${t.nights}: ${count}` : `${count} ${t.nights}`;
   const money = (value: number) => <bdi dir="ltr">{plan.currency} {new Intl.NumberFormat(plan.language, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -53,7 +54,7 @@ export function ConsultationPatientView({
         {logo && <img src={logo} alt={clinic?.clinicName ?? ''} className="h-12 max-w-44 object-contain" />}
         {clinic && <><h2 className="text-xl font-semibold" style={{
           color: heading
-        }}>{clinic.clinicName}</h2><p className="break-words text-xs text-slate-500">{[clinic.address, clinic.phone, clinic.email, clinic.website].filter(Boolean).join(' · ')}</p></>}
+        }}>{clinic.clinicName}</h2><p className="break-words text-xs text-slate-500">{[clinic.address, clinic.phone, clinic.email, clinic.website].filter(Boolean).map((value, index) => <span key={index}>{index > 0 && ' · '}<bdi dir={index === 0 && clinic.address ? 'auto' : 'ltr'}>{value}</bdi></span>)}</p></>}
         {identity?.representative && <p className="text-sm text-slate-600">{identity.department && identity.department !== 'International Patient Department' ? identity.department : t.department} · {identity.representative}</p>}
         {patientName && <div className="border-s-2 ps-4" style={{ borderColor: accent }}><p className="text-xs text-slate-500">{t.patient}</p><p className="text-xl font-semibold break-words">{patientName}</p></div>}
         {(preparedAt || reference) && <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -70,7 +71,7 @@ export function ConsultationPatientView({
       <section className="overflow-hidden rounded-xl border border-slate-200" aria-label={p.estimate}>
         <div className="h-1" style={{ backgroundColor: accent }} />
         <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)]">
-          <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{p.estimate}</p>
+          <div className="min-w-0"><p className="text-xs font-semibold text-slate-500">{p.estimate}</p>
             <h2 className="mt-3 whitespace-pre-wrap break-words text-xl font-semibold leading-relaxed sm:text-2xl" style={{ color: heading }}>{consultationTreatmentSummary(plan)}</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">{totals.visits.map(visit => <div className="border-s-2 border-slate-200 ps-3" key={visit.number}>
               <p className="text-xs text-slate-500">{t.visit} {visit.number}</p><p className="mt-1 text-base font-semibold">{price(visit.total, visit.unpriced)}</p>
@@ -78,6 +79,13 @@ export function ConsultationPatientView({
           </div>
           <div className="rounded-lg p-4" style={{ backgroundColor: accent, color: onAccent }}><p className="text-sm">{t.total}</p><p className="mt-2 break-words text-2xl font-semibold leading-snug sm:text-3xl">{price(totals.total, totals.unpriced)}</p></div>
         </div>
+      </section>
+      <section className="space-y-3" aria-label={t.journey}>
+        {plan.visits.map(visit => <div key={visit.number} className="border-s-2 border-slate-200 ps-4">
+          <p className="font-semibold">{t.visit} {visit.number} · {consultationVisitPurpose(plan, visit.number)}</p>
+          <p className="text-sm text-slate-600">{p.days}: {visit.treatmentDays ?? p.durationPending} · {t.hotel}: {nights(visit.nights)} · {visit.hotelIncluded ? t.included : money(consultationVisitBreakdown(plan, visit.number).hotel)} · {t.transfer}: {visit.transfer === 'paid' ? money(consultationVisitBreakdown(plan, visit.number).transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']}</p>
+        </div>)}
+        {plan.visits.length > 1 && plan.healing && <p className="text-sm">{t.healing}: {plan.healing.minMonths}–{plan.healing.maxMonths} {t.months} · {p.separateVisits}</p>}
       </section>
       <p className="border-s-2 border-slate-200 ps-4 text-sm leading-relaxed text-slate-600">{t.confirmation}</p>
       {consultationWarnings(plan).filter(key => key !== 'unpriced').map(key => <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" key={key}>{t[key as ConsultationCopyKey]}</p>)}
@@ -92,7 +100,7 @@ export function ConsultationPatientView({
               color: heading
             }}>{t.visit} {visit.number}</h3>
               <p className="mt-1 text-sm text-slate-600">{consultationVisitPurpose(plan, visit.number)}</p>
-              <p className="mt-2 text-xs text-slate-500">{p.days}: {visit.treatmentDays ?? p.durationPending} · {t.hotel}: {visit.nights} {t.nights}</p>
+              <p className="mt-2 text-xs text-slate-500">{p.days}: {visit.treatmentDays ?? p.durationPending} · {t.hotel}: {nights(visit.nights)}</p>
             </div>
             <div><p className="text-xs text-slate-500">{p.visitFee}</p><p className="text-lg font-semibold">{price(breakdown.total, breakdown.unpriced)}</p></div>
           </header>
@@ -113,7 +121,7 @@ export function ConsultationPatientView({
           </div>
           {plan.lines.filter(line => line.visit === visit.number && line.description).map(line => <p key={line.id} className="whitespace-pre-wrap break-words text-sm leading-relaxed"><span className="font-medium">{p.clinicalNote} · {t[line.type]}: </span>{line.description}</p>)}
           <dl className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
-            {[[t.subtotal, price(breakdown.subtotal, breakdown.unpriced)], [t.discount, money(breakdown.discount)], [`${t.hotel} · ${visit.nights} ${t.nights}`, visit.hotelIncluded ? t.included : money(breakdown.hotel)], [t.transfer, visit.transfer === 'included' ? t.included : visit.transfer === 'excluded' ? t.excluded : money(breakdown.transfer)], [p.visitFee, price(breakdown.total, breakdown.unpriced)]].map(([label, value], index) => <div className={`flex flex-wrap justify-between gap-x-4 gap-y-1 ${index === 4 ? 'border-t pt-2 font-semibold' : ''}`} key={index}><dt>{label}</dt><dd>{value}</dd></div>)}
+            {[[t.subtotal, price(breakdown.subtotal, breakdown.unpriced)], [t.discount, money(breakdown.discount)], [`${t.hotel} · ${nights(visit.nights)}`, visit.hotelIncluded ? t.included : money(breakdown.hotel)], [t.transfer, visit.transfer === 'included' ? t.included : visit.transfer === 'excluded' ? t.excluded : money(breakdown.transfer)], [p.visitFee, price(breakdown.total, breakdown.unpriced)]].map(([label, value], index) => <div className={`flex flex-wrap justify-between gap-x-4 gap-y-1 ${index === 4 ? 'border-t pt-2 font-semibold' : ''}`} key={index}><dt>{label}</dt><dd>{value}</dd></div>)}
           </dl>
           <h4 className="font-semibold">{t.journey}</h4>
           <ol className="grid gap-x-6 gap-y-0 sm:grid-cols-2">{consultationItinerary(plan, visit.number).map(day => <li key={day.day} className="flex gap-3 border-t border-slate-100 py-3 text-sm">
@@ -150,7 +158,7 @@ export function ConsultationPatientView({
       </section>}
       <section className="space-y-2 border-s-2 ps-5 py-2" style={{ borderColor: accent }}><h3 className="text-lg font-semibold" style={{
         color: heading
-      }}>{p.nextSteps}</h3><p className="text-sm leading-relaxed">{p.nextStepText}</p>{clinic?.email && <p className="text-sm"><bdi>{clinic.email}</bdi>{clinic.phone && <> · <bdi>{clinic.phone}</bdi></>}</p>}</section>
+      }}>{p.nextSteps}</h3><p className="text-sm leading-relaxed">{p.nextStepText}</p>{clinic?.email && <p className="text-sm"><bdi dir="ltr">{clinic.email}</bdi>{clinic.phone && <> · <bdi dir="ltr">{clinic.phone}</bdi></>}</p>}</section>
       <footer className="space-y-2 border-t pt-4 text-sm">
         <div className="flex flex-wrap items-center gap-4">{identity?.signature && <img src={identity.signature} alt={t.signature} className="h-12 max-w-40 object-contain" />}{identity?.stamp && <img src={identity.stamp} alt="" className="h-16 w-16 object-contain" />}</div>
         <p className="font-semibold">{identity?.department && identity.department !== 'International Patient Department' ? identity.department : t.department}</p>

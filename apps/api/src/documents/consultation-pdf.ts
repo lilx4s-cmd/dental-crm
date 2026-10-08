@@ -50,7 +50,7 @@ const asset = (name: string) =>
     path.join(process.cwd(), 'src/pdf/assets', name),
     path.join(process.cwd(), 'apps/api/src/pdf/assets', name),
   ].find((p) => fs.existsSync(p));
-for (const family of ['NotoSans', 'DejaVuSans']) {
+for (const family of ['NotoSans', 'DejaVuSans', 'Tajawal']) {
   const regular = asset('fonts/' + family + '-Regular.ttf'),
     bold = asset('fonts/' + family + '-Bold.ttf');
   if (regular && bold)
@@ -183,7 +183,7 @@ export function ConsultationChartPdf(plan: Consultation, visit: number, mode: Co
             {
               x: x - 8,
               y: a === 0 ? 115 : 145,
-              style: { fontSize: 13, fontFamily: 'NotoSans' },
+              style: { fontSize: 11, fontFamily: 'NotoSans' },
               fill: '#253d51',
             },
             fdi,
@@ -215,7 +215,17 @@ export function consultationDocument(context: DocumentContext) {
   const quotedPayment = consultationQuotedPayment(plan, context.payment);
   const { accent, heading: headingColour } = consultationBrandPalette(config.accentColor);
   const logo = config.logo || clinic.logoUrl;
-  const font = rtl ? 'DejaVuSans' : 'NotoSans';
+  const font = rtl ? 'Tajawal' : 'NotoSans';
+  // LRM delimits LTR identifiers inside Arabic without reshaping or reversing data.
+  // The renderer does not hide isolate controls reliably; do not insert LRI/PDI.
+  const bidi = (value: string) => rtl ? value.replace(/[A-Za-z0-9+][A-Za-z0-9+@._:/,%\-–× ]*/g,
+    run => `\u200e${run.trimEnd()}\u200e${run.slice(run.trimEnd().length)}`) : value;
+  const el = (type: React.ElementType, props: any, ...children: React.ReactNode[]) =>
+    React.createElement(type, type === Text ? { ...props, style: [props?.style, { direction: rtl && children.some(child => typeof child === 'string' && /[\u0600-\u06ff]/.test(child)) ? 'rtl' : 'ltr' }] } : props, ...children.map(child => type === Text && typeof child === 'string' ? bidi(child) : child));
+  const preparedDate = new Intl.DateTimeFormat(plan.language, {
+    year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC',
+  }).format(new Date(context.generatedAt));
+  const nights = (count: number) => rtl ? `${t.nights}: ${count}` : `${count} ${t.nights}`;
   const money = (v: number) =>
     `${plan.currency} ${v.toLocaleString(plan.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const text = (s: string, size = 11, colour?: string) =>
@@ -224,11 +234,11 @@ export function consultationDocument(context: DocumentContext) {
       {
         style: {
           ...(colour ? { color: colour } : {}),
-          fontSize: size === 11 ? context.invoice ? 9 : 9.5 : size,
-          lineHeight: context.invoice ? 1.25 : 1.35,
+          fontSize: size === 11 ? context.invoice ? 9 : rtl ? 11 : 10 : rtl && size <= 10 ? size + 1 : size,
+          lineHeight: context.invoice ? 1.25 : rtl ? 1.5 : 1.4,
           marginBottom: context.invoice ? 3 : 4,
           textAlign: rtl ? 'right' : 'left',
-          fontFamily: /[\u0600-\u06ff]/.test(s) ? 'DejaVuSans' : font,
+          fontFamily: /[\u0600-\u06ff]/.test(s) ? 'Tajawal' : font,
         },
       },
       s,
@@ -239,9 +249,8 @@ export function consultationDocument(context: DocumentContext) {
       {
         style: {
           fontSize: context.invoice ? 16 : 18,
-          // DejaVu's bold Arabic ligatures can lose character clusters in textkit; use the
-          // regular Arabic face and size/color to preserve heading hierarchy.
-          fontWeight: rtl ? 400 : 700,
+          // Use the embedded bold face, never a synthetic Arabic weight.
+          fontWeight: 700,
           lineHeight: context.invoice ? 1.2 : 1.4,
           marginBottom: context.invoice ? 8 : 12,
           textAlign: rtl ? 'right' : 'left',
@@ -254,8 +263,8 @@ export function consultationDocument(context: DocumentContext) {
   const section = (title: string, children: React.ReactNode[]) =>
     el(
       View,
-      { style: { marginTop: 15, marginBottom: 5 }, wrap: true },
-      el(Text, { style: { fontSize: context.invoice ? 14 : 13, color: headingColour, fontWeight: rtl ? 400 : 700, marginBottom: 8, textAlign: rtl ? 'right' : 'left' }, minPresenceAhead: 60 }, title),
+      { style: { marginTop: 10, marginBottom: 5 }, wrap: true },
+      el(Text, { style: { fontSize: context.invoice ? 14 : 13, color: headingColour, fontWeight: 700, marginBottom: 8, textAlign: rtl ? 'right' : 'left' }, minPresenceAhead: 60 }, title),
       ...children,
     );
   const clinicContact = [clinic.address, clinic.city, clinic.country, clinic.phone, clinic.email, clinic.website].filter(Boolean).join(' · ');
@@ -308,7 +317,7 @@ export function consultationDocument(context: DocumentContext) {
         ),
         el(Text, {
           style: { fontSize: 8 },
-          render: ({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`,
+          render: ({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) => `${pageNumber} / ${totalPages}`,
         }),
       ),
     );
@@ -320,7 +329,7 @@ export function consultationDocument(context: DocumentContext) {
       ...[
         config.department && config.department !== 'International Patient Department' ? config.department : t.department,
         config.representative,
-        context.generatedAt.slice(0, 10),
+        preparedDate,
       ].filter(Boolean).map((value, index) => el(Text, { key: index, style: { fontSize: 8.5, lineHeight: 1.2, marginBottom: 2, textAlign: rtl ? 'right' : 'left' } }, value))),
     config.signature && el(Image, { src: config.signature, style: { width: 110, height: 42, objectFit: 'contain' } }),
     config.stamp && el(Image, { src: config.stamp, style: { width: 45, height: 45, objectFit: 'contain' } }),
@@ -332,7 +341,7 @@ export function consultationDocument(context: DocumentContext) {
     ),
     text(`${t.patient}: ${patient.firstName} ${patient.lastName}`, context.kind === 'INVOICE' || context.kind === 'WARRANTY' ? 11 : 14),
     el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
-      text(`${p.prepared}: `, 9), text(context.generatedAt.slice(0, 10), 9)),
+      text(`${p.prepared}: `, 9), text(preparedDate, 9)),
     el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
       text(`${p.reference}: `, 9), text(`${context.documentId ?? t.preview}${context.version ? ` · v${context.version}` : ''}`, 9)),
   ];
@@ -421,8 +430,8 @@ export function consultationDocument(context: DocumentContext) {
     const priced = (value: number, unpriced = totals.unpriced) => unpriced ? p.toQuote : money(value);
     const fee = (label: string, value: string, prominent = false) => el(View, {
       wrap: false,
-      style: { flexDirection: rtl ? 'row-reverse' : 'row', justifyContent: 'space-between', paddingVertical: prominent ? 8 : 2, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
-    }, el(Text, { style: { width: '60%', fontSize: prominent ? 13 : 9, lineHeight: 1.25, textAlign: rtl ? 'right' : 'left' } }, label), el(Text, { style: { width: '40%', fontSize: prominent ? 14 : 9, lineHeight: 1.25, textAlign: rtl ? 'left' : 'right' } }, value));
+      style: { flexDirection: rtl ? 'row-reverse' : 'row', justifyContent: 'space-between', paddingVertical: prominent ? 8 : 1.5, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
+    }, el(Text, { style: { width: '60%', fontSize: prominent ? 13 : rtl ? 10 : 9.5, lineHeight: 1.25, textAlign: rtl ? 'right' : 'left' } }, label), el(Text, { style: { width: '40%', fontSize: prominent ? 14 : rtl ? 10 : 9.5, lineHeight: 1.25, textAlign: rtl ? 'left' : 'right' } }, value));
     const legend = () => el(View, {
       wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', flexWrap: 'wrap', marginBottom: 8 },
     }, ...([
@@ -433,7 +442,7 @@ export function consultationDocument(context: DocumentContext) {
       return el(View, { key: state, style: { width: '25%', flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'center', marginBottom: 3 } },
         el(Svg, { viewBox: '-30 -50 60 110', width: 16, height: 22, opacity: state === 'unknown' ? 0.4 : 1 },
           ...(state === 'missing' ? [el(Rect, { x: -15, y: -30, width: 30, height: 75, rx: 8, fill: 'none', stroke: '#788e99', strokeDasharray: '5 4' })] : [...ops(layers.subgingival), ...ops(layers.supragingival)])),
-        el(Text, { style: { fontSize: 7.5, lineHeight: 1.25, width: 105, paddingHorizontal: 4, textAlign: rtl ? 'right' : 'left' } }, label));
+        el(Text, { style: { fontSize: rtl ? 9 : 8, lineHeight: 1.4, width: 105, paddingHorizontal: 4, textAlign: rtl ? 'right' : 'left' } }, label));
     }));
     const medicalRows: [string, string | null | undefined][] = [
       [t.diagnosis, patient.diagnosis], [t.conditions, patient.medicalConditions], [t.medication, patient.medications],
@@ -454,7 +463,7 @@ export function consultationDocument(context: DocumentContext) {
       text(t.confirmation, 9),
       section(t.journey, plan.visits.flatMap(visit => [
         text(`${t.visit} ${visit.number} · ${consultationVisitPurpose(plan, visit.number)}`, 10),
-        text(`${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${t.hotel}: ${visit.nights} ${t.nights}`, 9),
+        text(`${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${t.hotel}: ${nights(visit.nights)} · ${visit.hotelIncluded ? t.included : priced(consultationVisitBreakdown(plan, visit.number).hotel, false)} · ${t.transfer}: ${visit.transfer === 'paid' ? money(consultationVisitBreakdown(plan, visit.number).transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']}`, 9),
         ...(visit.number === 1 && plan.visits.length > 1 && plan.healing ? [text(`${t.healing}: ${plan.healing.minMonths}–${plan.healing.maxMonths} ${t.months}`, 9)] : []),
       ])),
       plan.visits.length > 1 && text(p.separateVisits, 9),
@@ -496,12 +505,21 @@ export function consultationDocument(context: DocumentContext) {
       pages.push(page(`visit-${visit.number}`, [
         heading(`${t.visit} ${visit.number}`),
         text(consultationVisitPurpose(plan, visit.number), 10),
-        text(`${p.proposed} · FDI · ${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${visit.nights} ${t.nights}`, 9),
+        text(`${p.proposed} · FDI · ${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${nights(visit.nights)}`, 9),
         ConsultationChartPdf(plan, visit.number, 'proposed', inlineEducation ? 155 : 180), legend(),
-        ...unassignedConsultationUnits(plan, visit.number).map(line => text(`${p.positionsPending}: ${line.count} × ${t[line.type]}${line.jaw ? ` · ${t[line.jaw]}` : ''}`, 9)),
-        ...lines.map(line => text(`${line.quantity} × ${t[line.type]}${line.positions.length ? ` · FDI ${line.positions.join(', ')}` : ''}${line.material || line.brand ? ` · ${[line.material, line.brand].filter(Boolean).join(' / ')}` : ''}`, 9)),
+        ...Array.from(unassignedConsultationUnits(plan, visit.number).reduce((groups, line) => {
+          const key = `${line.type}:${line.jaw ?? ''}`;
+          const previous = groups.get(key);
+          groups.set(key, { ...line, count: line.count + (previous?.count ?? 0) });
+          return groups;
+        }, new Map<string, ReturnType<typeof unassignedConsultationUnits>[number]>()).values()).map(line => text(`${p.positionsPending}: ${line.count} × ${t[line.type]}${line.jaw ? ` · ${t[line.jaw]}` : ''}`, 9)),
+        ...(compact ? lines : Array.from(lines.reduce((groups, line) => {
+          const previous = groups.get(line.type);
+          groups.set(line.type, { ...line, quantity: line.quantity + (previous?.quantity ?? 0), positions: [...new Set([...(previous?.positions ?? []), ...line.positions])], material: undefined, brand: undefined });
+          return groups;
+        }, new Map<string, Consultation['lines'][number]>()).values())).map(line => text(`${line.quantity} × ${t[line.type]}${line.positions.length ? ` · FDI ${line.positions.join(', ')}` : ''}${line.material || line.brand ? ` · ${[line.material, line.brand].filter(Boolean).join(' / ')}` : ''}`, 9)),
         fee(p.visitFee, priced(price.total, price.unpriced), true),
-        text(`${t.hotel}: ${visit.nights} ${t.nights} · ${visit.hotelIncluded ? t.included : money(price.hotel)}`, 9),
+        text(`${t.hotel}: ${nights(visit.nights)} · ${visit.hotelIncluded ? t.included : money(price.hotel)}`, 9),
         text(`${t.transfer}: ${visit.transfer === 'paid' ? money(price.transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']}`, 9),
         ...(compact ? [section(t.journey, journeyRows)] : []),
         ...(inlineEducation ? education : []),
@@ -515,8 +533,8 @@ export function consultationDocument(context: DocumentContext) {
     }
     const columns = [38, 10, 18, 14, 20];
     const row = (values: string[], header = false) => el(View, {
-      wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: header ? '#f2f6fa' : '#ffffff', paddingVertical: 7, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
-    }, ...values.map((value, index) => el(Text, { key: index, style: { width: `${columns[index]}%`, paddingHorizontal: 4, fontSize: header ? 8 : 9, fontWeight: header && !rtl ? 700 : 400, lineHeight: 1.35, textAlign: index === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)));
+      wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: header ? '#f2f6fa' : '#ffffff', paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
+    }, ...values.map((value, index) => el(Text, { key: index, style: { width: `${columns[index]}%`, paddingHorizontal: 4, fontSize: rtl ? 10 : header ? 9 : 9.5, fontWeight: header ? 700 : 400, lineHeight: 1.35, textAlign: index === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)));
     const payment = context.payment;
     const hasOptions = payment?.cardFee != null || payment?.cashDiscount != null;
     const hasDeposit = payment?.depositAmount != null || payment?.depositPercent != null;
@@ -527,7 +545,7 @@ export function consultationDocument(context: DocumentContext) {
     const tableHeader = () => row([t.treatment, t.quantity, t.unitPrice, t.discount, p.amount], true);
     // Reserve the financial summary page for totals; repeat column labels on each
     // explicit, balanced table page rather than allowing a headerless overflow.
-    const rowHeight = (values: string[]) => 16 + Math.ceil(values[0].length / 31) * 13;
+    const rowHeight = (values: string[]) => 12 + values[0].split('\n').reduce((height, line) => height + Math.ceil(line.length / 35) * (rtl ? 15 : 14), 0);
     const separateTable = tableRows.reduce((height, values) => height + rowHeight(values), 0) > 240;
     if (separateTable) {
       const chunks: string[][][] = [];
@@ -545,18 +563,22 @@ export function consultationDocument(context: DocumentContext) {
           previous.push(...last); chunks.pop();
         }
       }
+      if (chunks.length > 1 && chunks[chunks.length - 1].length === 1) {
+        const previous = chunks[chunks.length - 2];
+        if (previous.length > 3) chunks[chunks.length - 1].unshift(...previous.splice(-2));
+      }
       chunks.forEach((chunk, index) => pages.push(page(`treatment-table-${index}`, [heading(t.investment), text(p.estimate, 9), tableHeader(), ...chunk.map(values => row(values))])));
     }
     const investmentChildren: React.ReactNode[] = [
       heading(t.investment), text(p.estimate, 9),
       ...(!separateTable ? [tableHeader(), ...tableRows.map(values => row(values))] : []),
-      el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', marginTop: 12 } }, ...plan.visits.map(visit => {
+      el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', marginTop: 8 } }, ...plan.visits.map(visit => {
         const price = consultationVisitBreakdown(plan, visit.number);
-        return el(View, { key: visit.number, style: { width: plan.visits.length === 1 ? '100%' : '50%', padding: 8, backgroundColor: '#f2f6fa', borderWidth: 3, borderColor: '#ffffff' } },
+        return el(View, { key: visit.number, style: { width: plan.visits.length === 1 ? '100%' : '50%', padding: 6, backgroundColor: '#f2f6fa', borderWidth: 3, borderColor: '#ffffff' } },
           text(`${t.visit} ${visit.number}`, 11),
           fee(t.subtotal, priced(price.subtotal, price.unpriced)),
           price.discount > 0 && fee(t.discount, money(price.discount)),
-          fee(`${t.hotel} · ${visit.nights} ${t.nights}`, visit.hotelIncluded ? t.included : money(price.hotel)),
+          fee(`${t.hotel} · ${nights(visit.nights)}`, visit.hotelIncluded ? t.included : money(price.hotel)),
           fee(t.transfer, visit.transfer === 'paid' ? money(price.transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']),
           fee(p.visitFee, priced(price.total, price.unpriced)));
       })),
