@@ -49,18 +49,20 @@ export class DocumentsController {
   @Post('preview') @Permission('plans.read') async preview(
     @Body('patientId') patientId: string,
     @Body('plan') plan: unknown,
+    @Body('payment') payment: unknown,
     @CurrentUser() user: JwtPayload,
     @Res() res: Response,
   ) {
     if (!patientId) throw new BadRequestException('Choose a patient');
-    res.type('application/pdf').send(await this.documents.preview(patientId, plan, user));
+    res.type('application/pdf').send(await this.documents.preview(patientId, plan, user, payment));
   }
   @Post('plans') @Permission('plans.write') create(
     @Body('patientId') patientId: string,
     @Body('plan') plan: unknown,
+    @Body('payment') payment: unknown,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.documents.createPlan(patientId, plan, user.sub, user);
+    return this.documents.createPlan(patientId, plan, user.sub, user, payment);
   }
   @Post('plans/:id/invoice')
   @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER)

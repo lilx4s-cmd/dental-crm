@@ -71,6 +71,7 @@ export declare const ConsultationLineSchema: z.ZodEffects<z.ZodObject<{
 }>;
 export declare const ConsultationVisitSchema: z.ZodObject<{
     number: z.ZodNumber;
+    treatmentDays: z.ZodOptional<z.ZodNumber>;
     nights: z.ZodNumber;
     hotelRate: z.ZodEffects<z.ZodNumber, number, number>;
     hotelIncluded: z.ZodBoolean;
@@ -97,6 +98,7 @@ export declare const ConsultationVisitSchema: z.ZodObject<{
         text: string;
         day: number;
     }[];
+    treatmentDays?: number | undefined;
 }, {
     number: number;
     nights: number;
@@ -104,6 +106,7 @@ export declare const ConsultationVisitSchema: z.ZodObject<{
     hotelIncluded: boolean;
     transfer: "included" | "excluded" | "paid";
     transferPrice: number;
+    treatmentDays?: number | undefined;
     itinerary?: {
         text: string;
         day: number;
@@ -182,6 +185,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
     }>, "many">;
     visits: z.ZodArray<z.ZodObject<{
         number: z.ZodNumber;
+        treatmentDays: z.ZodOptional<z.ZodNumber>;
         nights: z.ZodNumber;
         hotelRate: z.ZodEffects<z.ZodNumber, number, number>;
         hotelIncluded: z.ZodBoolean;
@@ -208,6 +212,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
             text: string;
             day: number;
         }[];
+        treatmentDays?: number | undefined;
     }, {
         number: number;
         nights: number;
@@ -215,6 +220,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
         hotelIncluded: boolean;
         transfer: "included" | "excluded" | "paid";
         transferPrice: number;
+        treatmentDays?: number | undefined;
         itinerary?: {
             text: string;
             day: number;
@@ -262,6 +268,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
             text: string;
             day: number;
         }[];
+        treatmentDays?: number | undefined;
     }[];
     healing: {
         minMonths: number;
@@ -295,6 +302,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
         hotelIncluded: boolean;
         transfer: "included" | "excluded" | "paid";
         transferPrice: number;
+        treatmentDays?: number | undefined;
         itinerary?: {
             text: string;
             day: number;
@@ -336,6 +344,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
             text: string;
             day: number;
         }[];
+        treatmentDays?: number | undefined;
     }[];
     healing: {
         minMonths: number;
@@ -369,6 +378,7 @@ export declare const ConsultationSchema: z.ZodEffects<z.ZodObject<{
         hotelIncluded: boolean;
         transfer: "included" | "excluded" | "paid";
         transferPrice: number;
+        treatmentDays?: number | undefined;
         itinerary?: {
             text: string;
             day: number;
@@ -386,6 +396,7 @@ export type ConsultationLine = z.infer<typeof ConsultationLineSchema>;
 export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department: z.ZodDefault<z.ZodString>;
     representative: z.ZodOptional<z.ZodString>;
+    accentColor: z.ZodDefault<z.ZodString>;
     billingLegalName: z.ZodOptional<z.ZodString>;
     billingTaxId: z.ZodOptional<z.ZodString>;
     invoicePaymentInstructions: z.ZodOptional<z.ZodString>;
@@ -448,6 +459,7 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
         maxMonths: number;
     } | null;
     department: string;
+    accentColor: string;
     priceList: {
         type: "implant" | "crown" | "veneer" | "bridge" | "extraction" | "sinus" | "graft" | "rootCanal" | "temporary" | "implantCrown";
         currency: string;
@@ -481,6 +493,7 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department?: string | undefined;
     signature?: string | undefined;
     representative?: string | undefined;
+    accentColor?: string | undefined;
     billingLegalName?: string | undefined;
     billingTaxId?: string | undefined;
     invoicePaymentInstructions?: string | undefined;
@@ -510,6 +523,7 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
         maxMonths: number;
     } | null;
     department: string;
+    accentColor: string;
     priceList: {
         type: "implant" | "crown" | "veneer" | "bridge" | "extraction" | "sinus" | "graft" | "rootCanal" | "temporary" | "implantCrown";
         currency: string;
@@ -543,6 +557,7 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department?: string | undefined;
     signature?: string | undefined;
     representative?: string | undefined;
+    accentColor?: string | undefined;
     billingLegalName?: string | undefined;
     billingTaxId?: string | undefined;
     invoicePaymentInstructions?: string | undefined;
@@ -586,10 +601,11 @@ export declare function parseConsultation(text: string, currency: string, config
     warnings: string[];
 };
 export type ConsultationTooth = 'unknown' | 'healthy' | 'missing' | 'existingCrown' | 'bridgePontic' | Procedure;
-export declare function consultationChart(plan: Consultation, visit: number): Record<string, ConsultationTooth>;
+export type ConsultationChartMode = 'recorded' | 'proposed';
+export declare function consultationChart(plan: Consultation, visit: number, mode?: ConsultationChartMode): Record<string, ConsultationTooth>;
 /** Layer bone procedures and treated canals without replacing their recorded restoration. */
-export declare function consultationToothLayers(plan: Consultation, visit: number, fdi: string): ToothLayers;
-export declare function consultationBridgeConnectors(plan: Consultation, visit: number): {
+export declare function consultationToothLayers(plan: Consultation, visit: number, fdi: string, mode?: ConsultationChartMode): ToothLayers;
+export declare function consultationBridgeConnectors(plan: Consultation, visit: number, mode?: ConsultationChartMode): {
     x1: number;
     x2: number;
     y: number;

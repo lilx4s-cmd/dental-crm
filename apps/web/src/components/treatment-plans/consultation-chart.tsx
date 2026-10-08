@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   unassignedConsultationUnits,
   consultationChart,
@@ -8,6 +8,7 @@ import {
   consultationBridgeConnectors,
   procedureDescription,
   consultationCopy,
+  consultationPresentationCopy,
   procedureSteps,
   UPPER_TEETH,
   LOWER_TEETH,
@@ -15,6 +16,7 @@ import {
   type ConsultationTooth,
   type DrawOp,
   type Procedure,
+  type ConsultationChartMode,
 } from '@dental-crm/shared';
 function Ops({ list }: { list: DrawOp[] }) {
   return (
@@ -35,32 +37,35 @@ function Ops({ list }: { list: DrawOp[] }) {
     </>
   );
 }
-export function ConsultationChart({
+export const ConsultationChart = memo(function ConsultationChart({
   plan,
   visit,
   selected = [],
   onSelect,
+  mode = 'proposed',
 }: {
   plan: Consultation;
   visit: number;
   selected?: string[];
   onSelect?: (fdi: string) => void;
+  mode?: ConsultationChartMode;
 }) {
   const t = consultationCopy(plan.language),
-    state = consultationChart(plan, visit);
+    p = consultationPresentationCopy(plan.language),
+    state = consultationChart(plan, visit, mode);
   return (
-    <div dir="ltr">
+    <div dir="ltr" className={onSelect ? 'overflow-x-auto' : undefined}>
       <svg
         viewBox="0 0 640 265"
         role="img"
-        aria-label={`${t.visit} ${visit} · FDI`}
-        className="w-full"
+        aria-label={`${mode === 'recorded' ? p.recorded : p.proposed} · ${t.visit} ${visit} · FDI`}
+        className={onSelect ? 'w-full min-w-[640px]' : 'w-full'}
       >
         <rect width="640" height="66" rx="15" fill="#f4e3c3" />
         <rect y="190" width="640" height="65" rx="15" fill="#f4e3c3" />
         {[UPPER_TEETH, LOWER_TEETH].map((arch, a) =>
           arch.map((fdi, i) => {
-            const layer = consultationToothLayers(plan, visit, fdi),
+            const layer = consultationToothLayers(plan, visit, fdi, mode),
               x = 20 + i * 39 + (i >= 8 ? 8 : 0),
               y = a === 0 ? 66 : 190;
             return (
@@ -99,14 +104,14 @@ export function ConsultationChart({
                   <Ops list={layer.subgingival} />
                   <Ops list={layer.supragingival} />
                 </g>
-                <text x={x - 6} y={a === 0 ? 115 : 145} fontSize="9" fill="#253d51">
+                <text x={x - 8} y={a === 0 ? 115 : 145} fontSize="13" fill="#253d51">
                   {fdi}
                 </text>
               </g>
             );
           }),
         )}
-        {consultationBridgeConnectors(plan, visit).map((segment, key) => (
+        {consultationBridgeConnectors(plan, visit, mode).map((segment, key) => (
           <line
             key={key}
             x1={segment.x1}
@@ -121,14 +126,27 @@ export function ConsultationChart({
         <line x1="8" y1="190" x2="632" y2="190" stroke="#d5a1a4" strokeWidth="4" />
       </svg>
       <p className="text-center text-xs text-muted-foreground">
-        {t.upper} / {t.lower} · FDI · {t.unknown}
+        {mode === 'recorded' ? p.recorded : p.proposed} · {t.upper} / {t.lower} · FDI
       </p>
-      {unassignedConsultationUnits(plan, visit).map((line) => {
+      <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs" dir={plan.language === 'ar' ? 'rtl' : 'ltr'}>
+        {([
+          ['healthy', p.natural], ['missing', t.missing], ['extraction', p.plannedExtraction],
+          ['implant', t.implant], ['crown', p.naturalCrown], ['implantCrown', p.implantCrown], ['existingCrown', t.existingCrown], ['unknown', t.unknown],
+        ] as [ConsultationTooth, string][]).map(([kind, label]) => {
+          const layers = consultationToothGeometry('11', kind);
+          return <span key={kind} className="flex items-center gap-1">
+            <svg width="18" height="24" viewBox="-30 -50 60 110" aria-hidden="true" opacity={kind === 'unknown' ? 0.4 : 1}>
+              {kind === 'missing' ? <rect x="-15" y="-30" width="30" height="75" rx="8" fill="none" stroke="#788e99" strokeDasharray="5 4" /> : <><Ops list={layers.subgingival} /><Ops list={layers.supragingival} /></>}
+            </svg>{label}
+          </span>;
+        })}
+      </div>
+      {mode === 'proposed' && unassignedConsultationUnits(plan, visit).map((line) => {
         const layer = consultationToothGeometry('11', line.type);
         return (
           <div key={line.id} className="mt-3 rounded-lg border border-dashed p-3">
             <p className="text-xs">
-              {t[line.type]} · {line.count} · {line.jaw ? t[line.jaw] : t.unassigned}
+              {p.positionsPending} · {line.count} × {t[line.type]}{line.jaw ? ` · ${t[line.jaw]}` : ''}
             </p>
             <svg
               viewBox={`0 0 600 ${Math.ceil(line.count / 12) * 68}`}
@@ -151,7 +169,7 @@ export function ConsultationChart({
       })}
     </div>
   );
-}
+});
 export function TreatmentProcess({ plan, type }: { plan: Consultation; type: Procedure }) {
   const t = consultationCopy(plan.language),
     steps = procedureSteps(

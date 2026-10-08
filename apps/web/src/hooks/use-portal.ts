@@ -90,6 +90,10 @@ export interface PortalPlan {
   status: string;
   totalCost: number;
   currency: string;
+  depositAmount?: number | string | null;
+  cardFeePercent?: number | string | null;
+  cashDiscountPercent?: number | string | null;
+  paymentTerms?: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason: string | null;
   doctorRecommendation: string | null;
@@ -112,6 +116,10 @@ export interface PortalClinicBranding {
   address: string | null;
   city: string | null;
   country: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  identity?: import('@dental-crm/shared').ConsultationIdentity | null;
 }
 
 export interface PortalResponse {

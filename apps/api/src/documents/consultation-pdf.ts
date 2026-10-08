@@ -28,15 +28,20 @@ import {
   consultationCopy,
   consultationItinerary,
   consultationTotals,
-  computePaymentSummary,
-  consultationWarnings,
+  consultationQuotedPayment,
+  consultationPresentationCopy,
+  consultationVisitBreakdown,
+  consultationVisitPurpose,
+  consultationTreatmentSummary,
+  consultationBrandPalette,
   procedureSteps,
   UPPER_TEETH,
   LOWER_TEETH,
   type Consultation,
   type DocumentConfiguration,
   type DrawOp,
-  type ConsultationCopyKey,
+  type ConsultationChartMode,
+  type ConsultationTooth,
 } from '@dental-crm/shared';
 const el = React.createElement;
 const asset = (name: string) =>
@@ -78,6 +83,7 @@ export interface DocumentContext {
   };
   clinic: {
     clinicName: string;
+    logoUrl?: string | null;
     address?: string | null;
     city?: string | null;
     country?: string | null;
@@ -148,16 +154,16 @@ function ops(list: DrawOp[]) {
     }
   });
 }
-export function ConsultationChartPdf(plan: Consultation, visit: number) {
-  const state = consultationChart(plan, visit);
+export function ConsultationChartPdf(plan: Consultation, visit: number, mode: ConsultationChartMode = 'proposed', height = 180) {
+  const state = consultationChart(plan, visit, mode);
   return el(
     Svg,
-    { viewBox: '0 0 640 265', width: 490, height: 203 },
+    { viewBox: '0 0 640 265', width: 510, height },
     el(Rect, { x: 0, y: 0, width: 640, height: 66, rx: 15, fill: '#f4e3c3' }),
     el(Rect, { x: 0, y: 190, width: 640, height: 65, rx: 15, fill: '#f4e3c3' }),
     ...[UPPER_TEETH, LOWER_TEETH].flatMap((arch, a) =>
       arch.map((fdi, i) => {
-        const layer = consultationToothLayers(plan, visit, fdi);
+        const layer = consultationToothLayers(plan, visit, fdi, mode);
         const x = 20 + i * 39 + (i >= 8 ? 8 : 0),
           y = a === 0 ? 66 : 190;
         return el(
@@ -175,9 +181,9 @@ export function ConsultationChartPdf(plan: Consultation, visit: number) {
           el(
             SvgText,
             {
-              x: x - 6,
+              x: x - 8,
               y: a === 0 ? 115 : 145,
-              style: { fontSize: 9, fontFamily: 'Helvetica' },
+              style: { fontSize: 13, fontFamily: 'NotoSans' },
               fill: '#253d51',
             },
             fdi,
@@ -185,7 +191,7 @@ export function ConsultationChartPdf(plan: Consultation, visit: number) {
         );
       }),
     ),
-    ...consultationBridgeConnectors(plan, visit).map((segment, key) =>
+    ...consultationBridgeConnectors(plan, visit, mode).map((segment, key) =>
       el(Line, {
         ...segment,
         y1: segment.y,
@@ -205,15 +211,19 @@ export function consultationDocument(context: DocumentContext) {
     rtl = plan.language === 'ar';
   const d = documentLabels(plan.language);
   const totals = consultationTotals(plan);
-  const quotedPayment = computePaymentSummary({ total: totals.total, cardFeePercent: context.payment?.cardFee ?? 0, cashDiscountPercent: context.payment?.cashDiscount ?? 0, depositAmount: context.payment?.depositAmount ?? (context.payment?.depositPercent == null ? 0 : Math.round(totals.total * context.payment.depositPercent) / 100) });
+  const p = consultationPresentationCopy(plan.language);
+  const quotedPayment = consultationQuotedPayment(plan, context.payment);
+  const { accent, onAccent, heading: headingColour } = consultationBrandPalette(config.accentColor);
+  const logo = config.logo || clinic.logoUrl;
   const font = rtl ? 'DejaVuSans' : 'NotoSans';
   const money = (v: number) =>
     `${plan.currency} ${v.toLocaleString(plan.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const text = (s: string, size = 11) =>
+  const text = (s: string, size = 11, colour?: string) =>
     el(
       Text,
       {
         style: {
+          ...(colour ? { color: colour } : {}),
           fontSize: size === 11 ? context.invoice ? 9 : 9.5 : size,
           lineHeight: context.invoice ? 1.25 : 1.35,
           marginBottom: context.invoice ? 3 : 4,
@@ -235,7 +245,7 @@ export function consultationDocument(context: DocumentContext) {
           lineHeight: context.invoice ? 1.2 : 1.4,
           marginBottom: context.invoice ? 8 : 12,
           textAlign: rtl ? 'right' : 'left',
-          color: '#183858',
+          color: headingColour,
         },
         minPresenceAhead: 75,
       },
@@ -245,36 +255,36 @@ export function consultationDocument(context: DocumentContext) {
     el(
       View,
       { style: { marginTop: 15, marginBottom: 5 }, wrap: true },
-      el(Text, { style: { fontSize: context.invoice ? 14 : 13, color: '#183858', fontWeight: rtl ? 400 : 700, marginBottom: 8, textAlign: rtl ? 'right' : 'left' }, minPresenceAhead: 60 }, title),
+      el(Text, { style: { fontSize: context.invoice ? 14 : 13, color: headingColour, fontWeight: rtl ? 400 : 700, marginBottom: 8, textAlign: rtl ? 'right' : 'left' }, minPresenceAhead: 60 }, title),
       ...children,
     );
+  const clinicContact = [clinic.address, clinic.city, clinic.country, clinic.phone, clinic.email, clinic.website].filter(Boolean).join(' · ');
+  const headerReserve = clinic.clinicName.length > 90 || clinicContact.length > 200 ? 145 : 112;
   const page = (key: string, children: React.ReactNode[]) =>
     el(
       Page,
       {
         key,
         size: 'A4',
-        style: { fontFamily: font, fontSize: 11, color: '#183048', padding: 38, paddingBottom: 65 },
+        style: { fontFamily: font, fontSize: 11, color: '#183048', padding: 38, paddingTop: headerReserve, paddingBottom: 65 },
       },
       el(
         View,
         {
+          fixed: true,
           style: {
+            position: 'absolute', top: 28, left: 38, right: 38,
             borderBottomWidth: 1,
             borderBottomColor: '#d4e1e9',
             marginBottom: 14,
             paddingBottom: 10,
           },
         },
-        config.logo &&
-          el(Image, { src: config.logo, style: { width: 90, height: 40, objectFit: 'contain' } }),
-        text(clinic.clinicName, 20),
-        text(
-          [clinic.address, clinic.city, clinic.country, clinic.phone, clinic.email, clinic.website]
-            .filter(Boolean)
-            .join(' · '),
-          9,
-        ),
+        el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'center' } },
+          logo && el(Image, { src: logo, style: { width: 80, height: 42, objectFit: 'contain', marginRight: rtl ? 0 : 14, marginLeft: rtl ? 14 : 0 } }),
+          el(View, { style: { flex: 1 } },
+            text(clinic.clinicName, clinic.clinicName.length > 60 ? 14 : 20),
+            text(clinicContact, 9))),
       ),
       ...children,
       el(
@@ -288,12 +298,12 @@ export function consultationDocument(context: DocumentContext) {
             right: 38,
             flexDirection: 'row',
             justifyContent: 'space-between',
-            height: 15,
+            height: 25,
           },
         },
         el(
           Text,
-          { style: { fontSize: 8 } },
+          { style: { fontSize: 7.5, maxWidth: '88%', lineHeight: 1.2 } },
           `${clinic.clinicName} · ${context.documentId ?? t.preview} · ${context.version ?? ''}`,
         ),
         el(Text, {
@@ -302,33 +312,29 @@ export function consultationDocument(context: DocumentContext) {
         }),
       ),
     );
-  const signature = () =>
-    el(
-      View,
-      { wrap: false, style: { marginTop: 18 } },
-      config.signature &&
-        el(Image, {
-          src: config.signature,
-          style: { width: 140, height: 48, objectFit: 'contain' },
-        }),
-      config.stamp &&
-        el(Image, { src: config.stamp, style: { width: 65, height: 65, objectFit: 'contain' } }),
-      text(
-        config.department && config.department !== 'International Patient Department'
-          ? config.department
-          : t.department,
-      ),
-      config.representative && text(config.representative),
-      text(context.generatedAt.slice(0, 10), 9),
-      context.verificationQr &&
-        el(Image, { src: context.verificationQr, style: { width: 65, height: 65 } }),
-    );
+  const signature = () => el(View, {
+    wrap: false,
+    style: { marginTop: 10, flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'space-between' },
+  },
+    el(View, { style: { width: '43%' } },
+      ...[
+        config.department && config.department !== 'International Patient Department' ? config.department : t.department,
+        config.representative,
+        context.generatedAt.slice(0, 10),
+      ].filter(Boolean).map((value, index) => el(Text, { key: index, style: { fontSize: 8.5, lineHeight: 1.2, marginBottom: 2, textAlign: rtl ? 'right' : 'left' } }, value))),
+    config.signature && el(Image, { src: config.signature, style: { width: 110, height: 42, objectFit: 'contain' } }),
+    config.stamp && el(Image, { src: config.stamp, style: { width: 45, height: 45, objectFit: 'contain' } }),
+    context.verificationQr && el(Image, { src: context.verificationQr, style: { width: 45, height: 45 } }),
+  );
   const identity = () => [
     heading(
       context.kind === 'INVOICE' ? t.invoice : context.kind === 'WARRANTY' ? t.certificate : t.plan,
     ),
     text(`${t.patient}: ${patient.firstName} ${patient.lastName}`),
-    text([patient.phone, context.generatedAt.slice(0, 10)].filter(Boolean).join(' · '), 9),
+    el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
+      text(`${p.prepared}: `, 9), text(context.generatedAt.slice(0, 10), 9)),
+    el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
+      text(`${p.reference}: `, 9), text(`${context.documentId ?? t.preview}${context.version ? ` · v${context.version}` : ''}`, 9)),
   ];
   const pages: React.ReactNode[] = [];
   if (context.invoice) {
@@ -412,232 +418,172 @@ export function consultationDocument(context: DocumentContext) {
       ]),
     );
   } else {
-    const cover = config.coverPhoto || asset('clinic-cover.jpg');
-    pages.push(
-      page('intro', [
-        ...identity(),
-        cover &&
-          el(Image, {
-            src: cover,
-            style: { width: '100%', height: 190, objectFit: 'cover', marginBottom: 12 },
-          }),
-        text(d.quote, 10),
-        text(plan.treatmentText, 18),
-        el(View, { wrap: false, style: { padding: 14, backgroundColor: '#f2f6fa', marginBottom: 12 } },
-          heading(`${t.total}: ${totals.unpriced ? d.toQuote : money(totals.total)}`),
-          ...totals.visits.map(v => text(`${t.visit} ${v.number}: ${v.unpriced ? d.toQuote : money(v.total)}`, 11))),
-        text(t.confirmation),
-        ...[
-          patient.diagnosis ? section(t.diagnosis, [text(patient.diagnosis)]) : null,
-          [
-            patient.medicalConditions,
-            patient.medications,
-            patient.allergies,
-            patient.previousSurgeries,
-          ].some(Boolean) ||
-          [patient.takesBloodThinners, patient.isPregnant, patient.isSmoker].some(
-            (value) => value != null,
-          )
-            ? section(
-                t.medical,
-                [
-                  [t.conditions, patient.medicalConditions],
-                  [t.medication, patient.medications],
-                  [t.allergies, patient.allergies],
-                  [t.previousSurgery, patient.previousSurgeries],
-                  [
-                    t.bloodThinners,
-                    patient.takesBloodThinners == null
-                      ? null
-                      : patient.takesBloodThinners
-                        ? t.yes
-                        : t.no,
-                  ],
-                  [
-                    t.pregnancy,
-                    patient.isPregnant == null ? null : patient.isPregnant ? t.yes : t.no,
-                  ],
-                  [t.smoking, patient.isSmoker == null ? null : patient.isSmoker ? t.yes : t.no],
-                ]
-                  .filter((row) => row[1])
-                  .map((row) => text(row[0] + ': ' + row[1])),
-              )
-            : null,
-        ],
-        ...consultationWarnings(plan).map((k) => text(t[k as ConsultationCopyKey], 10)),
-        section(
-          t.journey,
-          plan.visits.flatMap((v) => [
-            text(
-              `${t.visit} ${v.number} · ${v.nights} ${t.nights} · ${totals.visits.find((total) => total.number === v.number)!.unpriced ? t.unpriced : money(totals.visits.find((total) => total.number === v.number)!.total)}`,
-            ),
-            ...(v.number === 1 && plan.visits.length > 1 && plan.healing
-              ? [
-                  text(
-                    `${t.healing}: ${plan.healing.minMonths}-${plan.healing.maxMonths} ${t.months}`,
-                  ),
-                ]
-              : []),
-          ]),
-        ),
-      ]),
-    );
-    for (const visit of plan.visits) {
-      const items = plan.lines.filter((l) => l.visit === visit.number),
-        price = totals.visits.find((v) => v.number === visit.number)!;
-      pages.push(
-        page(`visit-${visit.number}`, [
-          heading(`${t.visit} ${visit.number}`),
-          ConsultationChartPdf(plan, visit.number),
-          text(
-            `${t.unknown} · FDI · ${t.implant} / ${t.implantCrown} / ${t.crown} / ${t.veneer}`,
-            8,
-          ),
-          ...unassignedConsultationUnits(plan, visit.number).map((line) => {
-            const layers = consultationToothGeometry('11', line.type);
-            return el(
-              View,
-              { wrap: false, key: 'unassigned-' + line.id },
-              text(`${t[line.type]} · ${line.count} · ${line.jaw ? t[line.jaw] : t.unassigned}`, 9),
-              el(
-                Svg,
-                {
-                  viewBox: `0 0 600 ${Math.ceil(line.count / 12) * 68}`,
-                  width: 490,
-                  height: Math.ceil(line.count / 12) * 55,
-                },
-                ...Array.from({ length: line.count }, (_, i) =>
-                  el(
-                    G,
-                    {
-                      key: i,
-                      transform: `translate(${25 + (i % 12) * 50},${25 + Math.floor(i / 12) * 68}) scale(0.45)`,
-                    },
-                    el(Rect, { x: -35, y: 0, width: 70, height: 58, fill: '#f4e3c3' }),
-                    ...ops(layers.subgingival),
-                    ...ops(layers.supragingival),
-                  ),
-                ),
-              ),
-            );
-          }),
-          ...items.map((l) =>
-            text(
-              `${l.quantity} × ${t[l.type]}${l.jaw ? ` · ${t[l.jaw]}` : ''}${l.positions.length ? ' · FDI ' + l.positions.join(', ') : ' · ' + t.unassigned}${l.material ? ' · ' + l.material : ''}${l.brand ? ' · ' + l.brand : ''}`,
-            ),
-          ),
-          el(View, { wrap: false, style: { padding: 12, backgroundColor: '#f2f6fa', marginTop: 10 } },
-            text(`${t.visit} ${visit.number}: ${price.unpriced ? d.toQuote : money(price.total)}`, 17)),
-        ]),
-      );
-    }
-    pages.push(page('travel-journey', [
-      heading(t.journey),
-      ...plan.visits.map(visit => {
-        const price = totals.visits.find(v => v.number === visit.number)!;
-        return section(`${t.visit} ${visit.number} - ${visit.nights} ${t.nights}`, [
-          ...consultationItinerary(plan, visit.number).map(day => text(`${t.day} ${day.day} - ${day.text ?? t[day.key === 'assessment' ? 'assessmentDay' : day.key!]}`, 10)),
-          text(`${t.hotel}: ${visit.nights} ${t.nights} - ${visit.hotelIncluded ? t.included : money(price.hotel)}`, 10),
-          text(`${t.transfer}: ${t[visit.transfer === 'paid' ? 'paid' : visit.transfer === 'included' ? 'included' : 'excluded']} - ${money(price.transfer)}`, 10),
-          visit.number === 1 && plan.visits.length > 1 && plan.healing ? text(`${t.healing}: ${plan.healing.minMonths}-${plan.healing.maxMonths} ${t.months}`, 10) : null,
-        ]);
-      }),
+    const priced = (value: number, unpriced = totals.unpriced) => unpriced ? p.toQuote : money(value);
+    const fee = (label: string, value: string, prominent = false) => el(View, {
+      wrap: false,
+      style: { flexDirection: rtl ? 'row-reverse' : 'row', justifyContent: 'space-between', paddingVertical: prominent ? 8 : 2, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
+    }, el(Text, { style: { width: '60%', fontSize: prominent ? 13 : 9, lineHeight: 1.25, textAlign: rtl ? 'right' : 'left' } }, label), el(Text, { style: { width: '40%', fontSize: prominent ? 14 : 9, lineHeight: 1.25, textAlign: rtl ? 'left' : 'right' } }, value));
+    const legend = () => el(View, {
+      wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', flexWrap: 'wrap', marginBottom: 8 },
+    }, ...([
+      ['healthy', p.natural], ['missing', t.missing], ['extraction', p.plannedExtraction],
+      ['implant', t.implant], ['crown', p.naturalCrown], ['implantCrown', p.implantCrown], ['existingCrown', t.existingCrown], ['unknown', t.unknown],
+    ] as [ConsultationTooth, string][]).map(([state, label]) => {
+      const layers = consultationToothGeometry('11', state);
+      return el(View, { key: state, style: { width: '25%', flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'center', marginBottom: 3 } },
+        el(Svg, { viewBox: '-30 -50 60 110', width: 16, height: 22, opacity: state === 'unknown' ? 0.4 : 1 },
+          ...(state === 'missing' ? [el(Rect, { x: -15, y: -30, width: 30, height: 75, rx: 8, fill: 'none', stroke: '#788e99', strokeDasharray: '5 4' })] : [...ops(layers.subgingival), ...ops(layers.supragingival)])),
+        el(Text, { style: { fontSize: 7.5, lineHeight: 1.25, width: 105, paddingHorizontal: 4, textAlign: rtl ? 'right' : 'left' } }, label));
+    }));
+    const medicalRows: [string, string | null | undefined][] = [
+      [t.diagnosis, patient.diagnosis], [t.conditions, patient.medicalConditions], [t.medication, patient.medications],
+      [t.allergies, patient.allergies], [t.previousSurgery, patient.previousSurgeries],
+      [t.bloodThinners, patient.takesBloodThinners == null ? null : patient.takesBloodThinners ? t.yes : t.no],
+      [t.pregnancy, patient.isPregnant == null ? null : patient.isPregnant ? t.yes : t.no],
+      [t.smoking, patient.isSmoker == null ? null : patient.isSmoker ? t.yes : t.no],
+    ];
+    pages.push(page('intro', [
+      ...identity(),
+      el(Image, { src: config.coverPhoto || asset('clinic-cover.jpg'), style: { width: '100%', height: 125, objectFit: 'cover', marginBottom: 14 } }),
+      text(p.estimate, 10),
+      text(consultationTreatmentSummary(plan), consultationTreatmentSummary(plan).length > 250 ? 12 : 18),
+      el(View, { wrap: false, style: { padding: 14, backgroundColor: accent, marginVertical: 10 } },
+        text(`${t.total}: ${priced(totals.total)}`, 22, onAccent),
+        ...totals.visits.map(visit => text(`${t.visit} ${visit.number}: ${priced(visit.total, visit.unpriced)}`, 10, onAccent))),
       text(t.confirmation, 9),
+      section(t.journey, plan.visits.flatMap(visit => [
+        text(`${t.visit} ${visit.number} · ${consultationVisitPurpose(plan, visit.number)}`, 10),
+        text(`${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${t.hotel}: ${visit.nights} ${t.nights}`, 9),
+        ...(visit.number === 1 && plan.visits.length > 1 && plan.healing ? [text(`${t.healing}: ${plan.healing.minMonths}–${plan.healing.maxMonths} ${t.months}`, 9)] : []),
+      ])),
+      plan.visits.length > 1 && text(p.separateVisits, 9),
+      section(p.nextSteps, [text(p.nextStepText, 9)]),
     ]));
-    const procedureBlocks = [...new Set(plan.lines.map((l) => l.type))].map((type) =>
-      section(t[type], [
-        text(procedureDescription(plan.language, type)),
-        ...plan.lines
-          .filter((l) => l.type === type && l.description)
-          .map((l) => text(l.description!)),
-        el(
-          View,
-          { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', marginTop: 8 } },
-          ...procedureSteps(
-            type,
-            plan.lines.some((l) => l.type === 'extraction'),
-            plan.lines.some((l) => l.type === 'temporary'),
-            plan.lines.some((l) => ['crown', 'implantCrown', 'bridge'].includes(l.type)),
-          ).map((step, i) => {
-            const diagramType =
-              step === 'implant'
-                ? 'implant'
-                : step === 'implantCrown'
-                  ? 'implantCrown'
-                  : step === 'extraction'
-                    ? 'missing'
-                    : step === 'fitting' || ['sinus', 'graft', 'rootCanal'].includes(step)
-                      ? type
-                      : 'unknown';
-            const layers = consultationToothGeometry(
-              '11',
-              step === 'healing'
-                ? type === 'implant' || type === 'implantCrown'
-                  ? 'implant'
-                  : type
-                : step === 'review'
-                  ? type === 'extraction'
-                    ? 'missing'
-                    : type
-                  : (diagramType as Parameters<typeof consultationToothGeometry>[1]),
-            );
-            return el(
-              View,
-              { key: step, style: { width: '25%', padding: 5 } },
-              el(
-                Svg,
-                { viewBox: '-35 -60 70 125', width: 85, height: 94 },
+    const appendix: React.ReactNode[] = [];
+    for (const visit of plan.visits) {
+      const lines = plan.lines.filter(line => line.visit === visit.number);
+      const price = consultationVisitBreakdown(plan, visit.number);
+      const journey = consultationItinerary(plan, visit.number);
+      const compact = lines.length <= 2 && journey.length <= 10 && lines.every(line => (line.description?.length ?? 0) <= 250);
+      const inlineEducation = !Object.keys(plan.findings).length && compact && journey.length <= 8 && new Set(lines.map(line => line.type)).size === 1 && lines.every(line => (line.description?.length ?? 0) <= 100 && (line.material?.length ?? 0) + (line.brand?.length ?? 0) < 80);
+      const journeyRows: React.ReactNode[] = [];
+      for (let i = 0; i < journey.length; i += 2) {
+        const pair = journey.slice(i, i + 2);
+        journeyRows.push(el(View, { key: i, wrap: pair.some(day => (day.text?.length ?? 0) > 300), style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
+          ...pair.map(day => el(View, { key: day.day, style: { width: '50%', padding: inlineEducation ? 4 : 6, backgroundColor: '#f2f6fa', borderWidth: 2, borderColor: '#ffffff' } },
+            text(`${t.day} ${day.day} · ${day.text ?? t[day.key === 'assessment' ? 'assessmentDay' : day.key!]}`, inlineEducation ? 8 : 9)))));
+      }
+      const education = [...new Set(lines.map(line => line.type))].map(type => {
+        const relevant = lines.filter(line => line.type === type);
+        const positions = relevant.flatMap(line => line.positions);
+        const overlaps = (types: string[]) => plan.lines.some(line => types.includes(line.type) && line.positions.some(position => positions.includes(position)));
+        const steps = procedureSteps(type, overlaps(['extraction']), overlaps(['temporary']), overlaps(['crown', 'implantCrown', 'bridge']));
+        return el(View, { key: type, wrap: false, style: { marginTop: 6 } },
+          text(`${t[type]} · ${procedureDescription(plan.language, type)}`, 9),
+          el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row' } }, ...steps.map((step, index) => {
+            const state: ConsultationTooth = step === 'implant' || step === 'implantCrown' ? step : step === 'extraction' ? 'extraction' : step === 'healing' ? (type === 'implantCrown' ? 'implant' : type) : step === 'fitting' || step === 'review' ? type : 'unknown';
+            const layers = consultationToothGeometry('11', state);
+            return el(View, { key: step, style: { width: `${100 / steps.length}%`, alignItems: 'center' } },
+              el(Svg, { viewBox: '-35 -60 70 125', width: 40, height: 50 },
                 el(Rect, { x: -35, y: 0, width: 70, height: 62, fill: '#f4e3c3' }),
                 el(Line, { x1: -35, y1: 0, x2: 35, y2: 0, stroke: '#d5a1a4', strokeWidth: 5 }),
-                ...ops(layers.subgingival),
-                ...ops(layers.supragingival),
-              ),
-              text(`${i + 1}. ${t[step]}`, 9),
-            );
-          }),
-        ),
+                ...ops(layers.subgingival), ...ops(layers.supragingival)),
+              text(`${index + 1}. ${t[step]}`, 8));
+          })));
+      });
+      // A short visit remains on one page. Extended explanations are placed in a named appendix.
+      pages.push(page(`visit-${visit.number}`, [
+        heading(`${t.visit} ${visit.number}`),
+        text(consultationVisitPurpose(plan, visit.number), 10),
+        text(`${p.proposed} · FDI · ${p.days}: ${visit.treatmentDays ?? p.durationPending} · ${visit.nights} ${t.nights}`, 9),
+        ConsultationChartPdf(plan, visit.number, 'proposed', inlineEducation ? 155 : 180), legend(),
+        ...unassignedConsultationUnits(plan, visit.number).map(line => text(`${p.positionsPending}: ${line.count} × ${t[line.type]}${line.jaw ? ` · ${t[line.jaw]}` : ''}`, 9)),
+        ...lines.map(line => text(`${line.quantity} × ${t[line.type]}${line.positions.length ? ` · FDI ${line.positions.join(', ')}` : ''}${line.material || line.brand ? ` · ${[line.material, line.brand].filter(Boolean).join(' / ')}` : ''}`, 9)),
+        fee(p.visitFee, priced(price.total, price.unpriced), true),
+        text(`${t.hotel}: ${visit.nights} ${t.nights} · ${visit.hotelIncluded ? t.included : money(price.hotel)}`, 9),
+        text(`${t.transfer}: ${visit.transfer === 'paid' ? money(price.transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']}`, 9),
+        ...(compact ? [section(t.journey, journeyRows)] : []),
+        ...(inlineEducation ? education : []),
+        ...lines.filter(line => compact && line.description).map(line => text(`${p.clinicalNote}: ${line.description}`, 9)),
+        visit.number === 1 && plan.visits.length > 1 && plan.healing ? text(`${t.healing}: ${plan.healing.minMonths}–${plan.healing.maxMonths} ${t.months}. ${p.healingText} ${p.separateVisits}`, 9) : null,
+        !inlineEducation && text(t.confirmation, 8),
+      ]));
+      if (!compact) appendix.push(section(`${t.visit} ${visit.number} · ${t.journey}`, journeyRows));
+      if (!inlineEducation) appendix.push(...education);
+      if (!compact) appendix.push(...lines.filter(line => line.description).map(line => section(`${p.clinicalNote} · ${t.visit} ${line.visit} · ${t[line.type]}`, [text(line.description!, 10)])));
+    }
+    const columns = [38, 10, 18, 14, 20];
+    const row = (values: string[], header = false) => el(View, {
+      wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: header ? '#f2f6fa' : '#ffffff', paddingVertical: 7, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' },
+    }, ...values.map((value, index) => el(Text, { key: index, style: { width: `${columns[index]}%`, paddingHorizontal: 4, fontSize: header ? 8 : 9, fontWeight: header && !rtl ? 700 : 400, lineHeight: 1.35, textAlign: index === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)));
+    const payment = context.payment;
+    const hasOptions = payment?.cardFee != null || payment?.cashDiscount != null;
+    const hasDeposit = payment?.depositAmount != null || payment?.depositPercent != null;
+    const tableRows = plan.lines.map(line => [
+      `${t.visit} ${line.visit} · ${t[line.type]}${line.material || line.brand ? '\n' + [line.material, line.brand].filter(Boolean).join(' / ') : ''}`,
+      String(line.quantity), line.unitPrice == null ? p.toQuote : money(line.unitPrice), line.discount ? money(line.discount) : '—', line.unitPrice == null ? p.toQuote : money(Math.round((line.quantity * line.unitPrice - line.discount) * 100) / 100),
+    ]);
+    const tableHeader = () => row([t.treatment, t.quantity, t.unitPrice, t.discount, p.amount], true);
+    // Reserve the financial summary page for totals; repeat column labels on each
+    // explicit, balanced table page rather than allowing a headerless overflow.
+    const rowHeight = (values: string[]) => 16 + Math.ceil(values[0].length / 31) * 13;
+    const separateTable = tableRows.reduce((height, values) => height + rowHeight(values), 0) > 240;
+    if (separateTable) {
+      const chunks: string[][][] = [];
+      let chunk: string[][] = [], height = 0;
+      for (const values of tableRows) {
+        const nextHeight = rowHeight(values);
+        if (height + nextHeight > 510 && chunk.length) { chunks.push(chunk); chunk = []; height = 0; }
+        chunk.push(values); height += nextHeight;
+      }
+      if (chunk.length) chunks.push(chunk);
+      // Share the last short chunk with its predecessor when the combined table fits.
+      if (chunks.length > 1) {
+        const last = chunks[chunks.length - 1], previous = chunks[chunks.length - 2];
+        if (last.length === 1 && [...previous, ...last].reduce((sum, values) => sum + rowHeight(values), 0) < 540) {
+          previous.push(...last); chunks.pop();
+        }
+      }
+      chunks.forEach((chunk, index) => pages.push(page(`treatment-table-${index}`, [heading(t.investment), text(p.estimate, 9), tableHeader(), ...chunk.map(values => row(values))])));
+    }
+    const investmentChildren: React.ReactNode[] = [
+      heading(t.investment), text(p.estimate, 9),
+      ...(!separateTable ? [tableHeader(), ...tableRows.map(values => row(values))] : []),
+      el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', marginTop: 12 } }, ...plan.visits.map(visit => {
+        const price = consultationVisitBreakdown(plan, visit.number);
+        return el(View, { key: visit.number, style: { width: plan.visits.length === 1 ? '100%' : '50%', padding: 8, backgroundColor: '#f2f6fa', borderWidth: 3, borderColor: '#ffffff' } },
+          text(`${t.visit} ${visit.number}`, 11),
+          fee(t.subtotal, priced(price.subtotal, price.unpriced)),
+          price.discount > 0 && fee(t.discount, money(price.discount)),
+          fee(`${t.hotel} · ${visit.nights} ${t.nights}`, visit.hotelIncluded ? t.included : money(price.hotel)),
+          fee(t.transfer, visit.transfer === 'paid' ? money(price.transfer) : t[visit.transfer === 'included' ? 'included' : 'excluded']),
+          fee(p.visitFee, priced(price.total, price.unpriced)));
+      })),
+      fee(t.total, priced(totals.total), true),
+      plan.includedServices.length > 0 && section(t.included, plan.includedServices.map(service => text(service, 9))),
+      payment && (hasOptions || hasDeposit || payment.terms) && section(t.payment, [
+        !totals.unpriced && hasOptions && fee(`${p.cashTotal}${payment.cashDiscount ? ` · ${t.cashDiscount} ${payment.cashDiscount}%` : ''}`, priced(quotedPayment.cashTotal)),
+        !totals.unpriced && hasOptions && fee(`${p.cardTotal}${payment.cardFee ? ` · ${t.cardFee} ${payment.cardFee}%` : ''}`, priced(quotedPayment.cardTotal)),
+        !totals.unpriced && !!payment.cardFee && fee(p.cardExtra, priced(quotedPayment.cardExtra)),
+        !totals.unpriced && hasDeposit && fee(p.depositRequested, priced(quotedPayment.deposit)),
+        !totals.unpriced && hasDeposit && fee(p.remainingCash, priced(quotedPayment.remaining)),
+        hasDeposit && !totals.unpriced && !!payment.cardFee && fee(p.remainingCard, priced(Math.round((quotedPayment.cardTotal - quotedPayment.deposit) * 100) / 100)),
+        payment.terms && text(payment.terms, 9), text(p.quoteOnly, 8),
       ]),
-    );
-    pages.push(page('education', [heading(t.process), ...procedureBlocks, text(t.confirmation)]));
-    pages.push(
-      page('investment', [
-        heading(t.investment),
-        el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: '#f2f6fa', paddingVertical: 8 } },
-          ...[t.treatment, t.quantity, t.unitPrice, t.discount, d.amount].map((label, i) => el(Text, { key: i, style: { width: [38, 10, 18, 14, 20][i] + '%', paddingHorizontal: 4, fontSize: 8, fontWeight: 700, textAlign: i === 0 ? rtl ? 'right' : 'left' : 'right' } }, label))),
-        ...plan.lines.map(l => el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' } },
-          ...[`${t.visit} ${l.visit} - ${t[l.type]}${l.material || l.brand ? '\n' + [l.material, l.brand].filter(Boolean).join(' | ') : ''}`, String(l.quantity), l.unitPrice == null ? d.toQuote : money(l.unitPrice), l.discount ? money(l.discount) : '-', l.unitPrice == null ? d.toQuote : money(l.quantity * l.unitPrice - l.discount)].map((value, i) => el(Text, { key: i, style: { width: [38, 10, 18, 14, 20][i] + '%', paddingHorizontal: 4, fontSize: 9, lineHeight: 1.4, textAlign: i === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)))),
-        ...totals.visits.map((v) =>
-          text(
-            `${t.visit} ${v.number} · ${t.treatment} ${money(v.treatments)} · ${t.hotel} ${money(v.hotel)} · ${t.transfer} ${money(v.transfer)} · ${t.total} ${money(v.total)}`,
-          ),
-        ),
-        text(`${t.total}: ${totals.unpriced ? t.unpriced : money(totals.total)}`, 22),
-        section(
-          t.included,
-          plan.includedServices.length ? plan.includedServices.map((s) => text(s)) : [text('—')],
-        ),
-        config.warranties.some(w => plan.lines.some(l => l.type === w.type)) && section(
-          t.warranty,
-          [...config.warranties.filter(w => plan.lines.some(l => l.type === w.type)).map(w => text(`${t[w.type]} - ${w.summary}`)), text(t.contractual)],
-        ),
-        context.payment &&
-          section(t.payment, [
-            context.payment.terms && text(context.payment.terms),
-            context.payment.cardFee != null && text(`${t.cardFee}: ${context.payment.cardFee}%`),
-            context.payment.cardFee != null && !totals.unpriced && text(`${t.total} (${t.cardFee}): ${money(quotedPayment.cardTotal)}`),
-            context.payment.cashDiscount != null &&
-              text(`${t.cashDiscount}: ${context.payment.cashDiscount}%`),
-            context.payment.cashDiscount != null && !totals.unpriced && text(`${t.total} (${t.cashDiscount}): ${money(quotedPayment.cashTotal)}`),
-            (context.payment.depositAmount != null || context.payment.depositPercent != null) &&
-              text(
-                `${t.deposit}: ${money(context.payment.depositAmount ?? Math.round(totals.total * context.payment.depositPercent!) / 100)}`,
-              ),
-          ]),
-        text(t.confirmation),
-        signature(),
-      ]),
-    );
+      text(t.confirmation, 8),
+    ];
+    if (Object.keys(plan.findings).length) appendix.unshift(section(p.recorded, [ConsultationChartPdf(plan, 1, 'recorded'), legend()]));
+    if (medicalRows.some(([, value]) => value)) appendix.push(section(t.medical, medicalRows.filter(([, value]) => value).map(([label, value]) => text(`${label}: ${value}`, 10))));
+    if (config.warranties.some(warranty => plan.lines.some(line => line.type === warranty.type))) appendix.push(section(t.warranty, [
+      ...config.warranties.filter(warranty => plan.lines.some(line => line.type === warranty.type)).map(warranty => text(`${t[warranty.type]} · ${warranty.summary}`, 10)), text(t.contractual, 9),
+    ]));
+    const inlineDetails = totals.unpriced && appendix.length === 1 && !Object.keys(plan.findings).length && plan.lines.length <= 2 && plan.visits.length === 1 && plan.includedServices.length <= 4 && (payment?.terms?.length ?? 0) < 250;
+    if (inlineDetails) investmentChildren.push(section(p.clinicalNote, appendix), signature());
+    if (!inlineDetails) investmentChildren.push(signature());
+    pages.push(page('investment', investmentChildren));
+    if (!inlineDetails && appendix.length) pages.push(page('clinical-details', [heading(p.clinicalNote), ...appendix, text(t.confirmation, 9)]));
   }
+
   return el(Document, {}, ...pages);
 }
 

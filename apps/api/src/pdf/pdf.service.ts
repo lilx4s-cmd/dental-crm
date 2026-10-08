@@ -57,8 +57,8 @@ async function buildQrDataUrl(portalUrl?: string): Promise<string | undefined> {
 @Injectable()
 export class PdfService {
   async generateTreatmentPlanPdf(
-    plan: PlanDocumentInput & { consultation?: unknown },
-    branding: ClinicBranding & { documentConfiguration?: unknown },
+    plan: PlanDocumentInput & { consultation?: unknown; id?: string },
+    branding: ClinicBranding & { documentConfiguration?: unknown; logoUrl?: string | null },
     portalUrl?: string,
   ): Promise<Buffer> {
     if (plan.consultation)
@@ -70,6 +70,14 @@ export class PdfService {
         clinic: branding,
         config: DocumentConfigurationSchema.parse(branding.documentConfiguration ?? {}),
         plan: ConsultationSchema.parse(plan.consultation),
+        payment: {
+          terms: plan.paymentTerms,
+          cardFee: plan.cardFeePercent == null ? null : Number(plan.cardFeePercent),
+          cashDiscount: plan.cashDiscountPercent == null ? null : Number(plan.cashDiscountPercent),
+          depositAmount: plan.depositAmount == null ? null : Number(plan.depositAmount),
+        },
+        documentId: plan.id,
+        verificationQr: await buildQrDataUrl(portalUrl),
         generatedAt: new Date().toISOString(),
       });
     const qrDataUrl = await buildQrDataUrl(portalUrl);

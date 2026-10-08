@@ -15,6 +15,7 @@ import { randomBytes, createHash, randomUUID } from 'crypto';
 import * as QRCode from 'qrcode';
 import {
   ConsultationSchema,
+  ConsultationPaymentTermsSchema,
   DocumentConfigurationSchema,
   consultationTotals,
   consultationCopy,
@@ -182,19 +183,30 @@ export class DocumentsService {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map((i) => i.message));
     return parsed.data;
   }
-  async preview(patientId: string, input: unknown, user?: JwtPayload) {
+  private paymentInput(input: unknown) {
+    const parsed = ConsultationPaymentTermsSchema.safeParse(input ?? {});
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(issue => issue.message));
+    if ('depositAmount' in parsed.data && !('depositPercent' in parsed.data)) parsed.data.depositPercent = null;
+    return parsed.data;
+  }
+  async preview(patientId: string, input: unknown, user?: JwtPayload, paymentInput?: unknown) {
     const plan = this.parse(input),
       source = await this.context(patientId, undefined, user);
-    return renderConsultationPdf({ ...source, plan, generatedAt: new Date().toISOString() });
+    return renderConsultationPdf({ ...source, payment: { ...source.payment, ...this.paymentInput(paymentInput) }, plan, generatedAt: new Date().toISOString() });
   }
-  async createPlan(patientId: string, input: unknown, createdById: string, user?: JwtPayload) {
+  async createPlan(patientId: string, input: unknown, createdById: string, user?: JwtPayload, paymentInput?: unknown) {
     const consultation = this.parse(input),
       source = await this.context(patientId, undefined, user),
       t = consultationCopy(consultation.language);
+    const payment = { ...source.payment, ...this.paymentInput(paymentInput) };
+    if (user && ((payment.cashDiscount ?? 0) !== (source.payment.cashDiscount ?? 0) || (payment.cardFee ?? 0) !== (source.payment.cardFee ?? 0)) &&
+      !hasPermission(user, 'quotes.approve_discount', user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER))
+      throw new ForbiddenException('Payment-method price changes require price-approval permission');
     if(user)for(const line of consultation.lines){const configured=source.config.priceList.find(p=>p.type===line.type&&p.currency===consultation.currency&&(!p.material||p.material.toLowerCase()===(line.material??'').toLowerCase())&&(!p.brand||p.brand.toLowerCase()===(line.brand??'').toLowerCase()));if(configured&&(line.unitPrice!==configured.unitPrice||line.discount>0)){if(!hasPermission(user,'quotes.approve_discount',user.role===Role.SUPER_ADMIN||user.role===Role.CLINIC_MANAGER))throw new ForbiddenException('Catalog price exceptions require price-approval permission');if(!line.overrideReason?.trim()||line.overrideReason.trim().length<3)throw new BadRequestException('Record the reason for each price exception');}}
     const price = consultationTotals(consultation);
     await renderConsultationPdf({
       ...source,
+      payment,
       plan: consultation,
       generatedAt: new Date().toISOString(),
     });
@@ -232,20 +244,24 @@ export class DocumentsService {
           healingPeriodMonths: v.number === 1 ? consultation.healing?.maxMonths : undefined,
         })),
         packageIncludes: [],
-        depositAmount:
-          source.payment.depositPercent == null
-            ? undefined
-            : Math.round(price.total * source.payment.depositPercent) / 100,
+        depositAmount: payment.depositAmount ?? (payment.depositPercent == null ? undefined : Math.round(price.total * payment.depositPercent) / 100),
       },
       createdById,
     );
     await this.prisma.treatmentPlan.update({
       where: { id: plan.id },
-      data: { consultation: json(consultation), totalCost: price.total },
+      data: {
+        consultation: json(consultation), totalCost: price.total,
+        paymentTerms: payment.terms ?? null,
+        cardFeePercent: payment.cardFee ?? null,
+        cashDiscountPercent: payment.cashDiscount ?? null,
+        depositAmount: payment.depositAmount ?? (payment.depositPercent == null ? null : Math.round(price.total * payment.depositPercent) / 100),
+      },
     });
     if(this.finance&&source.patient.convertedFromLeadId)await this.finance.estimateFromPlan(source.patient.id,source.patient.convertedFromLeadId,plan.id,consultation,createdById);
     return this.generate('PLAN', plan.id, createdById, {
       ...source,
+      payment,
       plan: consultation,
       generatedAt: new Date().toISOString(),
     });
@@ -290,6 +306,7 @@ export class DocumentsService {
         cardFee: plan.cardFeePercent == null ? null : Number(plan.cardFeePercent),
         cashDiscount: plan.cashDiscountPercent == null ? null : Number(plan.cashDiscountPercent),
         depositAmount: plan.depositAmount == null ? null : Number(plan.depositAmount),
+        depositPercent: null,
       },
       plan: this.parse(plan.consultation),
       generatedAt: new Date().toISOString(),

@@ -33,3 +33,5 @@ export * from './types/pagination.types';
 export * from './access/permissions';
 export * from './treatment-plan/consultation';
 export * from './treatment-plan/consultation-copy';
+export * from './treatment-plan/consultation-presentation';
+export * from './treatment-plan/consultation-example';

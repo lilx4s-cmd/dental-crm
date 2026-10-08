@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { consultationCopy, consultationPresentationCopy, consultationTotals } from '@dental-crm/shared';
 import { CheckCircle2, XCircle, Download, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -48,6 +48,8 @@ const APPROVAL_BADGE: Record<
 
 export function PortalPlanView({ token, data }: { token: string; data: PortalResponse }) {
   const { plan, clinic } = data;
+  const t = consultationCopy(plan.consultation?.language ?? 'en');
+  const p = consultationPresentationCopy(plan.consultation?.language ?? 'en');
   const approve = usePortalApprove(token);
   const reject = usePortalReject(token);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -78,7 +80,7 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto max-w-4xl space-y-4 p-3 sm:p-6" dir={plan.consultation?.language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="space-y-1 text-center">
         <h1 className="text-xl font-semibold">{clinic.clinicName}</h1>
         {[clinic.address, clinic.city, clinic.country].filter(Boolean).length > 0 && (
@@ -89,17 +91,17 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-2">
-          <div>
-            <p className="text-lg font-semibold">{plan.title}</p>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-lg font-semibold">{plan.consultation ? p.estimate : plan.title}</p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Prepared for {plan.patient.firstName} {plan.patient.lastName} ·{' '}
-              {format(new Date(plan.createdAt), 'MMM d, yyyy')}
+              {t.patient}: {plan.patient.firstName} {plan.patient.lastName} · {p.prepared}:{' '}
+              <bdi>{new Intl.DateTimeFormat(plan.consultation?.language ?? 'en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(plan.createdAt))}</bdi>
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             <span className="text-lg font-semibold">
-              {fmt(Number(plan.totalCost), plan.currency)}
+              {plan.consultation && consultationTotals(plan.consultation).unpriced ? p.toQuote : <bdi dir="ltr">{fmt(Number(plan.totalCost), plan.currency)}</bdi>}
             </span>
             <Badge variant={approval.variant}>{approval.label}</Badge>
           </div>
@@ -133,7 +135,8 @@ export function PortalPlanView({ token, data }: { token: string; data: PortalRes
           {/* The same charts and phased pricing the printed document shows, rendered from the
               same components — a patient comparing the two should see one plan, not two. */}
           {plan.consultation ? (
-            <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} />
+            <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} identity={clinic.identity ?? undefined} clinic={clinic}
+              payment={{ terms: plan.paymentTerms, cardFee: plan.cardFeePercent == null ? null : Number(plan.cardFeePercent), cashDiscount: plan.cashDiscountPercent == null ? null : Number(plan.cashDiscountPercent), depositAmount: plan.depositAmount == null ? null : Number(plan.depositAmount) }} reference={plan.id} />
           ) : (
             <PlanDiagnoses plan={plan} />
           )}

@@ -9,6 +9,7 @@ import {
   hasPermission,
   Role,
   type Consultation,
+  type ConsultationPaymentTerms,
 } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest, apiRequestBlob, saveBlob } from '@/lib/api-client';
@@ -51,6 +52,7 @@ function DocumentPanel({ patientId, leadId }: { patientId?: string; leadId?: str
     qc = useQueryClient(),
     [editing, setEditing] = useState(false),
     [initial, setInitial] = useState<Consultation | undefined>(),
+    [initialPayment, setInitialPayment] = useState<ConsultationPaymentTerms | undefined>(),
     [pending, setPending] = useState(false),
     [older, setOlder] = useState(false);
   const query = new URLSearchParams(patientId ? { patientId } : { leadId: leadId! }).toString();
@@ -113,6 +115,7 @@ function DocumentPanel({ patientId, leadId }: { patientId?: string; leadId?: str
           disabled={!context.data || pending || !hasPermission(user, 'plans.write', true)}
           onClick={() => {
             setInitial(undefined);
+            setInitialPayment(undefined);
             setEditing(true);
           }}
         >
@@ -232,9 +235,10 @@ function DocumentPanel({ patientId, leadId }: { patientId?: string; leadId?: str
                 variant="outline"
                 disabled={pending}
                 onClick={() => {
-                  const plan = plans.data?.find((p) => p.id === doc.sourceId)?.consultation;
-                  if (plan) {
-                    setInitial(plan);
+                  const saved = plans.data?.find((p) => p.id === doc.sourceId);
+                  if (saved?.consultation) {
+                    setInitial(saved.consultation);
+                    setInitialPayment({ terms: saved.paymentTerms, cardFee: saved.cardFeePercent == null ? null : Number(saved.cardFeePercent), cashDiscount: saved.cashDiscountPercent == null ? null : Number(saved.cashDiscountPercent), depositAmount: saved.depositAmount == null ? null : Number(saved.depositAmount), depositPercent: null });
                     setEditing(true);
                   }
                 }}
@@ -260,7 +264,7 @@ function DocumentPanel({ patientId, leadId }: { patientId?: string; leadId?: str
           <Certificates patientId={context.data.patient.id} />
         )}
       {editing && context.data && (
-        <Editor source={context.data} initial={initial} onClose={() => setEditing(false)} />
+        <Editor source={context.data} initial={initial} initialPayment={initialPayment} onClose={() => setEditing(false)} />
       )}
     </section>
   );

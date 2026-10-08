@@ -52,7 +52,8 @@ export default function PortalAnimationPage({ params }: { params: Promise<{ toke
       </div>
 
       {plan.consultation ? (
-        <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} />
+        <ConsultationPatientView plan={plan.consultation} coverPhoto={clinic.coverPhoto} identity={clinic.identity ?? undefined} clinic={clinic}
+          payment={{ terms: plan.paymentTerms, cardFee: plan.cardFeePercent == null ? null : Number(plan.cardFeePercent), cashDiscount: plan.cashDiscountPercent == null ? null : Number(plan.cashDiscountPercent), depositAmount: plan.depositAmount == null ? null : Number(plan.depositAmount) }} />
       ) : (
         <TreatmentAnimation plan={plan} />
       )}

@@ -184,3 +184,30 @@ it('reuses real effective catalog selling prices without exposing internal catal
   );
   expect(JSON.stringify(context.config.priceList)).not.toContain('125.00');
 });
+
+it('persists the chosen payment terms and includes them in the exact generated snapshot', async () => {
+  const f = fixture();
+  f.prisma.documentVersion.findFirst.mockResolvedValue(null);
+  f.prisma.documentVersion.create.mockImplementation(async args => args.data);
+  const payment = { terms: 'Visit 1 payment before treatment', cardFee: 3, cashDiscount: 2, depositAmount: 100 };
+  await f.service.createPlan('p1', proposal, 'staff1', undefined, payment);
+  expect(f.prisma.treatmentPlan.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentTerms: payment.terms, cardFeePercent: 3, cashDiscountPercent: 2, depositAmount: 100 }) }));
+  expect(f.prisma.documentVersion.create.mock.calls[0][0].data.snapshot.payment).toMatchObject({ ...payment, depositPercent: null });
+});
+it('does not turn an unspecified saved deposit into a new clinic default deposit', async () => {
+  const f = fixture();
+  f.prisma.clinicSettings.findUnique.mockResolvedValue({ clinicName: 'Clinic', documentConfiguration: config, defaultDepositPercent: 30 });
+  f.prisma.treatmentPlan.findUnique.mockResolvedValue({ patientId: 'p1', consultation: proposal, depositAmount: null });
+  expect((await f.service.planContext('plan1')).payment).toMatchObject({ depositAmount: null, depositPercent: null });
+});
+it('rejects unauthorised payment discounts before creating any plan', async () => {
+  const f = fixture();
+  const user = { sub: 'staff1', role: Role.SALES_CONSULTANT } as JwtPayload;
+  await expect(f.service.createPlan('p1', proposal, 'staff1', user, { cashDiscount: 20 })).rejects.toBeInstanceOf(ForbiddenException);
+  expect(f.plans.create).not.toHaveBeenCalled();
+});
+it('rejects invalid payment percentages before creating any plan', async () => {
+  const f = fixture();
+  await expect(f.service.createPlan('p1', proposal, 'staff1', undefined, { cardFee: 200 })).rejects.toBeInstanceOf(BadRequestException);
+  expect(f.plans.create).not.toHaveBeenCalled();
+});

@@ -115,9 +115,11 @@ describe('consultation acceptance', () => {
     expect(consultationToothGeometry('11', 'implant').supragingival).toHaveLength(0);
     expect(consultationToothGeometry('11', 'implantCrown').supragingival.length).toBeGreaterThan(1);
   });
-  it('removes only recorded extractions', () => {
+  it('marks a planned extraction without changing the recorded finding', () => {
     const plan = proposal('extraction at tooth 11');
-    expect(consultationChart(plan, 1)).toEqual({ '11': 'missing' });
+    expect(consultationChart(plan, 1)).toEqual({ '11': 'extraction' });
+    expect(consultationChart(plan, 1, 'recorded')).toEqual({});
+    expect(consultationToothGeometry('11', 'extraction').supragingival.length).toBeGreaterThan(1);
     expect(consultationToothGeometry('11', 'missing')).toEqual({
       supragingival: [],
       subgingival: [],

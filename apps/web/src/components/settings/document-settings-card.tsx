@@ -44,6 +44,14 @@ export function DocumentSettingsCard() {
           onChange={(e) => setConfig({ ...config, department: e.target.value })}
         />
       </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">Clinic document colour
+          <Input type="color" value={config.accentColor} onChange={e => setConfig({ ...config, accentColor: e.target.value })} className="h-11" />
+        </label>
+        <label className="block text-sm">Patient representative
+          <Input maxLength={120} value={config.representative ?? ''} onChange={e => setConfig({ ...config, representative: e.target.value })} />
+        </label>
+      </div>
       <div className="space-y-3 rounded-lg border p-4">
         <h3 className="font-semibold">Invoice billing details</h3>
         <p className="text-sm text-muted-foreground">Use the clinic’s actual billing details. These appear on newly generated invoices.</p>

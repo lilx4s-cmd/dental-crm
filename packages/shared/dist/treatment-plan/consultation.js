@@ -86,6 +86,7 @@ exports.ConsultationLineSchema = zod_1.z
 });
 exports.ConsultationVisitSchema = zod_1.z.object({
     number: zod_1.z.number().int().min(1).max(2),
+    treatmentDays: zod_1.z.number().int().min(1).max(61).optional(),
     nights: zod_1.z.number().int().min(0).max(60),
     hotelRate: money,
     hotelIncluded: zod_1.z.boolean(),
@@ -170,6 +171,7 @@ exports.DocumentConfigurationSchema = zod_1.z
     .object({
     department: zod_1.z.string().max(120).default('International Patient Department'),
     representative: zod_1.z.string().max(120).optional(),
+    accentColor: zod_1.z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#183858'),
     billingLegalName: zod_1.z.string().max(180).optional(),
     billingTaxId: zod_1.z.string().max(120).optional(),
     invoicePaymentInstructions: zod_1.z.string().max(2000).optional(),
@@ -347,8 +349,10 @@ function parseConsultation(text, currency, config) {
     }
     return { lines, warnings };
 }
-function consultationChart(plan, visit) {
+function consultationChart(plan, visit, mode = 'proposed') {
     const map = { ...plan.findings };
+    if (mode === 'recorded')
+        return map;
     const order = {
         extraction: 0,
         sinus: 1,
@@ -371,14 +375,16 @@ function consultationChart(plan, visit) {
                 else if (line.type === 'bridge' && map[tooth] === 'missing')
                     map[tooth] = 'bridgePontic';
                 else
-                    map[tooth] = line.type === 'extraction' ? 'missing' : line.type;
+                    map[tooth] = line.type;
             }
     return map;
 }
 /** Layer bone procedures and treated canals without replacing their recorded restoration. */
-function consultationToothLayers(plan, visit, fdi) {
-    const state = consultationChart(plan, visit)[fdi] ?? 'unknown';
+function consultationToothLayers(plan, visit, fdi, mode = 'proposed') {
+    const state = consultationChart(plan, visit, mode)[fdi] ?? 'unknown';
     const layers = consultationToothGeometry(fdi, state);
+    if (mode === 'recorded')
+        return layers;
     const types = plan.lines
         .filter((l) => l.visit <= visit && l.positions.includes(fdi))
         .map((l) => l.type);
@@ -392,8 +398,10 @@ function consultationToothLayers(plan, visit, fdi) {
         }
     return layers;
 }
-function consultationBridgeConnectors(plan, visit) {
+function consultationBridgeConnectors(plan, visit, mode = 'proposed') {
     const result = [];
+    if (mode === 'recorded')
+        return result;
     for (const line of plan.lines.filter((l) => l.type === 'bridge' && l.visit <= visit))
         for (const [a, arch] of [tooth_geometry_1.UPPER_TEETH, tooth_geometry_1.LOWER_TEETH].entries())
             for (let i = 0; i < arch.length - 1; i++) {
@@ -407,8 +415,12 @@ function consultationBridgeConnectors(plan, visit) {
     return result;
 }
 function consultationToothGeometry(fdi, state) {
-    if (state === 'missing' || state === 'extraction')
+    if (state === 'missing')
         return { subgingival: [], supragingival: [] };
+    if (state === 'extraction') {
+        const layers = (0, tooth_geometry_1.buildTooth)(fdi, 'HEALTHY', 'diagnosis');
+        return { ...layers, supragingival: [...layers.supragingival, ...(0, tooth_geometry_1.buildToothMarker)('EXTRACTION', 'diagnosis').map(op => ({ ...op, stroke: '#b42332' }))] };
+    }
     if (state === 'implant' || state === 'implantCrown') {
         const layers = (0, tooth_geometry_1.buildTooth)(fdi, 'IMPLANT', 'diagnosis');
         return {

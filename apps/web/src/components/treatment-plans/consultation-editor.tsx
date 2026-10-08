@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ConsultationSchema,
+  ConsultationPaymentTermsSchema,
   hasPermission,Role,
   DOCUMENT_LANGUAGES,
   PROCEDURES,
@@ -14,10 +15,14 @@ import {
   consultationTotals,
   consultationWarnings,
   consultationItinerary,
+  consultationPresentationCopy,
+  consultationQuotedPayment,
+  preserveConsultationLineDetails,
   type Consultation,
   type ConsultationLine,
   type DocumentConfiguration,
   type ConsultationCopyKey,
+  type ConsultationPaymentTerms,
 } from '@dental-crm/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -26,20 +31,26 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest, apiRequestDownload } from '@/lib/api-client';
-import { ConsultationChart, TreatmentProcess } from './consultation-chart';
+import { ConsultationChart } from './consultation-chart';
+import { ConsultationPatientView } from './consultation-patient-view';
 export interface ConsultationSource {
   patient: { id: string; firstName: string; lastName: string };
   config: DocumentConfiguration;
-  clinic: { clinicName: string; currency: string };
+  clinic: { clinicName: string; currency: string; logoUrl?: string | null; address?: string | null; phone?: string | null; email?: string | null; website?: string | null };
+  payment?: ConsultationPaymentTerms;
   preferredLanguage: string;
 }
 export function ConsultationEditor({
   source,
   initial,
+  initialPayment,
+  demo = false,
   onClose,
 }: {
   source: ConsultationSource;
   initial?: Consultation;
+  initialPayment?: ConsultationPaymentTerms;
+  demo?: boolean;
   onClose: () => void;
 }) {
   const { accessToken,user } = useAuth(),
@@ -70,9 +81,25 @@ export function ConsultationEditor({
     [error, setError] = useState(''),
     [rendering, setRendering] = useState(false),
     pdfRef = useRef<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'patient' | 'pdf'>('patient');
+  const [wideViewport, setWideViewport] = useState(false);
+  const [addType, setAddType] = useState<ConsultationLine['type']>('crown');
+  const [payment, setPayment] = useState<ConsultationPaymentTerms>(initialPayment ?? source.payment ?? {});
+  const deferredPlan = useDeferredValue(plan);
+  const canApprovePrices = hasPermission(user, 'quotes.approve_discount', user?.role === Role.SUPER_ADMIN || user?.role === Role.CLINIC_MANAGER);
   const t = consultationCopy(plan.language),
+    p = consultationPresentationCopy(plan.language),
     totals = consultationTotals(plan),
     valid = ConsultationSchema.safeParse(plan);
+  const validPayment = ConsultationPaymentTermsSchema.safeParse(payment);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(min-width: 768px)');
+    const update = () => setWideViewport(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const change = (next: Consultation) => {
     setUndo((h) => [...h.slice(-19), plan]);
     setPlan(next);
@@ -83,11 +110,12 @@ export function ConsultationEditor({
       toast.error(`${t.treatment}: ${result.warnings.join(', ')}`);
       return;
     }
-    const count = Math.max(1, ...result.lines.map((l) => l.visit));
+    const lines = preserveConsultationLineDetails(result.lines, plan.lines);
+    const count = Math.max(1, ...lines.map((l) => l.visit));
     change({
       ...plan,
       treatmentText: input,
-      lines: result.lines,
+      lines,
       visits: Array.from(
         { length: count },
         (_, i) =>
@@ -102,15 +130,16 @@ export function ConsultationEditor({
           },
       ),
     });
-    setLineId(result.lines[0]?.id ?? '');
+    setLineId(lines[0]?.id ?? '');
     setVisit(1);
     setSelected([]);
   };
   const lineChange = (id: string, values: Partial<ConsultationLine>) =>
     change({ ...plan, lines: plan.lines.map((l) => (l.id === id ? { ...l, ...values } : l)) });
   useEffect(() => {
-    if (!ConsultationSchema.safeParse(plan).success) {
+    if (demo || previewMode !== 'pdf' || input !== plan.treatmentText || !ConsultationSchema.safeParse(plan).success || !ConsultationPaymentTermsSchema.safeParse(payment).success) {
       setRendering(false);
+      setPdf(null);
       return;
     }
     const abort = new AbortController();
@@ -121,7 +150,7 @@ export function ConsultationEditor({
         '/api/documents/preview',
         {
           method: 'POST',
-          body: JSON.stringify({ patientId: source.patient.id, plan }),
+          body: JSON.stringify({ patientId: source.patient.id, plan, payment }),
           signal: abort.signal,
         },
         accessToken ?? undefined,
@@ -144,7 +173,7 @@ export function ConsultationEditor({
       clearTimeout(timer);
       abort.abort();
     };
-  }, [plan, source.patient.id, accessToken, t.preview]);
+  }, [demo, plan, payment, previewMode, input, source.patient.id, accessToken, t.preview]);
   useEffect(
     () => () => {
       if (pdfRef.current) URL.revokeObjectURL(pdfRef.current);
@@ -152,12 +181,14 @@ export function ConsultationEditor({
     [],
   );
   const save = useMutation({
-    mutationFn: () =>
-      apiRequest(
+    mutationFn: () => {
+      if (demo) return Promise.reject(new Error('Fictional demonstration only'));
+      return apiRequest(
         '/api/documents/plans',
-        { method: 'POST', body: JSON.stringify({ patientId: source.patient.id, plan }) },
+        { method: 'POST', body: JSON.stringify({ patientId: source.patient.id, plan, payment }) },
         accessToken ?? undefined,
-      ),
+      );
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['documents'] });
       void qc.invalidateQueries({ queryKey: ['treatment-plans'] });
@@ -180,7 +211,7 @@ export function ConsultationEditor({
       }}
     >
       <DialogContent
-        className="consultation-document max-w-7xl"
+        className="consultation-document max-w-7xl p-3 sm:p-6"
         dir={plan.language === 'ar' ? 'rtl' : 'ltr'}
       >
         <DialogHeader>
@@ -189,7 +220,7 @@ export function ConsultationEditor({
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="grid grid-cols-2 gap-2">
               {field(
                 t.language,
@@ -212,6 +243,7 @@ export function ConsultationEditor({
                 <select
                   className="h-10 w-full rounded border bg-background px-2"
                   value={plan.currency}
+                  disabled={!!initial || plan.lines.length > 0}
                   onChange={(e) => {
                     const currency = e.target.value;
                     change({
@@ -241,8 +273,19 @@ export function ConsultationEditor({
               />,
             )}
             <Button type="button" onClick={parse} disabled={!input.trim()}>
-              {t.parse}
+              {p.refreshTreatment}
             </Button>
+            <div className="flex flex-wrap gap-2">
+              <select aria-label={`${t.create} ${t.treatment}`} value={addType} onChange={e => setAddType(e.target.value as ConsultationLine['type'])} className="min-h-11 min-w-0 flex-1 rounded border bg-background px-2">
+                {PROCEDURES.map(type => <option key={type} value={type}>{t[type]}</option>)}
+              </select>
+              <Button type="button" variant="outline" disabled={input !== plan.treatmentText} onClick={() => {
+                const catalog = config.priceList.find(item => item.type === addType && item.currency === plan.currency);
+                const treatmentText = `${plan.treatmentText ? plan.treatmentText + ' + ' : ''}1 ${t[addType]}`;
+                change({ ...plan, treatmentText, lines: [...plan.lines, { id: crypto.randomUUID(), type: addType, quantity: 1, unitPrice: catalog?.unitPrice ?? null, positions: [], visit: plan.visits[0]?.number ?? 1, material: catalog?.material, brand: catalog?.brand, discount: 0 }], visits: plan.visits.length ? plan.visits : [{ number: 1, nights: config.defaultNights[0] ?? 0, hotelRate: config.defaultHotelRate, hotelIncluded: config.defaultHotelIncluded, transfer: 'excluded', transferPrice: 0, itinerary: [] }] });
+                setInput(treatmentText);
+              }}>{t.create} {t.treatment}</Button>
+            </div>
             {plan.lines.map((l) => (
               <div key={l.id} className="space-y-2 rounded-xl border p-3">
                 <div className="flex items-center gap-2">
@@ -251,12 +294,13 @@ export function ConsultationEditor({
                     value={l.type}
                     onChange={(e) => {
                       const type = e.target.value as ConsultationLine['type'];
+                      const catalog = config.priceList.find(item => item.type === type && item.currency === plan.currency);
                       lineChange(l.id, {
                         type,
-                        unitPrice:
-                          config.priceList.find(
-                            (p) => p.type === type && p.currency === plan.currency,
-                          )?.unitPrice ?? null,
+                        unitPrice: catalog?.unitPrice ?? null,
+                        material: catalog?.material,
+                        brand: catalog?.brand,
+                        discount: 0,
                       });
                     }}
                     className="min-w-0 flex-1 rounded border bg-background p-2"
@@ -277,7 +321,7 @@ export function ConsultationEditor({
                     ×
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {field(
                     t.quantity,
                     <Input
@@ -295,7 +339,7 @@ export function ConsultationEditor({
                       min="0"
                       step="0.01"
                       disabled={
-                        (!hasPermission(user,'quotes.approve_discount',user?.role===Role.SUPER_ADMIN||user?.role===Role.CLINIC_MANAGER)||!override.includes(l.id)) &&
+                        (!canApprovePrices || !override.includes(l.id)) &&
                         l.unitPrice !== null
                       }
                       value={l.unitPrice ?? ''}
@@ -323,7 +367,7 @@ export function ConsultationEditor({
                   <label className="flex gap-2 text-xs">
                     <input
                       type="checkbox"
-                      disabled={!hasPermission(user,'quotes.approve_discount',user?.role===Role.SUPER_ADMIN||user?.role===Role.CLINIC_MANAGER)}
+                      disabled={!canApprovePrices}
                       checked={override.includes(l.id)}
                       onChange={(e) =>
                         setOverride((prev) =>
@@ -334,7 +378,7 @@ export function ConsultationEditor({
                     {t.unitPrice} · {t.settings}
                   </label>
                 )}
-                {override.includes(l.id)&&<Input aria-label="Price exception reason" placeholder="Reason for price exception" value={l.overrideReason??''} onChange={e=>lineChange(l.id,{overrideReason:e.target.value})}/>}
+                {(override.includes(l.id) || l.discount > 0) && <Input aria-label={p.discountReason} placeholder={p.discountReason} disabled={!canApprovePrices} value={l.overrideReason ?? ''} onChange={e => lineChange(l.id, { overrideReason: e.target.value })} />}
                 <details>
                   <summary className="cursor-pointer text-xs text-muted-foreground">
                     {t.material} · {t.brand} · {t.positions}
@@ -370,6 +414,7 @@ export function ConsultationEditor({
                       <Input
                         type="number"
                         min="0"
+                        disabled={!canApprovePrices || l.unitPrice == null}
                         value={l.discount}
                         onChange={(e) => lineChange(l.id, { discount: Number(e.target.value) })}
                       />,
@@ -385,12 +430,15 @@ export function ConsultationEditor({
                 </details>
               </div>
             ))}
+            {plan.visits.length === 1 && <Button type="button" variant="outline" onClick={() => change({ ...plan, visits: [...plan.visits, { number: 2, nights: config.defaultNights[1] ?? 0, hotelRate: config.defaultHotelRate, hotelIncluded: config.defaultHotelIncluded, transfer: 'excluded', transferPrice: 0, itinerary: [] }] })}>{t.create} {t.visit} 2</Button>}
             {plan.visits.map((v) => (
               <div key={v.number} className="space-y-3 rounded-xl border bg-muted/25 p-3">
                 <h3 className="font-semibold">
                   {t.visit} {v.number}
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
+                {v.number === 2 && <Button type="button" size="sm" variant="outline" disabled={plan.lines.some(line => line.visit === 2)} onClick={() => change({ ...plan, visits: plan.visits.filter(item => item.number !== 2) })}>{t.clear} {t.visit} 2</Button>}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {field(p.days, <Input type="number" min={1} max={61} placeholder={p.durationPending} value={v.treatmentDays ?? ''} onChange={e => change({ ...plan, visits: plan.visits.map(item => item.number === v.number ? { ...item, treatmentDays: e.target.value === '' ? undefined : Number(e.target.value) } : item) })} />)}
                   {field(
                     t.nights,
                     <Input
@@ -589,11 +637,6 @@ export function ConsultationEditor({
                     </Button>
                   ))}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {[...new Set(plan.lines.map((l) => l.type))].map((type) => (
-                    <TreatmentProcess key={type} plan={plan} type={type} />
-                  ))}
-                </div>
               </>
             )}
             <details>
@@ -604,6 +647,25 @@ export function ConsultationEditor({
                   change({ ...plan, includedServices: e.target.value.split('\n').filter(Boolean) })
                 }
               />
+            </details>
+            {plan.visits.length > 1 && <section className="space-y-2 rounded-xl border p-3">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!plan.healing} onChange={e => change({ ...plan, healing: e.target.checked ? (config.healing ?? { minMonths: 0, maxMonths: 0 }) : null })} />{t.healing}</label>
+              {plan.healing && <div className="grid grid-cols-2 gap-2">
+                {field(`${t.healing} · ${t.months} (min)`, <Input type="number" min={0} max={36} value={plan.healing.minMonths} onChange={e => change({ ...plan, healing: { ...plan.healing!, minMonths: Number(e.target.value) } })} />)}
+                {field(`${t.healing} · ${t.months} (max)`, <Input type="number" min={0} max={36} value={plan.healing.maxMonths} onChange={e => change({ ...plan, healing: { ...plan.healing!, maxMonths: Number(e.target.value) } })} />)}
+              </div>}
+              <p className="text-xs text-muted-foreground">{p.separateVisits}</p>
+            </section>}
+            <details className="rounded-xl border p-3"><summary className="cursor-pointer font-medium">{t.payment}</summary>
+              <div className="mt-3 space-y-3">
+                {field(t.payment, <Textarea maxLength={2500} value={payment.terms ?? ''} onChange={e => setPayment(previous => ({ ...previous, terms: e.target.value }))} />)}
+                <div className="grid grid-cols-2 gap-2">
+                  {field(`${t.cardFee} %`, <Input type="number" min={0} max={100} step="0.01" disabled={!canApprovePrices} value={payment.cardFee ?? ''} onChange={e => setPayment(previous => ({ ...previous, cardFee: e.target.value === '' ? null : Number(e.target.value) }))} />)}
+                  {field(`${t.cashDiscount} %`, <Input type="number" min={0} max={100} step="0.01" disabled={!canApprovePrices} value={payment.cashDiscount ?? ''} onChange={e => setPayment(previous => ({ ...previous, cashDiscount: e.target.value === '' ? null : Number(e.target.value) }))} />)}
+                </div>
+                {field(`${p.depositRequested} · ${plan.currency}`, <Input type="number" min={0} step="0.01" value={payment.depositAmount ?? (payment.depositPercent == null ? '' : consultationQuotedPayment(plan, payment).deposit)} onChange={e => setPayment(previous => ({ ...previous, depositPercent: null, depositAmount: e.target.value === '' ? null : Number(e.target.value) }))} />)}
+                <p className="text-xs text-muted-foreground">{p.quoteOnly}</p>
+              </div>
             </details>
             {consultationWarnings(plan).map((k) => (
               <p
@@ -618,6 +680,7 @@ export function ConsultationEditor({
                 {valid.error.issues.map((i) => i.message).join(' · ')}
               </p>
             )}
+            {!validPayment.success && <p role="alert" className="text-sm text-destructive">{validPayment.error.issues.map(issue => issue.message).join(' · ')}</p>}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
@@ -648,29 +711,29 @@ export function ConsultationEditor({
                 {totals.unpriced ? t.unpriced : `${plan.currency} ${totals.total.toFixed(2)}`}
               </span>
               <Button
-                disabled={!valid.success || save.isPending || input !== plan.treatmentText}
+                disabled={demo || !valid.success || !validPayment.success || save.isPending || input !== plan.treatmentText || !hasPermission(user, 'plans.write', true)}
                 onClick={() => save.mutate()}
               >
-                {save.isPending ? '…' : t.save}
+                {save.isPending ? '…' : p.saveGenerate}
               </Button>
             </div>
           </div>
-          <div className="space-y-2 lg:sticky lg:top-0 lg:self-start">
-            <h3 className="font-semibold">
-              {t.preview} {rendering && '…'}
-            </h3>
+          <div className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={previewMode === 'patient' ? 'default' : 'outline'} aria-pressed={previewMode === 'patient'} onClick={() => setPreviewMode('patient')}>{p.patientPreview}</Button>
+              <Button disabled={demo} type="button" variant={previewMode === 'pdf' ? 'default' : 'outline'} aria-pressed={previewMode === 'pdf'} onClick={() => setPreviewMode('pdf')}>{p.pdfPreview} {rendering && '…'}</Button>
+            </div>
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             )}
-            {pdf && valid.success ? (
-              <iframe
-                title={t.preview}
-                src={pdf}
-                className={`h-[75vh] w-full rounded-xl border bg-slate-100 ${rendering ? 'opacity-40' : ''}`}
-              />
-            ) : (
+            {previewMode === 'patient' && valid.success && validPayment.success ? <div className="rounded-xl border bg-white p-3 sm:p-4 lg:max-h-[75vh] lg:overflow-y-auto">
+              <ConsultationPatientView plan={deferredPlan} payment={payment} identity={config} clinic={source.clinic} patientName={`${source.patient.firstName} ${source.patient.lastName}`} coverPhoto={config.coverPhoto} />
+            </div> : previewMode === 'pdf' && pdf && valid.success && !rendering && !error ? <>
+              <a href={pdf} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border bg-white px-4 text-sm font-medium">{p.openPdf}</a>
+              {wideViewport && <iframe title={p.pdfPreview} src={pdf} className="h-[75vh] w-full rounded-xl border bg-slate-100" />}
+            </> : (
               <p className="rounded-xl border bg-muted p-8 text-sm">{t.treatment}</p>
             )}
           </div>

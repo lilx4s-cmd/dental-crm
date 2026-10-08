@@ -48,4 +48,6 @@ __exportStar(require("./types/pagination.types"), exports);
 __exportStar(require("./access/permissions"), exports);
 __exportStar(require("./treatment-plan/consultation"), exports);
 __exportStar(require("./treatment-plan/consultation-copy"), exports);
+__exportStar(require("./treatment-plan/consultation-presentation"), exports);
+__exportStar(require("./treatment-plan/consultation-example"), exports);
 //# sourceMappingURL=index.js.map

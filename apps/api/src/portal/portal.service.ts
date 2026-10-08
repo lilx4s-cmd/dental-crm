@@ -17,6 +17,10 @@ const PORTAL_PLAN_SELECT = {
   status: true,
   totalCost: true,
   currency: true,
+  depositAmount: true,
+  cardFeePercent: true,
+  cashDiscountPercent: true,
+  paymentTerms: true,
   approvalStatus: true,
   rejectionReason: true,
   doctorRecommendation: true,
@@ -165,6 +169,19 @@ export class PortalService {
         address: clinicSettings?.address ?? null,
         city: clinicSettings?.city ?? null,
         country: clinicSettings?.country ?? null,
+        phone: clinicSettings?.phone ?? null,
+        email: clinicSettings?.email ?? null,
+        website: clinicSettings?.website ?? null,
+        // Explicit allowlist: never publish the catalog, clinic costs or administrative settings.
+        identity: documentConfig.success ? {
+          department: documentConfig.data.department,
+          representative: documentConfig.data.representative,
+          accentColor: documentConfig.data.accentColor,
+          logo: documentConfig.data.logo,
+          signature: documentConfig.data.signature,
+          stamp: documentConfig.data.stamp,
+          warranties: documentConfig.data.warranties,
+        } : null,
       },
     };
   }
@@ -244,10 +261,14 @@ export class PortalService {
 
     return this.pdfService.generateTreatmentPlanPdf(plan, {
       clinicName: clinicSettings?.clinicName ?? 'Dental Clinic',
+      logoUrl: clinicSettings?.logoUrl,
       documentConfiguration: clinicSettings?.documentConfiguration,
       address: clinicSettings?.address,
       city: clinicSettings?.city,
       country: clinicSettings?.country,
+      phone: clinicSettings?.phone,
+      email: clinicSettings?.email,
+      website: clinicSettings?.website,
     });
   }
 }

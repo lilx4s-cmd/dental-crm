@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { ConsultationChart } from './consultation-chart';
 import {
   DocumentConfigurationSchema,
+  consultationCopy,
   parseConsultation,
   type Consultation,
 } from '@dental-crm/shared';
@@ -65,7 +66,7 @@ it('shows exactly the unassigned implant quantity without putting it on guessed 
     language: 'en' as const,
     lines: parseConsultation('12 implants', 'USD', DocumentConfigurationSchema.parse({})).lines,
   };
-  const { container } = render(<ConsultationChart plan={next} visit={1} />);
+  render(<ConsultationChart plan={next} visit={1} />);
   expect(screen.getByLabelText('12 Dental implant').querySelectorAll('g')).toHaveLength(12);
-  expect(container.querySelectorAll('svg')).toHaveLength(2);
+  expect(screen.getByLabelText(`FDI 11: ${consultationCopy('en').unknown}`)).toBeInTheDocument();
 });
