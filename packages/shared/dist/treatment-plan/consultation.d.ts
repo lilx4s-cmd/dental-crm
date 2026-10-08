@@ -386,6 +386,9 @@ export type ConsultationLine = z.infer<typeof ConsultationLineSchema>;
 export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department: z.ZodDefault<z.ZodString>;
     representative: z.ZodOptional<z.ZodString>;
+    billingLegalName: z.ZodOptional<z.ZodString>;
+    billingTaxId: z.ZodOptional<z.ZodString>;
+    invoicePaymentInstructions: z.ZodOptional<z.ZodString>;
     signature: z.ZodOptional<z.ZodString>;
     stamp: z.ZodOptional<z.ZodString>;
     logo: z.ZodOptional<z.ZodString>;
@@ -464,6 +467,9 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     }[];
     signature?: string | undefined;
     representative?: string | undefined;
+    billingLegalName?: string | undefined;
+    billingTaxId?: string | undefined;
+    invoicePaymentInstructions?: string | undefined;
     stamp?: string | undefined;
     logo?: string | undefined;
     coverPhoto?: string | undefined;
@@ -475,6 +481,9 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department?: string | undefined;
     signature?: string | undefined;
     representative?: string | undefined;
+    billingLegalName?: string | undefined;
+    billingTaxId?: string | undefined;
+    invoicePaymentInstructions?: string | undefined;
     stamp?: string | undefined;
     logo?: string | undefined;
     coverPhoto?: string | undefined;
@@ -520,6 +529,9 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     }[];
     signature?: string | undefined;
     representative?: string | undefined;
+    billingLegalName?: string | undefined;
+    billingTaxId?: string | undefined;
+    invoicePaymentInstructions?: string | undefined;
     stamp?: string | undefined;
     logo?: string | undefined;
     coverPhoto?: string | undefined;
@@ -531,6 +543,9 @@ export declare const DocumentConfigurationSchema: z.ZodEffects<z.ZodObject<{
     department?: string | undefined;
     signature?: string | undefined;
     representative?: string | undefined;
+    billingLegalName?: string | undefined;
+    billingTaxId?: string | undefined;
+    invoicePaymentInstructions?: string | undefined;
     stamp?: string | undefined;
     logo?: string | undefined;
     coverPhoto?: string | undefined;

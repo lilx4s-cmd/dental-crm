@@ -170,6 +170,9 @@ exports.DocumentConfigurationSchema = zod_1.z
     .object({
     department: zod_1.z.string().max(120).default('International Patient Department'),
     representative: zod_1.z.string().max(120).optional(),
+    billingLegalName: zod_1.z.string().max(180).optional(),
+    billingTaxId: zod_1.z.string().max(120).optional(),
+    invoicePaymentInstructions: zod_1.z.string().max(2000).optional(),
     signature: zod_1.z.string().max(350000).optional(),
     stamp: zod_1.z.string().max(350000).optional(),
     logo: zod_1.z.string().max(350000).optional(),

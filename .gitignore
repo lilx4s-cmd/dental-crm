@@ -34,3 +34,6 @@ packages/shared/src/**/*.map
 
 # Render artefacts from the Arabic verification script
 arabic-proof.pdf
+
+# Generated document render checks
+/tmp/pdfs/

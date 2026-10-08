@@ -44,6 +44,13 @@ export function DocumentSettingsCard() {
           onChange={(e) => setConfig({ ...config, department: e.target.value })}
         />
       </label>
+      <div className="space-y-3 rounded-lg border p-4">
+        <h3 className="font-semibold">Invoice billing details</h3>
+        <p className="text-sm text-muted-foreground">Use the clinic’s actual billing details. These appear on newly generated invoices.</p>
+        <label className="block text-sm">Legal business name<Input maxLength={180} value={config.billingLegalName ?? ''} onChange={(e) => setConfig({ ...config, billingLegalName: e.target.value })} /></label>
+        <label className="block text-sm">Tax / registration ID<Input maxLength={120} value={config.billingTaxId ?? ''} onChange={(e) => setConfig({ ...config, billingTaxId: e.target.value })} /></label>
+        <label className="block text-sm">Payment instructions<Textarea maxLength={2000} placeholder="Payment methods, bank details, and the invoice reference to use" value={config.invoicePaymentInstructions ?? ''} onChange={(e) => setConfig({ ...config, invoicePaymentInstructions: e.target.value })} /></label>
+      </div>
       <div className="grid gap-4 md:grid-cols-3">
         {(['logo', 'signature', 'stamp', 'coverPhoto'] as const).map((key) => (
           <label key={key} className="space-y-2 text-sm">

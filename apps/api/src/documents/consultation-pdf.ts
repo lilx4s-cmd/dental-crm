@@ -1,4 +1,5 @@
 import React from 'react';
+import { documentLabels, documentDate, invoiceStatusLabel, invoiceDisplayTotals } from './document-presentation';
 import {
   Document,
   Page,
@@ -27,6 +28,7 @@ import {
   consultationCopy,
   consultationItinerary,
   consultationTotals,
+  computePaymentSummary,
   consultationWarnings,
   procedureSteps,
   UPPER_TEETH,
@@ -99,6 +101,10 @@ export interface DocumentContext {
   kind?: 'PLAN' | 'INVOICE' | 'WARRANTY';
   invoice?: {
     invoiceNumber: string;
+    currency?: string;
+    issuedAt?: Date | string | null;
+    dueDate?: Date | string | null;
+    createdAt?: Date | string | null;
     status: string;
     items: {
       description: string;
@@ -110,7 +116,7 @@ export interface DocumentContext {
     discount: number | string;
     tax: number | string;
     total: number | string;
-    payments: { amount: number | string; status: string }[];
+    payments: { amount: number | string; status: string; currency?: string; paidAt?: Date | string | null; method?: string; reference?: string | null }[];
   };
   warranty?: {
     certificateNumber: string;
@@ -197,7 +203,9 @@ export function consultationDocument(context: DocumentContext) {
   const { plan, config, clinic, patient } = context,
     t = consultationCopy(plan.language),
     rtl = plan.language === 'ar';
+  const d = documentLabels(plan.language);
   const totals = consultationTotals(plan);
+  const quotedPayment = computePaymentSummary({ total: totals.total, cardFeePercent: context.payment?.cardFee ?? 0, cashDiscountPercent: context.payment?.cashDiscount ?? 0, depositAmount: context.payment?.depositAmount ?? (context.payment?.depositPercent == null ? 0 : Math.round(totals.total * context.payment.depositPercent) / 100) });
   const font = rtl ? 'DejaVuSans' : 'NotoSans';
   const money = (v: number) =>
     `${plan.currency} ${v.toLocaleString(plan.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -206,9 +214,9 @@ export function consultationDocument(context: DocumentContext) {
       Text,
       {
         style: {
-          fontSize: size,
-          lineHeight: 1.45,
-          marginBottom: 6,
+          fontSize: size === 11 ? context.invoice ? 9 : 9.5 : size,
+          lineHeight: context.invoice ? 1.25 : 1.35,
+          marginBottom: context.invoice ? 3 : 4,
           textAlign: rtl ? 'right' : 'left',
           fontFamily: /[\u0600-\u06ff]/.test(s) ? 'DejaVuSans' : font,
         },
@@ -220,14 +228,16 @@ export function consultationDocument(context: DocumentContext) {
       Text,
       {
         style: {
-          fontSize: 18,
-          fontWeight: 700,
-          lineHeight: 1.4,
-          marginBottom: 12,
+          fontSize: context.invoice ? 16 : 18,
+          // DejaVu's bold Arabic ligatures can lose character clusters in textkit; use the
+          // regular Arabic face and size/color to preserve heading hierarchy.
+          fontWeight: rtl ? 400 : 700,
+          lineHeight: context.invoice ? 1.2 : 1.4,
+          marginBottom: context.invoice ? 8 : 12,
           textAlign: rtl ? 'right' : 'left',
-          color: '#12665d',
+          color: '#183858',
         },
-        minPresenceAhead: 45,
+        minPresenceAhead: 75,
       },
       s,
     );
@@ -235,7 +245,7 @@ export function consultationDocument(context: DocumentContext) {
     el(
       View,
       { style: { marginTop: 15, marginBottom: 5 }, wrap: true },
-      heading(title),
+      el(Text, { style: { fontSize: context.invoice ? 14 : 13, color: '#183858', fontWeight: rtl ? 400 : 700, marginBottom: 8, textAlign: rtl ? 'right' : 'left' }, minPresenceAhead: 60 }, title),
       ...children,
     );
   const page = (key: string, children: React.ReactNode[]) =>
@@ -322,42 +332,64 @@ export function consultationDocument(context: DocumentContext) {
   ];
   const pages: React.ReactNode[] = [];
   if (context.invoice) {
-    const inv = context.invoice,
-      paid = inv.payments
-        .filter((p) => p.status === 'COMPLETED')
-        .reduce((s, p) => s + Number(p.amount), 0);
-    pages.push(
-      page('invoice', [
-        ...identity(),
-        text(`${inv.invoiceNumber} · ${inv.status}`),
-        ...inv.items.map((i) =>
-          el(
-            View,
-            {
-              wrap: false,
-              style: {
-                flexDirection: 'row',
-                paddingVertical: 5,
-                borderBottomWidth: 0.5,
-                borderBottomColor: '#d4e1e9',
-              },
-            },
-            el(Text, { style: { width: '55%' } }, i.description),
-            el(Text, { style: { width: '20%' } }, `${i.quantity} × ${money(Number(i.unitPrice))}`),
-            el(Text, { style: { width: '25%', textAlign: 'right' } }, money(Number(i.total))),
-          ),
-        ),
-        text(`${t.subtotal}: ${money(Number(inv.subtotal))}`),
-        text(`${t.discount}: ${money(Number(inv.discount))}`),
-        text(
-          `${{ ar: 'الضريبة', fr: 'Taxe', de: 'Steuer', es: 'Impuesto', it: 'Imposta', tr: 'Vergi', pl: 'Podatek', hr: 'Porez', ru: 'Налог', en: 'Tax' }[plan.language]}: ${money(Number(inv.tax))}`,
-        ),
-        text(`${t.total}: ${money(Number(inv.total))}`, 18),
-        text(`${t.paid}: ${money(paid)}`),
-        text(`${t.balance}: ${money(Math.max(0, Number(inv.total) - paid))}`),
-        signature(),
+    const inv = context.invoice;
+    const figures = invoiceDisplayTotals(inv, inv.currency ?? plan.currency);
+    const columns = [42, 11, 22, 25];
+    const tableRow = (values: string[], bold = false) => el(View, {
+      wrap: values.join('').length > 900,
+      style: { flexDirection: rtl ? 'row-reverse' : 'row', paddingVertical: 8, borderBottomWidth: bold ? 1 : 0.5, borderBottomColor: '#d4e1e9', backgroundColor: bold ? '#f2f6fa' : '#ffffff' },
+    }, ...values.map((value, i) => el(Text, { key: i, style: { width: columns[i] + '%', paddingHorizontal: 5, fontSize: 9, lineHeight: 1.4, fontWeight: bold ? 700 : 400, textAlign: i === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)));
+    const summaryRow = (label: string, value: number, emphasized = false) => el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' } },
+      el(Text, { style: { fontSize: emphasized ? 15 : 10, fontWeight: emphasized ? 700 : 400 } }, label),
+      el(Text, { style: { fontSize: emphasized ? 15 : 10, fontWeight: emphasized ? 700 : 400 } }, money(value)));
+    // Use explicit continuation pages so each block of invoice rows retains its column headings.
+    const metadata = (label: string, value: string) => el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 2 } }, el(View, { style: { width: '48%' } }, text(label, 9)), el(View, { style: { width: '52%' } }, text(value, 9)));
+    const chunks: typeof inv.items[] = [];
+    let chunk: typeof inv.items = [], height = 0;
+    for (const item of inv.items) {
+      const estimated = 16 + Math.ceil(item.description.length / 40) * 13;
+      if (chunk.length && height + estimated > (chunks.length === 0 ? 320 : 500)) { chunks.push(chunk); chunk = []; height = 0; }
+      chunk.push(item); height += estimated;
+    }
+    if (chunk.length || !chunks.length) chunks.push(chunk);
+    const paymentDetails = [
+      figures.currencyReview && text(d.currencyReview, 10),
+      section(d.paymentHistory, figures.payments.length ? figures.payments.map(p => text([
+        documentDate(p.paidAt) || d.notSet, p.method?.replaceAll('_', ' '), money(Number(p.amount)), p.reference,
+      ].filter(Boolean).join(' | '), 10)) : [text(`${t.paid}: ${money(0)}`, 10)]),
+      (config.invoicePaymentInstructions || context.payment?.terms) && section(d.terms, [
+        config.invoicePaymentInstructions && text(config.invoicePaymentInstructions),
+        context.payment?.terms && text(context.payment.terms),
+        text(`${d.reference}: ${inv.invoiceNumber}`, 10),
       ]),
-    );
+      signature(),
+    ];
+    chunks.forEach((items, index) => pages.push(page('invoice-' + index, [
+      heading(`${inv.status === 'DRAFT' ? d.draft + ' - ' : ''}${t.invoice} ${inv.invoiceNumber}`),
+      text(invoiceStatusLabel(inv.status, plan.language), 10),
+      index === 0 ? el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', marginVertical: 10, padding: 12, backgroundColor: '#f2f6fa' } },
+        el(View, { style: { width: '54%', paddingRight: 8 } },
+          text(d.billFrom, 9), text(config.billingLegalName || clinic.clinicName, 11),
+          config.billingTaxId && text(`${d.taxId}: ${config.billingTaxId}`, 9),
+          text(d.billTo, 9), text(`${patient.firstName} ${patient.lastName}`, 11),
+          [patient.email, patient.phone].filter(Boolean).length > 0 && text([patient.email, patient.phone].filter(Boolean).join(' | '), 9)),
+        el(View, { style: { width: '46%' } },
+          metadata(d.issued, documentDate(inv.issuedAt) || d.notIssued),
+          metadata(d.due, documentDate(inv.dueDate) || d.notSet),
+          metadata(d.generated, documentDate(context.generatedAt)),
+          metadata(d.reference, inv.invoiceNumber))) : text(`${patient.firstName} ${patient.lastName}`, 10),
+      tableRow([t.treatment, t.quantity, t.unitPrice, d.amount], true),
+      ...items.map(i => tableRow([i.description, String(i.quantity), money(Number(i.unitPrice)), money(Number(i.total))])),
+      index === chunks.length - 1 ? el(View, { wrap: false, style: { marginTop: 14, padding: 12, backgroundColor: '#f2f6fa' } },
+        summaryRow(t.subtotal, Number(inv.subtotal)),
+        summaryRow(t.discount, -Number(inv.discount)),
+        summaryRow({ ar: 'الضريبة', fr: 'Taxe', de: 'Steuer', es: 'Impuesto', it: 'Imposta', tr: 'Vergi', pl: 'Podatek', hr: 'Porez', ru: 'Налог', en: 'Tax' }[plan.language], Number(inv.tax)),
+        summaryRow(t.total, Number(inv.total), true),
+        summaryRow(t.paid, figures.paid),
+        summaryRow(t.balance, figures.balance, true),
+        figures.credit > 0 && summaryRow(d.credit, figures.credit)) : null,
+      ...(index === chunks.length - 1 ? paymentDetails : []),
+    ])));
   } else if (context.warranty) {
     const w = context.warranty;
     pages.push(
@@ -389,7 +421,11 @@ export function consultationDocument(context: DocumentContext) {
             src: cover,
             style: { width: '100%', height: 190, objectFit: 'cover', marginBottom: 12 },
           }),
+        text(d.quote, 10),
         text(plan.treatmentText, 18),
+        el(View, { wrap: false, style: { padding: 14, backgroundColor: '#f2f6fa', marginBottom: 12 } },
+          heading(`${t.total}: ${totals.unpriced ? d.toQuote : money(totals.total)}`),
+          ...totals.visits.map(v => text(`${t.visit} ${v.number}: ${v.unpriced ? d.toQuote : money(v.total)}`, 11))),
         text(t.confirmation),
         ...[
           patient.diagnosis ? section(t.diagnosis, [text(patient.diagnosis)]) : null,
@@ -490,27 +526,24 @@ export function consultationDocument(context: DocumentContext) {
               `${l.quantity} × ${t[l.type]}${l.jaw ? ` · ${t[l.jaw]}` : ''}${l.positions.length ? ' · FDI ' + l.positions.join(', ') : ' · ' + t.unassigned}${l.material ? ' · ' + l.material : ''}${l.brand ? ' · ' + l.brand : ''}`,
             ),
           ),
-          section(
-            t.journey,
-            consultationItinerary(plan, visit.number).map((d) =>
-              text(
-                `${t.day} ${d.day} · ${d.text ?? t[d.key === 'assessment' ? 'assessmentDay' : d.key!]}`,
-              ),
-            ),
-          ),
-          text(
-            `${t.hotel}: ${visit.nights} × ${money(visit.hotelRate)} · ${visit.hotelIncluded ? t.included : money(price.hotel)}`,
-          ),
-          text(
-            `${t.transfer}: ${t[visit.transfer === 'paid' ? 'paid' : visit.transfer === 'included' ? 'included' : 'excluded']} · ${money(price.transfer)}`,
-          ),
-          text(
-            `${t.visit} ${visit.number}: ${price.unpriced ? t.unpriced : money(price.total)}`,
-            17,
-          ),
+          el(View, { wrap: false, style: { padding: 12, backgroundColor: '#f2f6fa', marginTop: 10 } },
+            text(`${t.visit} ${visit.number}: ${price.unpriced ? d.toQuote : money(price.total)}`, 17)),
         ]),
       );
     }
+    pages.push(page('travel-journey', [
+      heading(t.journey),
+      ...plan.visits.map(visit => {
+        const price = totals.visits.find(v => v.number === visit.number)!;
+        return section(`${t.visit} ${visit.number} - ${visit.nights} ${t.nights}`, [
+          ...consultationItinerary(plan, visit.number).map(day => text(`${t.day} ${day.day} - ${day.text ?? t[day.key === 'assessment' ? 'assessmentDay' : day.key!]}`, 10)),
+          text(`${t.hotel}: ${visit.nights} ${t.nights} - ${visit.hotelIncluded ? t.included : money(price.hotel)}`, 10),
+          text(`${t.transfer}: ${t[visit.transfer === 'paid' ? 'paid' : visit.transfer === 'included' ? 'included' : 'excluded']} - ${money(price.transfer)}`, 10),
+          visit.number === 1 && plan.visits.length > 1 && plan.healing ? text(`${t.healing}: ${plan.healing.minMonths}-${plan.healing.maxMonths} ${t.months}`, 10) : null,
+        ]);
+      }),
+      text(t.confirmation, 9),
+    ]));
     const procedureBlocks = [...new Set(plan.lines.map((l) => l.type))].map((type) =>
       section(t[type], [
         text(procedureDescription(plan.language, type)),
@@ -569,11 +602,10 @@ export function consultationDocument(context: DocumentContext) {
     pages.push(
       page('investment', [
         heading(t.investment),
-        ...plan.lines.map((l) =>
-          text(
-            `${t.visit} ${l.visit} · ${t[l.type]} · ${l.quantity} × ${l.unitPrice == null ? t.unpriced : money(l.unitPrice)}${l.discount ? ' − ' + money(l.discount) : ''} = ${l.unitPrice == null ? t.unpriced : money(l.quantity * l.unitPrice - l.discount)}`,
-          ),
-        ),
+        el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', backgroundColor: '#f2f6fa', paddingVertical: 8 } },
+          ...[t.treatment, t.quantity, t.unitPrice, t.discount, d.amount].map((label, i) => el(Text, { key: i, style: { width: [38, 10, 18, 14, 20][i] + '%', paddingHorizontal: 4, fontSize: 8, fontWeight: 700, textAlign: i === 0 ? rtl ? 'right' : 'left' : 'right' } }, label))),
+        ...plan.lines.map(l => el(View, { wrap: false, style: { flexDirection: rtl ? 'row-reverse' : 'row', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: '#d4e1e9' } },
+          ...[`${t.visit} ${l.visit} - ${t[l.type]}${l.material || l.brand ? '\n' + [l.material, l.brand].filter(Boolean).join(' | ') : ''}`, String(l.quantity), l.unitPrice == null ? d.toQuote : money(l.unitPrice), l.discount ? money(l.discount) : '-', l.unitPrice == null ? d.toQuote : money(l.quantity * l.unitPrice - l.discount)].map((value, i) => el(Text, { key: i, style: { width: [38, 10, 18, 14, 20][i] + '%', paddingHorizontal: 4, fontSize: 9, lineHeight: 1.4, textAlign: i === 0 ? rtl ? 'right' : 'left' : 'right' } }, value)))),
         ...totals.visits.map((v) =>
           text(
             `${t.visit} ${v.number} · ${t.treatment} ${money(v.treatments)} · ${t.hotel} ${money(v.hotel)} · ${t.transfer} ${money(v.transfer)} · ${t.total} ${money(v.total)}`,
@@ -584,19 +616,18 @@ export function consultationDocument(context: DocumentContext) {
           t.included,
           plan.includedServices.length ? plan.includedServices.map((s) => text(s)) : [text('—')],
         ),
-        section(
+        config.warranties.some(w => plan.lines.some(l => l.type === w.type)) && section(
           t.warranty,
-          config.warranties
-            .filter((w) => plan.lines.some((l) => l.type === w.type))
-            .map((w) => text(`${t[w.type]} · ${w.summary}`)),
+          [...config.warranties.filter(w => plan.lines.some(l => l.type === w.type)).map(w => text(`${t[w.type]} - ${w.summary}`)), text(t.contractual)],
         ),
-        text(t.contractual),
         context.payment &&
           section(t.payment, [
             context.payment.terms && text(context.payment.terms),
             context.payment.cardFee != null && text(`${t.cardFee}: ${context.payment.cardFee}%`),
+            context.payment.cardFee != null && !totals.unpriced && text(`${t.total} (${t.cardFee}): ${money(quotedPayment.cardTotal)}`),
             context.payment.cashDiscount != null &&
               text(`${t.cashDiscount}: ${context.payment.cashDiscount}%`),
+            context.payment.cashDiscount != null && !totals.unpriced && text(`${t.total} (${t.cashDiscount}): ${money(quotedPayment.cashTotal)}`),
             (context.payment.depositAmount != null || context.payment.depositPercent != null) &&
               text(
                 `${t.deposit}: ${money(context.payment.depositAmount ?? Math.round(totals.total * context.payment.depositPercent!) / 100)}`,

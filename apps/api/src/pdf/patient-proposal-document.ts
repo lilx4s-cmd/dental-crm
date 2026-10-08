@@ -1,5 +1,7 @@
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import React from 'react';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   computePhaseTotals, computePaymentSummary, packageInclusionDef, parseToothNumbers,
   conditionFromText, TOOTH_CONDITION_LABELS, aftercareFor, type ToothCondition,
@@ -8,6 +10,20 @@ import type { ClinicBranding, PlanDocumentInput } from './treatment-plan-documen
 import { DentalChartPdf } from './dental-chart-pdf';
 
 const el = React.createElement;
+// Use embedded fonts so legacy quotes keep consistent spacing across PDF viewers.
+const fontsPath = [
+  path.join(__dirname, 'assets/fonts'),
+  path.join(process.cwd(), 'src/pdf/assets/fonts'),
+  path.join(process.cwd(), 'apps/api/src/pdf/assets/fonts'),
+].find(folder => ['NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'].every(file => fs.existsSync(path.join(folder, file))));
+const proposalFont = fontsPath ? 'ProposalSans' : 'Helvetica';
+if (fontsPath) Font.register({
+  family: proposalFont,
+  fonts: [
+    { src: path.join(fontsPath, 'NotoSans-Regular.ttf'), fontWeight: 400 },
+    { src: path.join(fontsPath, 'NotoSans-Bold.ttf'), fontWeight: 700 },
+  ],
+});
 const n = (value: unknown): number => value == null ? 0 : Number(String(value));
 const date = (value?: Date | string | null): string => {
   if (!value) return '';
@@ -17,27 +33,28 @@ const date = (value?: Date | string | null): string => {
 const money = (amount: number, currency: string) =>
   currency + ' ' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 44, paddingTop: 38, paddingBottom: 54, fontFamily: 'Helvetica', fontSize: 10, color: '#183048' },
-  clinic: { fontFamily: 'Helvetica-Bold', fontSize: 14, letterSpacing: 0.5 },
+  page: { paddingHorizontal: 44, paddingTop: 38, paddingBottom: 54, fontFamily: proposalFont, fontSize: 10, color: '#183048' },
+  clinic: { fontWeight: 700, fontSize: 14, letterSpacing: 0.5 },
   contact: { color: '#576878', fontSize: 8, lineHeight: 1.3, marginTop: 4, marginBottom: 16 },
-  title: { fontFamily: 'Helvetica-Bold', fontSize: 23, lineHeight: 1.15, marginBottom: 8 },
+  title: { fontWeight: 700, fontSize: 23, lineHeight: 1.15, marginBottom: 8 },
   subtitle: { fontSize: 11, color: '#576878', marginBottom: 14 },
   meta: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, backgroundColor: '#F2F6FA', marginBottom: 14 },
   field: { width: '50%', fontSize: 9, marginBottom: 4, paddingRight: 8 },
   total: { backgroundColor: '#183858', padding: 14, marginBottom: 14 },
   totalLabel: { color: '#DDEAF5', fontSize: 8, marginBottom: 3 },
-  totalValue: { color: '#FFFFFF', fontFamily: 'Helvetica-Bold', fontSize: 22 },
+  totalValue: { color: '#FFFFFF', fontWeight: 700, fontSize: 22 },
   totalNote: { color: '#DDEAF5', fontSize: 8, lineHeight: 1.3, marginTop: 7 },
-  h2: { fontFamily: 'Helvetica-Bold', fontSize: 13, marginTop: 9, marginBottom: 5 },
+  h2: { fontWeight: 700, fontSize: 13, marginTop: 9, marginBottom: 5 },
   p: { fontSize: 9.5, lineHeight: 1.35, color: '#374B5F', marginBottom: 6 },
   visit: { borderTopWidth: 1, borderTopColor: '#CAD7E3', marginTop: 12, paddingTop: 8 },
-  visitTitle: { fontFamily: 'Helvetica-Bold', fontSize: 12, marginBottom: 7 },
+  visitTitle: { fontWeight: 700, fontSize: 12, marginBottom: 7 },
   row: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: '#E5ECF2', paddingVertical: 6 },
-  description: { width: '65%', paddingRight: 10, fontSize: 9 },
+  description: { width: '50%', paddingRight: 10, fontSize: 9 },
   qty: { width: '10%', textAlign: 'center', fontSize: 9 },
-  price: { width: '25%', textAlign: 'right', fontSize: 9 },
+  unitPrice: { width: '20%', textAlign: 'right', fontSize: 9 },
+  price: { width: '20%', textAlign: 'right', fontSize: 9 },
   small: { fontSize: 8, lineHeight: 1.3, color: '#576878', marginTop: 3 },
-  bold: { fontFamily: 'Helvetica-Bold' },
+  bold: { fontWeight: 700 },
   note: { backgroundColor: '#F2F6FA', padding: 10, marginVertical: 10 },
   bullet: { fontSize: 9.5, lineHeight: 1.35, color: '#374B5F', marginBottom: 5 },
   footer: { position: 'absolute', bottom: 24, left: 44, right: 44, height: 12, flexDirection: 'row', justifyContent: 'space-between', fontSize: 7.5, color: '#576878' },
@@ -105,6 +122,7 @@ export function TreatmentPlanDocument(plan: PlanDocumentInput, branding: ClinicB
       el(View, { style: s.row, wrap: false },
         el(Text, { style: [s.description, s.bold] }, 'Treatment'),
         el(Text, { style: [s.qty, s.bold] }, 'Units'),
+        el(Text, { style: [s.unitPrice, s.bold] }, 'Unit price'),
         el(Text, { style: [s.price, s.bold] }, 'Amount'),
       ),
       ...items.map((item, row) => {
@@ -114,13 +132,14 @@ export function TreatmentPlanDocument(plan: PlanDocumentInput, branding: ClinicB
         const distribution = teeth.length > 0 ? [upper ? upper + ' upper' : '', lower ? lower + ' lower' : ''].filter(Boolean).join(' / ') : '';
         const amount = n(item.cost) > 0 ? money(n(item.cost), plan.currency) : item.unitPrice == null ? 'To be quoted' : 'Included';
         return el(View, { style: s.row, key: 'item-' + row, wrap: (item.description.length + (item.clinicalNotes?.length ?? 0)) > 1000 },
-          el(View, { style: { width: '65%', paddingRight: 10 } },
+          el(View, { style: { width: '50%', paddingRight: 10 } },
             el(Text, { style: { fontSize: 9 } }, item.description),
             [item.material, item.brand, distribution].filter(Boolean).length > 0
               ? el(Text, { style: s.small }, [item.material, item.brand, distribution].filter(Boolean).join(' | ')) : null,
             item.clinicalNotes ? el(Text, { style: s.small }, item.clinicalNotes) : null,
           ),
           el(Text, { style: s.qty }, String(item.quantity)),
+          el(Text, { style: s.unitPrice }, item.unitPrice == null ? 'To be quoted' : money(n(item.unitPrice), plan.currency)),
           el(Text, { style: s.price }, amount),
         );
       }),
@@ -135,6 +154,7 @@ export function TreatmentPlanDocument(plan: PlanDocumentInput, branding: ClinicB
     header(branding),
     el(Text, { style: s.title }, 'Personalized Dental Treatment Plan'),
     el(Text, { style: s.subtitle }, plan.title),
+    el(Text, { style: s.small }, 'Treatment estimate - not an invoice. Subject to clinical confirmation.'),
     el(View, { style: s.meta, wrap: false }, ...meta.map((text, index) => el(Text, { style: s.field, key: 'meta-' + index }, text))),
     el(View, { style: s.total, wrap: false },
       el(Text, { style: s.totalLabel }, unpriced ? 'PROVISIONAL QUOTE - PRICES STILL TO BE CONFIRMED' : 'TOTAL TREATMENT PRICE'),

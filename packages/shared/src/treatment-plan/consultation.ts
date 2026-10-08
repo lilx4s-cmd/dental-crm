@@ -195,6 +195,9 @@ export const DocumentConfigurationSchema = z
   .object({
     department: z.string().max(120).default('International Patient Department'),
     representative: z.string().max(120).optional(),
+    billingLegalName: z.string().max(180).optional(),
+    billingTaxId: z.string().max(120).optional(),
+    invoicePaymentInstructions: z.string().max(2000).optional(),
     signature: z.string().max(350000).optional(),
     stamp: z.string().max(350000).optional(),
     logo: z.string().max(350000).optional(),
