@@ -110,7 +110,14 @@ export function ConsultationEditor({
       toast.error(`${t.treatment}: ${result.warnings.join(', ')}`);
       return;
     }
-    const lines = preserveConsultationLineDetails(result.lines, plan.lines);
+    let lines: ConsultationLine[];
+    try {
+      lines = preserveConsultationLineDetails(result.lines, plan.lines, input);
+    } catch {
+      setInput(plan.treatmentText);
+      toast.error(p.reparseAdvice);
+      return;
+    }
     const count = Math.max(1, ...lines.map((l) => l.visit));
     change({
       ...plan,

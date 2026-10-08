@@ -124,3 +124,23 @@ it('preserves saved line identities without colliding with newly parsed procedur
   expect(result[1].id).toBe(saved[0].id);
   expect(new Set(result.map(line => line.id)).size).toBe(2);
 });
+
+it('retains saved brand, material, price and FDI after catalog defaults change', () => {
+  const example = consultationExample();
+  const parsed = [{ ...example.plan.lines[0], unitPrice: 990, material: 'New default material', brand: 'New default brand', quantity: 3, positions: [] }];
+  const result = preserveConsultationLineDetails(parsed, [example.plan.lines[0]], '3 implants');
+  expect(result[0]).toMatchObject({ quantity: 3, unitPrice: 450, discount: 100, material: 'Titanium', brand: 'Example implant brand', positions: ['12', '22'] });
+});
+it('keeps differently priced saved rows instead of collapsing a plain-text summary', () => {
+  const example = consultationExample();
+  const saved = [example.plan.lines[0], { ...example.plan.lines[0], id: 'other-brand', brand: 'Other brand', unitPrice: 700, positions: ['14', '24'] }];
+  const parsed = [{ ...example.plan.lines[0], quantity: 4, positions: [] }];
+  expect(preserveConsultationLineDetails(parsed, saved, '4 implants')).toEqual(saved);
+  expect(() => preserveConsultationLineDetails([{ ...parsed[0], quantity: 5 }], saved, '5 implants')).toThrow('Ambiguous saved treatment allocation');
+});
+it('uses catalog pricing when a different material is explicitly requested', () => {
+  const example = consultationExample();
+  const saved = [{ ...example.plan.lines[1], type: 'crown' as const }];
+  const parsed = [{ ...saved[0], id: 'new-line', unitPrice: 350, material: 'E.max', positions: [] }];
+  expect(preserveConsultationLineDetails(parsed, saved, '2 E.max crowns')[0]).toMatchObject({ material: 'E.max', unitPrice: 350 });
+});

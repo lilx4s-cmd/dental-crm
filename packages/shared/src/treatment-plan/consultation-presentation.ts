@@ -40,7 +40,8 @@ const en = {
   prepared: 'Prepared',
   reference: 'Reference',
   clinicalNote: 'Clinical note',
-  discountReason: 'Reason for price exception or discount'
+  discountReason: 'Reason for price exception or discount',
+  reparseAdvice: "Saved details were kept. Edit the existing treatment rows individually."
 };
 export type ConsultationPresentationCopy = typeof en;
 const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
@@ -81,7 +82,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'تاريخ الإعداد',
     reference: 'المرجع',
     clinicalNote: 'ملاحظة سريرية',
-    discountReason: 'سبب استثناء السعر أو الخصم'
+    discountReason: 'سبب استثناء السعر أو الخصم',
+    reparseAdvice: "تم الاحتفاظ بالتفاصيل المحفوظة. عدّل صفوف العلاج الحالية كل صف على حدة."
   },
   fr: {
     estimate: 'Devis de traitement',
@@ -119,7 +121,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Préparé le',
     reference: 'Référence',
     clinicalNote: 'Note clinique',
-    discountReason: 'Motif du prix exceptionnel ou de la remise'
+    discountReason: 'Motif du prix exceptionnel ou de la remise',
+    reparseAdvice: "Les détails enregistrés sont conservés. Modifiez chaque ligne de traitement séparément."
   },
   tr: {
     estimate: 'Tedavi fiyat teklifi',
@@ -157,7 +160,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Hazırlanma tarihi',
     reference: 'Referans',
     clinicalNote: 'Klinik not',
-    discountReason: 'Fiyat istisnası veya indirim nedeni'
+    discountReason: 'Fiyat istisnası veya indirim nedeni',
+    reparseAdvice: "Kayıtlı bilgiler korundu. Mevcut tedavi satırlarını ayrı ayrı düzenleyin."
   },
   de: {
     estimate: 'Kostenvoranschlag',
@@ -195,7 +199,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Erstellt am',
     reference: 'Referenz',
     clinicalNote: 'Klinischer Hinweis',
-    discountReason: 'Grund für Preisabweichung oder Rabatt'
+    discountReason: 'Grund für Preisabweichung oder Rabatt',
+    reparseAdvice: "Gespeicherte Angaben bleiben erhalten. Bearbeiten Sie die bestehenden Behandlungszeilen einzeln."
   },
   es: {
     estimate: 'Presupuesto de tratamiento',
@@ -233,7 +238,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Preparado el',
     reference: 'Referencia',
     clinicalNote: 'Nota clínica',
-    discountReason: 'Motivo del precio excepcional o descuento'
+    discountReason: 'Motivo del precio excepcional o descuento',
+    reparseAdvice: "Se conservaron los datos guardados. Edite las filas de tratamiento por separado."
   },
   it: {
     estimate: 'Preventivo di trattamento',
@@ -271,7 +277,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Preparato il',
     reference: 'Riferimento',
     clinicalNote: 'Nota clinica',
-    discountReason: 'Motivo del prezzo speciale o sconto'
+    discountReason: 'Motivo del prezzo speciale o sconto',
+    reparseAdvice: "I dati salvati sono stati mantenuti. Modifica le righe di trattamento singolarmente."
   },
   pl: {
     estimate: 'Kosztorys leczenia',
@@ -309,7 +316,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Przygotowano',
     reference: 'Numer dokumentu',
     clinicalNote: 'Uwaga kliniczna',
-    discountReason: 'Powód zmiany ceny lub rabatu'
+    discountReason: 'Powód zmiany ceny lub rabatu',
+    reparseAdvice: "Zapisane dane zachowano. Edytuj istniejące pozycje leczenia osobno."
   },
   hr: {
     estimate: 'Procjena troškova liječenja',
@@ -347,7 +355,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Pripremljeno',
     reference: 'Referenca',
     clinicalNote: 'Klinička napomena',
-    discountReason: 'Razlog posebne cijene ili popusta'
+    discountReason: 'Razlog posebne cijene ili popusta',
+    reparseAdvice: "Spremljeni podaci su sačuvani. Uredite postojeće stavke liječenja pojedinačno."
   },
   ru: {
     estimate: 'Предварительная стоимость лечения',
@@ -385,7 +394,8 @@ const copy: Record<Consultation['language'], ConsultationPresentationCopy> = {
     prepared: 'Подготовлено',
     reference: 'Номер документа',
     clinicalNote: 'Клиническая заметка',
-    discountReason: 'Причина изменения цены или скидки'
+    discountReason: 'Причина изменения цены или скидки',
+    reparseAdvice: "Сохранённые данные оставлены без изменений. Изменяйте строки лечения по отдельности."
   }
 };
 export function consultationPresentationCopy(language: Consultation['language']): ConsultationPresentationCopy {
@@ -456,36 +466,52 @@ export function consultationVisitBreakdown(plan: Consultation, visit: number) {
 }
 
 /** Applying edited text must not silently replace approved prices, positions or exceptions. */
-export function preserveConsultationLineDetails(parsed: ConsultationLine[], saved: ConsultationLine[]): ConsultationLine[] {
+export function preserveConsultationLineDetails(parsed: ConsultationLine[], saved: ConsultationLine[], treatmentText = ''): ConsultationLine[] {
   const used = new Set<string>();
   const reserved = new Set([...saved, ...parsed].map(line => line.id));
-  const key = (line: ConsultationLine) => [line.type, line.jaw ?? '', line.material?.toLowerCase() ?? '', line.brand?.toLowerCase() ?? ''].join('|');
-  return parsed.map(line => {
-    const previous = saved.find(candidate => !used.has(candidate.id) && key(candidate) === key(line));
+  const normalise = (value: string) => value.toLowerCase().replace(/[.\s-]/g, '');
+  const input = normalise(treatmentText);
+  const explicitDetails = (line: ConsultationLine) =>
+    !!line.brand && input.includes(normalise(line.brand)) ||
+    !!line.material && (input.includes(normalise(line.material)) ||
+      line.material === 'Zirconia' && /zircon|zirkon|زركون/i.test(treatmentText) ||
+      line.material === 'E.max' && /e[. -]?max/i.test(treatmentText));
+  const key = (line: ConsultationLine) => [line.type, line.jaw ?? '', normalise(line.material ?? ''), normalise(line.brand ?? '')].join('|');
+  return parsed.flatMap(line => {
+    const generic = !explicitDetails(line);
+    const candidates = saved.filter(candidate => !used.has(candidate.id) && candidate.type === line.type && (!line.jaw || candidate.jaw === line.jaw));
+    if (generic && candidates.length > 1) {
+      // A plain-text summary may aggregate rows with different prices or brands.
+      // Keep an unchanged group intact; changing its allocation requires row editing.
+      const parsedCount = parsed.filter(candidate => candidate.type === line.type && (!line.jaw || candidate.jaw === line.jaw)).length;
+      if (parsedCount === 1 && !line.positions.length && candidates.reduce((quantity, candidate) => quantity + candidate.quantity, 0) === line.quantity) {
+        candidates.forEach(candidate => used.add(candidate.id));
+        return candidates.map(candidate => ({ ...candidate, positions: [...candidate.positions] }));
+      }
+      throw new Error('Ambiguous saved treatment allocation');
+    }
+    const previous = generic ? candidates[0] : saved.find(candidate => !used.has(candidate.id) && key(candidate) === key(line));
     if (!previous) {
-      let id = line.id,
-        suffix = 0;
+      let id = line.id, suffix = 0;
       if (saved.some(candidate => candidate.id === id)) {
-        do {
-          id = `${line.id}-new-${++suffix}`;
-        } while (reserved.has(id));
+        do { id = `${line.id}-new-${++suffix}`; } while (reserved.has(id));
         reserved.add(id);
       }
-      return {
-        ...line,
-        id
-      };
+      return [{ ...line, id }];
     }
     used.add(previous.id);
-    return {
+    return [{
       ...line,
       id: previous.id,
+      material: previous.material,
+      brand: previous.brand,
+      jaw: line.jaw ?? previous.jaw,
       unitPrice: previous.unitPrice,
       discount: previous.discount,
       overrideReason: previous.overrideReason,
       description: previous.description,
       visit: previous.visit,
-      positions: line.positions.length ? line.positions : previous.positions
-    };
+      positions: line.positions.length ? line.positions : previous.positions,
+    }];
   });
 }

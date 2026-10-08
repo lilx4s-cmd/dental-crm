@@ -38,6 +38,7 @@ declare const en: {
     reference: string;
     clinicalNote: string;
     discountReason: string;
+    reparseAdvice: string;
 };
 export type ConsultationPresentationCopy = typeof en;
 export declare function consultationPresentationCopy(language: Consultation['language']): ConsultationPresentationCopy;
@@ -90,6 +91,6 @@ export declare function consultationVisitBreakdown(plan: Consultation, visit: nu
     unpriced: boolean;
 };
 /** Applying edited text must not silently replace approved prices, positions or exceptions. */
-export declare function preserveConsultationLineDetails(parsed: ConsultationLine[], saved: ConsultationLine[]): ConsultationLine[];
+export declare function preserveConsultationLineDetails(parsed: ConsultationLine[], saved: ConsultationLine[], treatmentText?: string): ConsultationLine[];
 export {};
 //# sourceMappingURL=consultation-presentation.d.ts.map
