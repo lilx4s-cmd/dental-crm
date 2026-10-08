@@ -229,7 +229,7 @@ export function ConsultationEditor({
           </DialogTitle>
         </DialogHeader>
         <nav aria-label={t.plan} className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-          {([['treatment', t.treatment], ['visits', t.visit], ['positions', t.positions], ['payment', t.payment], ['preview', p.patientPreview]] as const).map(([key, label], index) => <Button key={key} type="button" variant="outline" size="sm" aria-label={`${t.select} · ${label}`} onClick={() => jumpTo(key)}><span className="me-2 text-slate-400" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{label}</Button>)}
+          {([['treatment', t.treatment], ['visits', t.visit], ['positions', t.positions], ['payment', t.payment], ['preview', p.patientPreview]] as const).map(([key, label], index) => <Button key={key} type="button" variant="outline" size="sm" aria-label={`${t.plan} · ${label}`} disabled={key === 'positions' && !plan.lines.length} onClick={() => jumpTo(key)}><span className="me-2 text-slate-400" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{label}</Button>)}
         </nav>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-4">
