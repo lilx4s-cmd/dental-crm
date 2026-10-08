@@ -14,7 +14,7 @@ export function CountryPicker({ value = '', onChange, language = 'en', id }: {
   const results = searchCountries(options, query);
   const selected = options.find(country => country.code === value);
   const unknown = language === 'ar' ? 'غير معروف بعد' : 'Not known yet';
-  return <Popover open={open} onOpenChange={next => { setOpen(next); setQuery(''); }}>
+  return <Popover modal open={open} onOpenChange={next => { setOpen(next); setQuery(''); }}>
     <PopoverTrigger asChild><Button type="button" variant="outline" id={id} role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-controls={`${id}-results`}
       aria-label={language === 'ar' ? 'دولة الإقامة' : 'Country of residence'} className="min-h-11 w-full justify-between text-base font-normal">
       <span className="truncate">{selected ? `${selected.name} · ${selected.code}` : value || unknown}</span><span aria-hidden="true">⌄</span>
