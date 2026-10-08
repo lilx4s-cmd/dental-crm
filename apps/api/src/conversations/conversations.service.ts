@@ -1,7 +1,7 @@
-import { hasPermission, canSeeAllLeads, canSupervise } from '@dental-crm/shared';
+import { canSeeAllLeads } from '@dental-crm/shared';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Optional, Logger, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
-import { JwtPayload, Role } from '@dental-crm/shared';
+import { JwtPayload } from '@dental-crm/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { CoachingService } from '../coaching/coaching.service';
 import { OUTBOUND_SENDER, type OutboundSender } from './outbound-sender';
