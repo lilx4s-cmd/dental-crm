@@ -215,7 +215,7 @@ export function ConsultationEditor({
         dir={plan.language === 'ar' ? 'rtl' : 'ltr'}
       >
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="pr-8 leading-snug">
             {t.plan} · {source.patient.firstName} {source.patient.lastName}
           </DialogTitle>
         </DialogHeader>
