@@ -41,3 +41,14 @@ it('opens an existing deal instead of offering creation', () => {
   render(<ConversationDealAction conversation={{ lead: { id: 'existing' } } as any} />);
   expect(screen.getByRole('link', { name: 'Open deal' })).toHaveAttribute('href', '/pipeline?leadId=existing');
 });
+
+it('searches and selects countries inside the form without losing keyboard focus', async () => {
+  open(); fireEvent.click(screen.getByRole('combobox', { name: 'Country of residence' }));
+  const search = screen.getByRole('searchbox', { name: 'Search countries' });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.change(search, { target: { value: 'Lebanon' } });
+  expect(screen.getByRole('option', { name: 'Lebanon · LB' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'Afghanistan · AF' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('listbox', { name: 'Country results' }), { target: { value: 'LB' } });
+  expect(screen.getByRole('combobox', { name: 'Country of residence' })).toHaveTextContent('Lebanon · LB');
+});
