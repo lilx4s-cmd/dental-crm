@@ -741,9 +741,9 @@ export function ConsultationEditor({
               >
                 {t.reset}
               </Button>
-              <span className="flex-1 text-lg font-semibold">
+              <span className="order-first w-full whitespace-nowrap text-base font-semibold sm:order-none sm:w-auto sm:flex-1 sm:text-lg">
                 {t.total}:{' '}
-                {totals.unpriced ? t.unpriced : `${plan.currency} ${totals.total.toFixed(2)}`}
+                {totals.unpriced ? t.unpriced : <bdi dir="ltr">{plan.currency} {totals.total.toFixed(2)}</bdi>}
               </span>
               <Button
                 disabled={demo || !valid.success || !validPayment.success || save.isPending || input !== plan.treatmentText || !hasPermission(user, 'plans.write', true)}
