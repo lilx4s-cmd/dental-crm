@@ -1,7 +1,8 @@
 import { z } from 'zod';
 export declare const CreateLeadSchema: z.ZodObject<{
+    conversationId: z.ZodOptional<z.ZodString>;
     firstName: z.ZodString;
-    lastName: z.ZodString;
+    lastName: z.ZodOptional<z.ZodString>;
     email: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     phone: z.ZodOptional<z.ZodString>;
     whatsappNumber: z.ZodOptional<z.ZodString>;
@@ -14,40 +15,42 @@ export declare const CreateLeadSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     source: string;
     firstName: string;
-    lastName: string;
     currency: string;
     assignedToId?: string | undefined;
     email?: string | undefined;
+    lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     notes?: string | undefined;
+    conversationId?: string | undefined;
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
 }, {
     source: string;
     firstName: string;
-    lastName: string;
     assignedToId?: string | undefined;
     email?: string | undefined;
+    lastName?: string | undefined;
     phone?: string | undefined;
     whatsappNumber?: string | undefined;
     notes?: string | undefined;
+    conversationId?: string | undefined;
     campaignId?: string | undefined;
     estimatedValue?: number | undefined;
     currency?: string | undefined;
 }>;
 export declare const UpdateLeadSchema: z.ZodObject<{
-    firstName: z.ZodOptional<z.ZodString>;
-    lastName: z.ZodOptional<z.ZodString>;
+    assignedToId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    source: z.ZodOptional<z.ZodNativeEnum<Record<string, string>>>;
     email: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    firstName: z.ZodOptional<z.ZodString>;
+    lastName: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     phone: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     whatsappNumber: z.ZodOptional<z.ZodOptional<z.ZodString>>;
-    source: z.ZodOptional<z.ZodNativeEnum<Record<string, string>>>;
+    notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     campaignId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     estimatedValue: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
     currency: z.ZodOptional<z.ZodDefault<z.ZodString>>;
-    notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
-    assignedToId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     assignedToId?: string | undefined;
     source?: string | undefined;

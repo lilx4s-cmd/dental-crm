@@ -104,10 +104,11 @@ export function useLeadFunnel() {
   });
 }
 
-export function useClinicSettings() {
+export function useClinicSettings(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<ClinicSettings>({
     queryKey: ['settings'],
+    enabled,
     queryFn: () => apiRequest('/api/settings', {}, accessToken ?? undefined),
   });
 }

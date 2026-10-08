@@ -5,6 +5,7 @@ import { JwtPayload, Role } from '@dental-crm/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { CoachingService } from '../coaching/coaching.service';
 import { OUTBOUND_SENDER, type OutboundSender } from './outbound-sender';
+import { conversationAccessWhere } from './conversation-access';
 import { ConversationsQueryDto } from './dto/conversations-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
@@ -95,8 +96,7 @@ export class ConversationsService {
   ) {}
 
   private scope(user?: JwtPayload): Prisma.ConversationWhereInput {
-    if (!user || hasPermission(user, 'conversations.all', user.role === Role.SUPER_ADMIN || user.role === Role.CLINIC_MANAGER)) return {};
-    return { AND: [{ OR: [{ whatsappSessionId: 'default' }, { whatsappSessionId: `user:${user.sub}` }, ...(canSupervise(user) ? [{ lead: { supervisorId: user.sub } }] : [])] }] };
+    return conversationAccessWhere(user);
   }
 
   async assertAccess(id: string, user: JwtPayload) {

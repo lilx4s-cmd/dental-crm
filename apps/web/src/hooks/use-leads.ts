@@ -41,6 +41,8 @@ export interface LeadIntakeSubmission {
 }
 
 export interface Lead {
+  /** Returned only when WhatsApp creation reuses an existing deal. */
+  reusedExisting?: boolean;
   id: string;
   firstName: string;
   lastName: string | null;
@@ -180,6 +182,8 @@ export function useLead(id: string) {
 // Partial<Lead> was a loose fit for creation (Lead includes server-assigned
 // fields like id/stage/assignedTo-as-object) — this is the actual create payload.
 export interface CreateLeadPayload {
+  /** Link creation to the existing, access-checked WhatsApp conversation. */
+  conversationId?: string;
   firstName: string;
   lastName?: string;
   email?: string;
@@ -207,6 +211,8 @@ export function useCreateLead() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+      qc.invalidateQueries({ queryKey: ['conversation'] });
     },
   });
 }

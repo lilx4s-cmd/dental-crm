@@ -4,8 +4,9 @@ exports.UpdateLeadStatusSchema = exports.UpdateLeadStageSchema = exports.UpdateL
 const zod_1 = require("zod");
 const enums_1 = require("../enums");
 exports.CreateLeadSchema = zod_1.z.object({
+    conversationId: zod_1.z.string().uuid().optional(),
     firstName: zod_1.z.string().min(1),
-    lastName: zod_1.z.string().min(1),
+    lastName: zod_1.z.string().min(1).optional(),
     email: zod_1.z.string().email().optional().or(zod_1.z.literal('')),
     phone: zod_1.z.string().optional(),
     whatsappNumber: zod_1.z.string().optional(),
@@ -16,7 +17,7 @@ exports.CreateLeadSchema = zod_1.z.object({
     notes: zod_1.z.string().optional(),
     assignedToId: zod_1.z.string().uuid().optional(),
 });
-exports.UpdateLeadSchema = exports.CreateLeadSchema.partial();
+exports.UpdateLeadSchema = exports.CreateLeadSchema.omit({ conversationId: true }).partial();
 exports.UpdateLeadStageSchema = zod_1.z.object({
     stage: zod_1.z.nativeEnum(enums_1.PipelineStage),
     note: zod_1.z.string().optional(),

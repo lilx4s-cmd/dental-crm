@@ -50,4 +50,6 @@ __exportStar(require("./treatment-plan/consultation"), exports);
 __exportStar(require("./treatment-plan/consultation-copy"), exports);
 __exportStar(require("./treatment-plan/consultation-presentation"), exports);
 __exportStar(require("./treatment-plan/consultation-example"), exports);
+__exportStar(require("./contact/countries"), exports);
+__exportStar(require("./contact/whatsapp-contact"), exports);
 //# sourceMappingURL=index.js.map

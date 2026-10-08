@@ -4,15 +4,21 @@ import { IsEmail, IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Mi
 import { LeadSource } from '@dental-crm/shared';
 
 export class CreateLeadDto {
+  @ApiPropertyOptional({ description: 'Existing WhatsApp conversation to link atomically' })
+  @IsUUID()
+  @IsOptional()
+  conversationId?: string;
+
   @ApiProperty({ example: 'Jane' })
   @IsString()
   @MinLength(1)
   firstName: string;
 
-  @ApiProperty({ example: 'Smith' })
+  @ApiPropertyOptional({ example: 'Smith' })
   @IsString()
   @MinLength(1)
-  lastName: string;
+  @IsOptional()
+  lastName?: string;
 
   @ApiPropertyOptional({ example: 'jane@example.com' })
   @IsEmail()

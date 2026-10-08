@@ -14,10 +14,11 @@ export interface User {
   specialization: string | null;
 }
 
-export function useUsers() {
+export function useUsers(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<User[]>({
     queryKey: ['users'],
+    enabled,
     queryFn: () => apiRequest('/api/users', {}, accessToken ?? undefined),
   });
 }

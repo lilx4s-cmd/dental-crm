@@ -1,5 +1,7 @@
 'use client';
 
+import { ConversationDealAction } from '@/components/pipeline/conversation-deal-action';
+
 import { hasPermission } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
 import { useQuery } from '@tanstack/react-query';
@@ -363,9 +365,9 @@ function MessageThread({ conversationId, onBack }: { conversationId: string; onB
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-3 bg-wa-header px-4 py-3 border-b">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-wa-header px-4 py-3 border-b">
         <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label="Back to chats"><ArrowLeft className="h-5 w-5" /></Button>
-        <div>
+        <div className="min-w-0 flex-1 break-words">
           <p className="font-semibold">
             {contactLabel(conv)}
           </p>
@@ -377,6 +379,7 @@ function MessageThread({ conversationId, onBack }: { conversationId: string; onB
             </div>
           )}
         </div>
+        <ConversationDealAction conversation={conv} />
         <Button
           variant="ghost"
           size="sm"

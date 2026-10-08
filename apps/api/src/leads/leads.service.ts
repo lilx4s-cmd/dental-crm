@@ -42,6 +42,7 @@ import {
   normalisePhone,
   phoneMatchKey,
   toE164Digits,
+  whatsappContactPhone,
   stageDef,
   stageProgress,
   RECYCLE_ANGLE,
@@ -51,6 +52,7 @@ import {
   type DuplicateGroup,
   type MergeDuplicatesResult,
 } from '@dental-crm/shared';
+import { conversationAccessWhere } from '../conversations/conversation-access';
 import { LOST_REASONS } from '../coaching/rules';
 import { replyCoaching } from './reply-coaching';
 import { MergeDuplicatesDto } from './dto/merge-duplicates.dto';
@@ -285,7 +287,7 @@ export class LeadsService {
    * Closed deals do not block: a patient who was treated last year and enquires again is a new
    * deal, and refusing that would be a worse bug than the one being fixed.
    */
-  private async openDealOnNumber(numbers: (string | undefined)[], excludeLeadId?: string) {
+  private async openDealOnNumber(numbers: (string | undefined)[], excludeLeadId?: string, client: Prisma.TransactionClient | PrismaService = this.prisma) {
     const candidates = numbers.filter((n): n is string => !!n && n.length >= 7);
     if (candidates.length === 0) return null;
 
@@ -298,7 +300,7 @@ export class LeadsService {
       .map((n) => phoneMatchKey(n))
       .filter((n): n is string => !!n);
 
-    return this.prisma.lead.findFirst({
+    return client.lead.findFirst({
       where: {
         id: excludeLeadId ? { not: excludeLeadId } : undefined,
         status: $Enums.LeadStatus.ACTIVE,
@@ -335,6 +337,50 @@ export class LeadsService {
 
   async create(dto: CreateLeadDto, currentUser?: JwtPayload) {
     if (currentUser && dto.assignedToId && dto.assignedToId !== currentUser.sub && !hasPermission(currentUser, 'leads.assign', currentUser.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Your access profile cannot assign leads to another salesperson.');
+    if (dto.conversationId) {
+      if (!currentUser || !hasPermission(currentUser, 'conversations.read', true)) throw new ForbiddenException('Inbox access is required.');
+      return this.createFromConversation(dto, currentUser);
+    }
+    return this.createRecord(dto, currentUser);
+  }
+
+  private async createFromConversation(dto: CreateLeadDto, user: JwtPayload) {
+    return this.prisma.$transaction(async tx => {
+      const where = { id: dto.conversationId, ...conversationAccessWhere(user) };
+      if (!await tx.conversation.findFirst({ where, select: { id: true } })) throw new NotFoundException('Conversation not found');
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "conversations" WHERE id = ${dto.conversationId} FOR UPDATE`);
+      const conversation = await tx.conversation.findFirst({ where, include: { patient: true } });
+      if (!conversation) throw new NotFoundException('Conversation not found');
+      if (conversation.channel !== 'WHATSAPP') throw new BadRequestException('Choose an individual WhatsApp conversation.');
+      const linkedId = conversation.leadId ?? conversation.patient?.convertedFromLeadId;
+      const accessibleLead = async (id: string) => {
+        const lead = await tx.lead.findUnique({ where: { id }, select: LEAD_SELECT });
+        if (!hasPermission(user, 'leads.read', true) || !lead || (!this.canSeeAll(user) && lead.assignedTo?.id !== user.sub && !(canSupervise(user) && lead.supervisorId === user.sub))) throw new ConflictException('This contact already has a deal. Ask its responsible staff member to review it.');
+        return lead;
+      };
+      const link = async (lead: Awaited<ReturnType<typeof accessibleLead>>, reusedExisting: boolean) => {
+        if (conversation.patient && !conversation.patient.convertedFromLeadId) {
+          const updated = await tx.patient.updateMany({ where: { id: conversation.patient.id, convertedFromLeadId: null }, data: { convertedFromLeadId: lead.id } });
+          if (updated.count !== 1) throw new ConflictException('Patient link changed. Reopen the conversation and try again.');
+        }
+        await tx.conversation.update({ where: { id: conversation.id }, data: { leadId: lead.id } });
+        return { ...lead, reusedExisting };
+      };
+      if (linkedId) return link(await accessibleLead(linkedId), true);
+      const phone = whatsappContactPhone(conversation.externalThreadId);
+      if (!phone) throw new BadRequestException('A verified WhatsApp telephone number is required. Group and private LID identifiers cannot be used.');
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`deal:${phoneMatchKey(phone)}`}, 0))`);
+      const existing = await this.openDealOnNumber([toE164Digits(phone) ?? undefined], undefined, tx);
+      if (existing) return link(await accessibleLead(existing.id), true);
+      const owner = conversation.assignedToId ?? (conversation.whatsappSessionId.startsWith('user:') ? conversation.whatsappSessionId.slice(5) : user.sub);
+      const assignedToId = dto.assignedToId ?? owner;
+      if (assignedToId !== user.sub && !hasPermission(user, 'leads.assign', user.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Ask the responsible salesperson to create this deal.');
+      const lead = await this.createRecord({ ...dto, source: 'WHATSAPP', phone: dto.phone || phone, whatsappNumber: phone, assignedToId }, user, tx);
+      return link(lead, false);
+    });
+  }
+
+  private async createRecord(dto: CreateLeadDto, currentUser?: JwtPayload, client: Prisma.TransactionClient | PrismaService = this.prisma) {
     // Normalised on the way in, so the stored value matches how inbound WhatsApp arrives and so
     // the duplicate check above compares like with like. Without this "+90 555 111 22 33" and
     // "905551112233" are two different strings and no check can see they are one patient.
@@ -346,10 +392,10 @@ export class LeadsService {
       ? (toE164Digits(dto.whatsappNumber, dto.country) ?? undefined)
       : undefined;
 
-    const existing = await this.openDealOnNumber([phone, whatsappNumber]);
+    const existing = await this.openDealOnNumber([phone, whatsappNumber], undefined, client);
     if (existing) throw this.duplicateNumberError(existing);
 
-    return this.prisma.lead.create({
+    return client.lead.create({
       data: {
         firstName: dto.firstName,
         lastName: dto.lastName,

@@ -26,6 +26,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly path?: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -49,18 +50,9 @@ export class ApiError extends Error {
 async function toApiError(res: Response, path: string): Promise<ApiError> {
   // Nest sends `{ statusCode, message }`, but an error from in front of the app — a proxy, a
   // gateway timeout — is HTML, and dumping that into a toast is worse than saying nothing.
-  const message = await res
-    .clone()
-    .json()
-    .then((body: { message?: string | string[] }) =>
-      Array.isArray(body.message) ? body.message.join(', ') : body.message,
-    )
-    .catch(() => undefined);
-  return new ApiError(
-    message ?? res.statusText ?? `Request failed (${res.status})`,
-    res.status,
-    path,
-  );
+  const body = await res.clone().json().catch(() => undefined) as Record<string, unknown> | undefined;
+  const message = Array.isArray(body?.message) ? body.message.join(', ') : typeof body?.message === 'string' ? body.message : undefined;
+  return new ApiError(message ?? res.statusText ?? `Request failed (${res.status})`, res.status, path, body);
 }
 
 /** fetch, but a transport failure becomes an ApiError with status 0 rather than a raw TypeError. */

@@ -35,3 +35,7 @@ export * from './treatment-plan/consultation';
 export * from './treatment-plan/consultation-copy';
 export * from './treatment-plan/consultation-presentation';
 export * from './treatment-plan/consultation-example';
+
+export * from './contact/countries';
+
+export * from './contact/whatsapp-contact';

@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { LeadSource, PipelineStage, LeadStatus } from '../enums';
 
 export const CreateLeadSchema = z.object({
+  conversationId: z.string().uuid().optional(),
   firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  lastName: z.string().min(1).optional(),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   whatsappNumber: z.string().optional(),
@@ -15,7 +16,7 @@ export const CreateLeadSchema = z.object({
   assignedToId: z.string().uuid().optional(),
 });
 
-export const UpdateLeadSchema = CreateLeadSchema.partial();
+export const UpdateLeadSchema = CreateLeadSchema.omit({ conversationId: true }).partial();
 
 export const UpdateLeadStageSchema = z.object({
   stage: z.nativeEnum(PipelineStage as Record<string, string>),
