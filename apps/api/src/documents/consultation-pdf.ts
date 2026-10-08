@@ -213,7 +213,7 @@ export function consultationDocument(context: DocumentContext) {
   const totals = consultationTotals(plan);
   const p = consultationPresentationCopy(plan.language);
   const quotedPayment = consultationQuotedPayment(plan, context.payment);
-  const { accent, onAccent, heading: headingColour } = consultationBrandPalette(config.accentColor);
+  const { accent, heading: headingColour } = consultationBrandPalette(config.accentColor);
   const logo = config.logo || clinic.logoUrl;
   const font = rtl ? 'DejaVuSans' : 'NotoSans';
   const money = (v: number) =>
@@ -330,7 +330,7 @@ export function consultationDocument(context: DocumentContext) {
     heading(
       context.kind === 'INVOICE' ? t.invoice : context.kind === 'WARRANTY' ? t.certificate : t.plan,
     ),
-    text(`${t.patient}: ${patient.firstName} ${patient.lastName}`),
+    text(`${t.patient}: ${patient.firstName} ${patient.lastName}`, context.kind === 'INVOICE' || context.kind === 'WARRANTY' ? 11 : 14),
     el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
       text(`${p.prepared}: `, 9), text(context.generatedAt.slice(0, 10), 9)),
     el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginBottom: 4 } },
@@ -444,12 +444,13 @@ export function consultationDocument(context: DocumentContext) {
     ];
     pages.push(page('intro', [
       ...identity(),
-      el(Image, { src: config.coverPhoto || asset('clinic-cover.jpg'), style: { width: '100%', height: 125, objectFit: 'cover', marginBottom: 14 } }),
+      config.coverPhoto && el(Image, { src: config.coverPhoto, style: { width: '100%', height: 85, objectFit: 'cover', marginBottom: 10 } }),
+      text([config.department && config.department !== 'International Patient Department' ? config.department : t.department, config.representative].filter(Boolean).join(' · '), 9),
       text(p.estimate, 10),
       text(consultationTreatmentSummary(plan), consultationTreatmentSummary(plan).length > 250 ? 12 : 18),
-      el(View, { wrap: false, style: { padding: 14, backgroundColor: accent, marginVertical: 10 } },
-        text(`${t.total}: ${priced(totals.total)}`, 22, onAccent),
-        ...totals.visits.map(visit => text(`${t.visit} ${visit.number}: ${priced(visit.total, visit.unpriced)}`, 10, onAccent))),
+      el(View, { wrap: false, style: { padding: 12, backgroundColor: '#f5f7f9', borderTopWidth: 3, borderTopColor: accent, marginVertical: 10 } },
+        text(t.total, 9), text(priced(totals.total), config.coverPhoto ? 22 : 26, headingColour),
+        el(View, { style: { flexDirection: rtl ? 'row-reverse' : 'row', marginTop: 6 } }, ...totals.visits.map(visit => el(View, { key: visit.number, style: { flex: 1 } }, text(`${t.visit} ${visit.number}`, 9), text(priced(visit.total, visit.unpriced), 12))))),
       text(t.confirmation, 9),
       section(t.journey, plan.visits.flatMap(visit => [
         text(`${t.visit} ${visit.number} · ${consultationVisitPurpose(plan, visit.number)}`, 10),

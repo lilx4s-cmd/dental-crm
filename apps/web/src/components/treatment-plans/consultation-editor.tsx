@@ -1,5 +1,5 @@
 'use client';
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useId, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -53,6 +53,8 @@ export function ConsultationEditor({
   demo?: boolean;
   onClose: () => void;
 }) {
+  const sectionId = useId();
+  const jumpTo = (section: string) => document.getElementById(`${sectionId}-${section}`)?.scrollIntoView({ block: 'start' });
   const { accessToken,user } = useAuth(),
     qc = useQueryClient(),
     config = source.config;
@@ -218,7 +220,7 @@ export function ConsultationEditor({
       }}
     >
       <DialogContent
-        className="consultation-document max-w-7xl p-3 sm:p-6"
+        className="consultation-document max-w-7xl bg-slate-50 p-3 sm:p-6"
         dir={plan.language === 'ar' ? 'rtl' : 'ltr'}
       >
         <DialogHeader>
@@ -226,8 +228,12 @@ export function ConsultationEditor({
             {t.plan} · {source.patient.firstName} {source.patient.lastName}
           </DialogTitle>
         </DialogHeader>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <nav aria-label={t.plan} className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+          {([['treatment', t.treatment], ['visits', t.visit], ['positions', t.positions], ['payment', t.payment], ['preview', p.patientPreview]] as const).map(([key, label], index) => <Button key={key} type="button" variant="outline" size="sm" aria-label={`${t.select} · ${label}`} onClick={() => jumpTo(key)}><span className="me-2 text-slate-400" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{label}</Button>)}
+        </nav>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-4">
+            <h2 id={`${sectionId}-treatment`} className="scroll-mt-4 text-lg font-semibold">{t.treatment}</h2>
             <div className="grid grid-cols-2 gap-2">
               {field(
                 t.language,
@@ -294,7 +300,7 @@ export function ConsultationEditor({
               }}>{t.create} {t.treatment}</Button>
             </div>
             {plan.lines.map((l) => (
-              <div key={l.id} className="space-y-2 rounded-xl border p-3">
+              <div key={l.id} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                 <div className="flex items-center gap-2">
                   <select
                     aria-label={t.treatment}
@@ -438,8 +444,9 @@ export function ConsultationEditor({
               </div>
             ))}
             {plan.visits.length === 1 && <Button type="button" variant="outline" onClick={() => change({ ...plan, visits: [...plan.visits, { number: 2, nights: config.defaultNights[1] ?? 0, hotelRate: config.defaultHotelRate, hotelIncluded: config.defaultHotelIncluded, transfer: 'excluded', transferPrice: 0, itinerary: [] }] })}>{t.create} {t.visit} 2</Button>}
+            <h2 id={`${sectionId}-visits`} className="scroll-mt-4 border-t pt-5 text-lg font-semibold">{t.visit} · {t.hotel} · {t.transfer}</h2>
             {plan.visits.map((v) => (
-              <div key={v.number} className="space-y-3 rounded-xl border bg-muted/25 p-3">
+              <div key={v.number} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold">
                   {t.visit} {v.number}
                 </h3>
@@ -571,7 +578,7 @@ export function ConsultationEditor({
             ))}
             {!!plan.lines.length && (
               <>
-                <Label>{t.positions}</Label>
+                <Label id={`${sectionId}-positions`} className="block scroll-mt-4 border-t pt-5 text-lg font-semibold">{t.positions}</Label>
                 <div className="flex flex-wrap gap-2">
                   <select
                     className="rounded border bg-background p-2 text-sm"
@@ -655,7 +662,7 @@ export function ConsultationEditor({
                 }
               />
             </details>
-            {plan.visits.length > 1 && <section className="space-y-2 rounded-xl border p-3">
+            {plan.visits.length > 1 && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!plan.healing} onChange={e => change({ ...plan, healing: e.target.checked ? (config.healing ?? { minMonths: 0, maxMonths: 0 }) : null })} />{t.healing}</label>
               {plan.healing && <div className="grid grid-cols-2 gap-2">
                 {field(`${t.healing} · ${t.months} (min)`, <Input type="number" min={0} max={36} value={plan.healing.minMonths} onChange={e => change({ ...plan, healing: { ...plan.healing!, minMonths: Number(e.target.value) } })} />)}
@@ -663,7 +670,7 @@ export function ConsultationEditor({
               </div>}
               <p className="text-xs text-muted-foreground">{p.separateVisits}</p>
             </section>}
-            <details className="rounded-xl border p-3"><summary className="cursor-pointer font-medium">{t.payment}</summary>
+            <details open id={`${sectionId}-payment`} className="scroll-mt-4 rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-lg font-semibold">{t.payment}</summary>
               <div className="mt-3 space-y-3">
                 {field(t.payment, <Textarea maxLength={2500} value={payment.terms ?? ''} onChange={e => setPayment(previous => ({ ...previous, terms: e.target.value }))} />)}
                 <div className="grid grid-cols-2 gap-2">
@@ -688,7 +695,28 @@ export function ConsultationEditor({
               </p>
             )}
             {!validPayment.success && <p role="alert" className="text-sm text-destructive">{validPayment.error.issues.map(issue => issue.message).join(' · ')}</p>}
-            <div className="flex flex-wrap items-center gap-2">
+          </div>
+          <div id={`${sectionId}-preview`} className="min-w-0 scroll-mt-4 space-y-3 lg:sticky lg:top-0 lg:self-start">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={previewMode === 'patient' ? 'default' : 'outline'} aria-pressed={previewMode === 'patient'} onClick={() => setPreviewMode('patient')}>{p.patientPreview}</Button>
+              <Button disabled={demo} type="button" variant={previewMode === 'pdf' ? 'default' : 'outline'} aria-pressed={previewMode === 'pdf'} onClick={() => setPreviewMode('pdf')}>{p.pdfPreview} {rendering && '…'}</Button>
+            </div>
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {previewMode === 'patient' && valid.success && validPayment.success ? <div className="rounded-xl border bg-white p-3 sm:p-4 lg:max-h-[75vh] lg:overflow-y-auto">
+              <ConsultationPatientView plan={deferredPlan} payment={payment} identity={config} clinic={source.clinic} patientName={`${source.patient.firstName} ${source.patient.lastName}`} coverPhoto={config.coverPhoto} />
+            </div> : previewMode === 'pdf' && pdf && valid.success && !rendering && !error ? <>
+              <a href={pdf} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border bg-white px-4 text-sm font-medium">{p.openPdf}</a>
+              {wideViewport && <iframe title={p.pdfPreview} src={pdf} className="h-[75vh] w-full rounded-xl border bg-slate-100" />}
+            </> : (
+              <p className="rounded-xl border bg-muted p-8 text-sm">{t.treatment}</p>
+            )}
+          </div>
+        </div>
+            <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
               <Button
                 variant="outline"
                 disabled={!undo.length}
@@ -724,27 +752,6 @@ export function ConsultationEditor({
                 {save.isPending ? '…' : p.saveGenerate}
               </Button>
             </div>
-          </div>
-          <div className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant={previewMode === 'patient' ? 'default' : 'outline'} aria-pressed={previewMode === 'patient'} onClick={() => setPreviewMode('patient')}>{p.patientPreview}</Button>
-              <Button disabled={demo} type="button" variant={previewMode === 'pdf' ? 'default' : 'outline'} aria-pressed={previewMode === 'pdf'} onClick={() => setPreviewMode('pdf')}>{p.pdfPreview} {rendering && '…'}</Button>
-            </div>
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            {previewMode === 'patient' && valid.success && validPayment.success ? <div className="rounded-xl border bg-white p-3 sm:p-4 lg:max-h-[75vh] lg:overflow-y-auto">
-              <ConsultationPatientView plan={deferredPlan} payment={payment} identity={config} clinic={source.clinic} patientName={`${source.patient.firstName} ${source.patient.lastName}`} coverPhoto={config.coverPhoto} />
-            </div> : previewMode === 'pdf' && pdf && valid.success && !rendering && !error ? <>
-              <a href={pdf} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border bg-white px-4 text-sm font-medium">{p.openPdf}</a>
-              {wideViewport && <iframe title={p.pdfPreview} src={pdf} className="h-[75vh] w-full rounded-xl border bg-slate-100" />}
-            </> : (
-              <p className="rounded-xl border bg-muted p-8 text-sm">{t.treatment}</p>
-            )}
-          </div>
-        </div>
       </DialogContent>
     </Dialog>
   );
