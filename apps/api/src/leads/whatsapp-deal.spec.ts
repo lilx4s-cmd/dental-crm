@@ -40,6 +40,22 @@ describe('WhatsApp to deal', () => {
     expect(tx.conversation.findFirst.mock.calls[0][0].where.AND[0].OR).toContainEqual({ whatsappSessionId: 'user:staff' });
     expect(tx.$queryRaw).not.toHaveBeenCalled(); expect(tx.lead.create).not.toHaveBeenCalled();
   });
+  it.each([
+    { whatsappSessionId: 'default', assignedToId: 'other' },
+    { whatsappSessionId: 'user:other', assignedToId: null },
+  ])('cannot take another salesperson’s contact by submitting its own assignee', async overrides => {
+    const { service, tx } = setup(overrides);
+    const viewer = { ...user, permissions: { 'conversations.all': true, 'leads.assign': false } };
+    await expect(service.create({ ...dto, assignedToId: user.sub }, viewer)).rejects.toThrow('responsible salesperson');
+    expect(tx.lead.create).not.toHaveBeenCalled();
+    expect(tx.conversation.update).not.toHaveBeenCalled();
+  });
+  it('preserves the responsible salesperson when an authorized manager creates the deal', async () => {
+    const { service, tx } = setup({ assignedToId: 'other' });
+    await service.create(dto, { sub: 'manager', email: 'manager@example.org', role: Role.SUPER_ADMIN });
+    expect(tx.lead.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ assignedToId: 'other' }) }));
+    expect(tx.conversation.update).toHaveBeenCalledWith({ where: { id: 'chat' }, data: { leadId: 'deal' } });
+  });
   it.each(['123456789@lid', '123456789@g.us', 'status@broadcast'])('rejects non-phone identifier %s', async externalThreadId => {
     const { service, tx } = setup({ externalThreadId });
     await expect(service.create(dto, user)).rejects.toThrow('verified WhatsApp'); expect(tx.lead.create).not.toHaveBeenCalled();

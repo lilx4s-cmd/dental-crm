@@ -374,7 +374,11 @@ export class LeadsService {
       if (existing) return link(await accessibleLead(existing.id), true);
       const owner = conversation.assignedToId ?? (conversation.whatsappSessionId.startsWith('user:') ? conversation.whatsappSessionId.slice(5) : user.sub);
       const assignedToId = dto.assignedToId ?? owner;
-      if (assignedToId !== user.sub && !hasPermission(user, 'leads.assign', user.role === Role.SUPER_ADMIN)) throw new ForbiddenException('Ask the responsible salesperson to create this deal.');
+      // Viewing a chat does not authorize taking its responsibility. Check its existing owner
+      // even when the caller submits their own ID as the proposed deal assignee.
+      if (!hasPermission(user, 'leads.assign', user.role === Role.SUPER_ADMIN) && (owner !== user.sub || assignedToId !== owner)) {
+        throw new ForbiddenException('Ask the responsible salesperson to create this deal.');
+      }
       const lead = await this.createRecord({ ...dto, source: 'WHATSAPP', phone: dto.phone || phone, whatsappNumber: phone, assignedToId }, user, tx);
       return link(lead, false);
     });
