@@ -369,7 +369,8 @@ export class LeadsService {
       if (linkedId) return link(await accessibleLead(linkedId), true);
       const phone = whatsappContactPhone(conversation.externalThreadId);
       if (!phone) throw new BadRequestException('A verified WhatsApp telephone number is required. Group and private LID identifiers cannot be used.');
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`deal:${phoneMatchKey(phone)}`}, 0))`);
+      // The lock returns PostgreSQL void, which Prisma cannot deserialize as query results.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`deal:${phoneMatchKey(phone)}`}, 0))`);
       const existing = await this.openDealOnNumber([toE164Digits(phone) ?? undefined], undefined, tx);
       if (existing) return link(await accessibleLead(existing.id), true);
       const owner = conversation.assignedToId ?? (conversation.whatsappSessionId.startsWith('user:') ? conversation.whatsappSessionId.slice(5) : user.sub);
