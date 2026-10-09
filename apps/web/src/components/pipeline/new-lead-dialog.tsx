@@ -102,7 +102,7 @@ export function NewLeadDialog({ children, defaultStage, defaultStageLabel, prefi
     <DialogTrigger asChild>{children}</DialogTrigger>
     <DialogContent dir={ar ? 'rtl' : 'ltr'} className="sm:max-w-lg p-4 sm:p-6">
       <DialogHeader className="text-start sm:text-start">
-        <DialogTitle>{copy('New deal', 'صفقة جديدة')}{defaultStageLabel ? ` — ${defaultStageLabel}` : ''}</DialogTitle>
+        <DialogTitle className="pr-8 leading-snug">{copy('New deal', 'صفقة جديدة')}{defaultStageLabel ? ` — ${defaultStageLabel}` : ''}</DialogTitle>
         <DialogDescription>{demo ? copy('Fictional demonstration. Saving is disabled.', 'مثال توضيحي وهمي. الحفظ غير متاح.') : conversationId ? copy('Name and WhatsApp number are reused from this chat. Fill only what is missing.', 'تمت تعبئة الاسم ورقم واتساب من هذه المحادثة. أكمل المعلومات الناقصة فقط.') : copy('Start with the name and contact. Other details can be added later.', 'ابدأ بالاسم ورقم التواصل. يمكنك إضافة باقي التفاصيل لاحقاً.')}</DialogDescription>
         <label className="flex items-center gap-2 text-sm">{copy('Form language', 'لغة النموذج')}<select aria-label="Form language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'ar')} className="min-h-11 rounded-md border bg-background px-2"><option value="en">English</option><option value="ar">العربية</option></select></label>
       </DialogHeader>
