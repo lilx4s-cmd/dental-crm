@@ -8,7 +8,7 @@ const dto = { firstName: 'Fictional', source: 'WHATSAPP', currency: 'EUR', estim
 function setup(overrides = {}) {
   const conversation = { id: 'chat', channel: 'WHATSAPP', externalThreadId: '447700900123@s.whatsapp.net', whatsappSessionId: 'user:staff', assignedToId: 'staff', leadId: null, patient: null, ...overrides };
   const created = { id: 'deal', firstName: 'Fictional', assignedTo: { id: 'staff' }, supervisorId: null };
-  const tx = { conversation: { findFirst: jest.fn().mockResolvedValue(conversation), update: jest.fn().mockResolvedValue({}) }, lead: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(created), create: jest.fn().mockResolvedValue(created) }, patient: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, $queryRaw: jest.fn().mockResolvedValue([]) };
+  const tx = { conversation: { findFirst: jest.fn().mockResolvedValue(conversation), update: jest.fn().mockResolvedValue({}) }, lead: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(created), create: jest.fn().mockResolvedValue(created) }, patient: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, $queryRaw: jest.fn().mockResolvedValue([]), $executeRaw: jest.fn().mockResolvedValue(1) };
   const prisma = { ...tx, $transaction: jest.fn((fn: any) => fn(tx)) };
   return { service: new LeadsService(prisma as any, {} as any), tx, prisma, conversation, created };
 }
@@ -18,7 +18,8 @@ describe('WhatsApp to deal', () => {
     await expect(service.create({ ...dto, whatsappNumber: '+15555555555' }, user)).resolves.toMatchObject({ id: 'deal', reusedExisting: false });
     expect(tx.lead.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ whatsappNumber: '447700900123', phone: '447700900123', currency: 'EUR', estimatedValue: 2500, assignedToId: 'staff' }) }));
     expect(tx.conversation.update).toHaveBeenCalledWith({ where: { id: 'chat' }, data: { leadId: 'deal' } });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
   });
   it('reuses the linked deal without overwriting its prices or patient history', async () => {
     const { service, tx } = setup({ leadId: 'deal' });
