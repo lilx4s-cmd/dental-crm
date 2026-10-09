@@ -13,6 +13,7 @@ import {
   decryptSecret,
   hasDedicatedEncryptionKey,
 } from '../common/crypto/secret-box';
+import { AlertSettingsSchema } from '../staff-alerts/alert-policy';
 import { bookingSchema, flightInstant } from './policy';
 import { Prisma } from '@prisma/client';
 import { hasPermission } from '@dental-crm/shared';
@@ -364,10 +365,16 @@ export class GoogleCalendarService {
       where: { id: bookingId },
       include: {
         lead: { select: { assignedTo: { select: { firstName: true, lastName: true } } } },
+        patient: { select: { firstName: true, lastName: true } },
       },
     });
     if (booking.revision !== revision) return;
     const details = bookingSchema.parse(booking.details);
+    const clinic = await this.db.clinicSettings.findUnique({
+      where: { id: 'singleton' },
+      select: { notificationSettings: true },
+    });
+    const reminderSettings = AlertSettingsSchema.parse(clinic?.notificationSettings ?? {});
     const auth = await this.token();
     if (!auth.calendarId) throw new BadRequestException('Select a target clinic calendar');
     const ids = previous as Record<string, string>;
@@ -417,7 +424,16 @@ export class GoogleCalendarService {
       const url = (this.config.get<string>('WEB_APP_URL') ?? '') + '/travel?bookingId=' + bookingId;
       const event = {
         id,
-        summary: `Patient ${kind} · Visit ${booking.visit} · ${flight.number}`,
+        summary: `${booking.patient ? `${booking.patient.firstName} ${booking.patient.lastName}`.trim() : 'Patient'} · ${kind} · Visit ${booking.visit} · ${flight.number}`,
+        reminders: {
+          useDefault: false,
+          overrides: reminderSettings.patientRemindersEnabled
+            ? reminderSettings.patientReminderHours.map((hours) => ({
+                method: 'popup',
+                minutes: hours * 60,
+              }))
+            : [],
+        },
         description: `Salesperson: ${staff ? staff.firstName + ' ' + staff.lastName : 'Unassigned'}\nFlight: ${flight.number} ${flight.origin} → ${flight.destination}\nPassengers: ${details.passengers}\nVisit: ${booking.visit}\nHotel: ${details.hotel.name || 'Not entered'}; ${details.hotel.checkIn || 'Missing check-in'} / ${details.hotel.checkOut || 'Missing check-out'}\nPickup: ${details.readiness.airportPickup?.state || 'MISSING'}\nDeparture transfer: ${details.readiness.airportDeparture?.state || 'MISSING'}\nClinic transfers: ${details.readiness.clinicTransfers?.state || 'MISSING'}\nAppointment: ${details.readiness.appointment?.state || 'MISSING'}\nCRM: ${url}`,
         location: kind === 'arrival' ? flight.destination : flight.origin,
         start: { dateTime: instant.toISOString(), timeZone: flight.timezone },

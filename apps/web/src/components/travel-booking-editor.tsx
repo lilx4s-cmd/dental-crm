@@ -1,5 +1,5 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { apiRequest } from '@/lib/api-client';
@@ -80,6 +80,7 @@ export function TravelBookingEditor({
   plans?: { id: string; title: string }[];
   linkedTicketId?: string;
 }) {
+  const qc = useQueryClient();
   const { accessToken } = useAuth(),
     upload = useUploadFile(),
     files = useFiles('LEAD', leadId),
@@ -143,6 +144,8 @@ export function TravelBookingEditor({
         accessToken ?? undefined,
       );
       setSaved(result);
+      void qc.invalidateQueries({ queryKey: ['patients'] });
+      void qc.invalidateQueries({ queryKey: ['patient-schedule'] });
       setMessage('Booking saved. Calendar sync is queued separately.');
       onSaved?.(result);
     } catch (e) {

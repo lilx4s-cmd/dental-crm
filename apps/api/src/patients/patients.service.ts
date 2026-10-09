@@ -4,8 +4,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { UpdateCaseEconomicsDto } from './dto/case-economics.dto';
-import { computeCaseEconomics, patientGuidance } from '@dental-crm/shared';
+import {
+  computeCaseEconomics,
+  patientGuidance,
+  patientMonth,
+  type PatientTreatmentStatus,
+} from '@dental-crm/shared';
 import { PatientsQueryDto } from './dto/patients-query.dto';
+import {
+  patientBaseWhere,
+  patientListWhere,
+  reservationWhere,
+  reservationRange,
+  reservationBookingWhere,
+  UPCOMING_APPOINTMENTS,
+} from './patient-filters';
 
 const PATIENT_SELECT = {
   id: true,
@@ -38,6 +51,11 @@ const PATIENT_SELECT = {
   diagnosis: true,
   insuranceInfo: true,
   isActive: true,
+  treatmentStatus: true,
+  treatmentFinishedAt: true,
+  convertedFromLead: {
+    select: { assignedTo: { select: { id: true, firstName: true, lastName: true } } },
+  },
   convertedFromLeadId: true,
   createdAt: true,
   updatedAt: true,
@@ -49,30 +67,118 @@ export class PatientsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: PatientsQueryDto) {
-    const { page, limit, search, tagId } = query;
+    const { page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
-
-    const where: Prisma.PatientWhereInput = { isActive: true };
-
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-      ];
-    }
-
-    if (tagId) {
-      where.tags = { some: { tagId } };
-    }
-
+    const now = new Date();
+    const where = patientListWhere(query, now);
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.patient.findMany({ where, select: PATIENT_SELECT, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.patient.findMany({
+        where,
+        select: {
+          ...PATIENT_SELECT,
+          appointments: {
+            where: {
+              startTime: reservationRange(now, query.month, query.dueDays),
+              status: { in: [...UPCOMING_APPOINTMENTS] },
+            },
+            select: { id: true, startTime: true, endTime: true, type: true },
+            orderBy: { startTime: 'asc' },
+            take: 3,
+          },
+          travelBookings: {
+            where: reservationBookingWhere(now, query.month, query.dueDays),
+            select: { id: true, visit: true, status: true, arrivalAt: true, departureAt: true },
+            orderBy: { arrivalAt: 'asc' },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.patient.count({ where }),
     ]);
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async summary(query: PatientsQueryDto, now = new Date()) {
+    const base = patientBaseWhere(query);
+    const common: Prisma.PatientWhereInput =
+      query.month || query.dueDays
+        ? { AND: [base, reservationWhere(now, query.month, query.dueDays)] }
+        : base;
+    const [working, finished, total, reservations, staffOptions, reservationCount] =
+      await Promise.all([
+        this.prisma.patient.count({ where: { AND: [common, { treatmentStatus: 'WORKING' }] } }),
+        this.prisma.patient.count({ where: { AND: [common, { treatmentStatus: 'FINISHED' }] } }),
+        this.prisma.patient.count({ where: common }),
+        this.prisma.patient.findMany({
+          where: { AND: [base, reservationWhere(now, undefined, query.dueDays)] },
+          select: {
+            id: true,
+            travelBookings: {
+              where: reservationBookingWhere(now, undefined, query.dueDays),
+              select: { arrivalAt: true, departureAt: true },
+            },
+            appointments: {
+              where: {
+                status: { in: [...UPCOMING_APPOINTMENTS] },
+                startTime: reservationRange(now, undefined, query.dueDays),
+              },
+              select: { startTime: true },
+            },
+          },
+        }),
+        this.prisma.user.findMany({
+          where: { isActive: true },
+          select: { id: true, firstName: true, lastName: true },
+          orderBy: { firstName: 'asc' },
+        }),
+        this.prisma.patient.count({
+          where: { AND: [common, reservationWhere(now, query.month, query.dueDays)] },
+        }),
+      ]);
+    const months = new Map<string, Set<string>>();
+    for (const patient of reservations) {
+      for (const at of [
+        ...patient.travelBookings.flatMap((b) => [b.arrivalAt, b.departureAt]),
+        ...patient.appointments.map((a) => a.startTime),
+      ]) {
+        if (
+          !at ||
+          at < now ||
+          (query.dueDays && at >= new Date(now.getTime() + query.dueDays * 86400000))
+        )
+          continue;
+        const month = patientMonth(at);
+        if (!months.has(month)) months.set(month, new Set());
+        months.get(month)!.add(patient.id);
+      }
+    }
+    return {
+      working,
+      finished,
+      total,
+      reservations: reservationCount,
+      months: [...months]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, patients]) => ({ month, count: patients.size })),
+      staffOptions,
+      timezone: 'Europe/Istanbul',
+    };
+  }
+
+  async treatmentStatus(id: string, status: PatientTreatmentStatus) {
+    const previous = await this.findOne(id);
+    return this.prisma.patient.update({
+      where: { id },
+      data: {
+        treatmentStatus: status,
+        treatmentFinishedAt:
+          status === 'FINISHED' ? (previous.treatmentFinishedAt ?? new Date()) : null,
+      },
+      select: PATIENT_SELECT,
+    });
   }
 
   async findOne(id: string) {

@@ -482,6 +482,8 @@ model ClinicSettings {
 // ─────────────────────────── PATIENTS / LEADS / PIPELINE ───────────────────────────
 
 model Patient {
+  treatmentStatus     String            @default("WORKING")
+  treatmentFinishedAt DateTime?
   travelBookings      TravelBooking[]
   documentVersions    DocumentVersion[]
   id                  String            @id @default(uuid())
@@ -548,6 +550,7 @@ model Patient {
   @@index([phone])
   @@index([email])
   @@index([isActive, createdAt])
+  @@index([isActive, treatmentStatus])
   @@map("patients")
 }
 
@@ -2066,6 +2069,7 @@ model LeadAssignmentEvent {
 }
 
 model StaffAlert {
+  schedule    Json?
   id          String               @id @default(uuid())
   eventId     String?
   event       LeadAssignmentEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)

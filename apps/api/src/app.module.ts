@@ -1,4 +1,5 @@
 import { CallingModule } from './calling/calling.module';
+import { PatientScheduleModule } from './patient-schedule/patient-schedule.module';
 import { OperationsJobsModule } from './operations-jobs/operations-jobs.module';
 import { TravelFinanceModule } from './travel-finance/travel-finance.module';
 import { StaffAlertsModule } from './staff-alerts/staff-alerts.module';
@@ -55,6 +56,7 @@ import { HealthController } from './health/health.controller';
       validate: validateEnv,
     }),
     PrismaModule,
+    PatientScheduleModule,
     CallingModule,
     AuthModule,
     UsersModule,

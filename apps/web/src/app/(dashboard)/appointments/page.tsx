@@ -4,6 +4,9 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 // Loaded after the library's own stylesheet so it can override it.
 import './google-calendar.css';
 
+import Link from 'next/link';
+import { usePatientSchedule } from '@/hooks/use-patient-schedule';
+import { UpcomingPatientDates } from '@/components/patients/upcoming-dates';
 import { Suspense, useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Calendar, dateFnsLocalizer, Views, type View } from 'react-big-calendar';
@@ -27,15 +30,32 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
-import { APPOINTMENT_WRITE } from '@dental-crm/shared';
+import { APPOINTMENT_WRITE, type PatientCalendarEvent } from '@dental-crm/shared';
 import { useAuth } from '@/context/auth-context';
-import { useAppointments, useCreateAppointment, useUpdateAppointment, type Appointment } from '@/hooks/use-appointments';
+import {
+  useAppointments,
+  useCreateAppointment,
+  useUpdateAppointment,
+  type Appointment,
+} from '@/hooks/use-appointments';
 import { usePatients } from '@/hooks/use-patients';
 import { useDentists } from '@/hooks/use-users';
 import { QueryError } from '@/components/ui/query-state';
@@ -85,7 +105,19 @@ const CANCELLED_OPACITY = 0.45;
 
 // ─── Calendar event style ────────────────────────────────────────────────────
 // Shape and spacing live in google-calendar.css; only the per-appointment colour is decided here.
-function eventStyleGetter(event: { resource?: Appointment }) {
+function eventStyleGetter(event: { resource?: Appointment; flight?: PatientCalendarEvent }) {
+  if (event.flight)
+    return {
+      style: {
+        backgroundColor:
+          event.flight.kind === 'ARRIVAL' ? 'hsl(var(--success))' : 'hsl(var(--warning))',
+        color:
+          event.flight.kind === 'ARRIVAL'
+            ? 'hsl(var(--success-foreground))'
+            : 'hsl(var(--warning-foreground))',
+        borderLeft: '4px solid currentColor',
+      },
+    };
   const appt = event.resource;
   const color = appt?.dentist?.calendarColor ?? DEFAULT_EVENT_COLOR;
   const cancelled = appt?.status === 'CANCELLED';
@@ -130,9 +162,15 @@ function TimezoneCorner() {
   const minutes = -new Date().getTimezoneOffset();
   const sign = minutes < 0 ? '-' : '+';
   const abs = Math.abs(minutes);
-  const label = abs % 60 === 0 ? `${sign}${Math.floor(abs / 60)}` : `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
+  const label =
+    abs % 60 === 0
+      ? `${sign}${Math.floor(abs / 60)}`
+      : `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
   return (
-    <div className="flex h-full items-end justify-end pb-1 pr-2 text-[10px]" style={{ color: 'var(--gc-text-muted)' }}>
+    <div
+      className="flex h-full items-end justify-end pb-1 pr-2 text-[10px]"
+      style={{ color: 'var(--gc-text-muted)' }}
+    >
       GMT{label}
     </div>
   );
@@ -167,9 +205,12 @@ function AppointmentDetailDialog({
     update.mutate(
       { status },
       {
-        onSuccess: () => { toast.success('Status updated'); onClose(); },
+        onSuccess: () => {
+          toast.success('Status updated');
+          onClose();
+        },
         onError: () => toast.error('Failed to update'),
-      }
+      },
     );
   };
 
@@ -186,7 +227,8 @@ function AppointmentDetailDialog({
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Type</span>
             <span className="font-medium">
-              {APPOINTMENT_TYPES.find((t) => t.value === appointment.type)?.label ?? appointment.type}
+              {APPOINTMENT_TYPES.find((t) => t.value === appointment.type)?.label ??
+                appointment.type}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -206,7 +248,9 @@ function AppointmentDetailDialog({
           {appointment.dentist && (
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Dentist</span>
-              <span>Dr. {appointment.dentist.firstName} {appointment.dentist.lastName}</span>
+              <span>
+                Dr. {appointment.dentist.firstName} {appointment.dentist.lastName}
+              </span>
             </div>
           )}
           {appointment.patient.phone && (
@@ -226,17 +270,31 @@ function AppointmentDetailDialog({
         {mayBook && appointment.status !== 'CANCELLED' && appointment.status !== 'COMPLETED' && (
           <DialogFooter className="flex-wrap gap-2">
             {appointment.status === 'SCHEDULED' && (
-              <Button size="sm" variant="outline" onClick={() => handleStatus('CONFIRMED')} disabled={update.isPending}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleStatus('CONFIRMED')}
+                disabled={update.isPending}
+              >
                 Confirm
               </Button>
             )}
             {appointment.status === 'CONFIRMED' && (
-              <Button size="sm" variant="outline" onClick={() => handleStatus('IN_PROGRESS')} disabled={update.isPending}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleStatus('IN_PROGRESS')}
+                disabled={update.isPending}
+              >
                 Start
               </Button>
             )}
             {appointment.status === 'IN_PROGRESS' && (
-              <Button size="sm" onClick={() => handleStatus('COMPLETED')} disabled={update.isPending}>
+              <Button
+                size="sm"
+                onClick={() => handleStatus('COMPLETED')}
+                disabled={update.isPending}
+              >
                 Complete
               </Button>
             )}
@@ -273,7 +331,7 @@ function NewAppointmentDialog({
   const [patientSearch, setPatientSearch] = useState('');
   const { data: patientsData } = usePatients({ search: patientSearch, limit: 10 });
 
-  const defaultDateStr = format(defaultDate, "yyyy-MM-dd");
+  const defaultDateStr = format(defaultDate, 'yyyy-MM-dd');
   const defaultStartStr = `${defaultDateStr}T09:00`;
   const defaultEndStr = `${defaultDateStr}T09:30`;
 
@@ -289,8 +347,14 @@ function NewAppointmentDialog({
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSubmit = () => {
-    if (!form.patientId) { toast.error('Select a patient'); return; }
-    if (!form.startTime || !form.endTime) { toast.error('Set date/time'); return; }
+    if (!form.patientId) {
+      toast.error('Select a patient');
+      return;
+    }
+    if (!form.startTime || !form.endTime) {
+      toast.error('Set date/time');
+      return;
+    }
     create.mutate(
       {
         patientId: form.patientId,
@@ -301,9 +365,12 @@ function NewAppointmentDialog({
         notes: form.notes || undefined,
       },
       {
-        onSuccess: () => { toast.success('Appointment created'); onClose(); },
+        onSuccess: () => {
+          toast.success('Appointment created');
+          onClose();
+        },
         onError: (e: unknown) => toast.error((e as Error).message ?? 'Failed to create'),
-      }
+      },
     );
   };
 
@@ -321,28 +388,34 @@ function NewAppointmentDialog({
             <Input
               placeholder="Search patient name..."
               value={patientSearch}
-              onChange={(e) => { setPatientSearch(e.target.value); set('patientId', ''); }}
+              onChange={(e) => {
+                setPatientSearch(e.target.value);
+                set('patientId', '');
+              }}
             />
-            {patientSearch && patientsData?.data && patientsData.data.length > 0 && !form.patientId && (
-              <div className="border rounded-md max-h-36 overflow-y-auto shadow-sm bg-background">
-                {patientsData.data.map((p) => (
-                  <button
-                    key={p.id}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
-                    onClick={() => {
-                      set('patientId', p.id);
-                      setPatientSearch(`${p.firstName} ${p.lastName}`);
-                    }}
-                  >
-                    {p.firstName} {p.lastName}
-                    {p.phone && <span className="ml-2 text-muted-foreground text-xs">{p.phone}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            {form.patientId && (
-              <p className="text-xs text-success">✓ Patient selected</p>
-            )}
+            {patientSearch &&
+              patientsData?.data &&
+              patientsData.data.length > 0 &&
+              !form.patientId && (
+                <div className="border rounded-md max-h-36 overflow-y-auto shadow-sm bg-background">
+                  {patientsData.data.map((p) => (
+                    <button
+                      key={p.id}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                      onClick={() => {
+                        set('patientId', p.id);
+                        setPatientSearch(`${p.firstName} ${p.lastName}`);
+                      }}
+                    >
+                      {p.firstName} {p.lastName}
+                      {p.phone && (
+                        <span className="ml-2 text-muted-foreground text-xs">{p.phone}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            {form.patientId && <p className="text-xs text-success">✓ Patient selected</p>}
           </div>
 
           {/* Dentist */}
@@ -355,7 +428,9 @@ function NewAppointmentDialog({
               value={form.dentistId || UNASSIGNED}
               onValueChange={(v) => set('dentistId', v === UNASSIGNED ? '' : v)}
             >
-              <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
                 {dentists?.map((d) => (
@@ -371,10 +446,14 @@ function NewAppointmentDialog({
           <div className="space-y-1">
             <Label>Type</Label>
             <Select value={form.type} onValueChange={(v) => set('type', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {APPOINTMENT_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -384,11 +463,19 @@ function NewAppointmentDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Start</Label>
-              <Input type="datetime-local" value={form.startTime} onChange={(e) => set('startTime', e.target.value)} />
+              <Input
+                type="datetime-local"
+                value={form.startTime}
+                onChange={(e) => set('startTime', e.target.value)}
+              />
             </div>
             <div className="space-y-1">
               <Label>End</Label>
-              <Input type="datetime-local" value={form.endTime} onChange={(e) => set('endTime', e.target.value)} />
+              <Input
+                type="datetime-local"
+                value={form.endTime}
+                onChange={(e) => set('endTime', e.target.value)}
+              />
             </div>
           </div>
 
@@ -405,7 +492,9 @@ function NewAppointmentDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={handleSubmit} disabled={create.isPending}>
             {create.isPending ? 'Creating...' : 'Create Appointment'}
           </Button>
@@ -418,22 +507,39 @@ function NewAppointmentDialog({
 // ─── Main Page ───────────────────────────────────────────────────────────────
 function AppointmentCalendar() {
   const params = useSearchParams();
+  const requestedInstant = params.get('at');
   const requestedDate = params.get('date');
-  const dateFromLink = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
-    ? new Date(`${requestedDate}T12:00:00`) : null;
-  const linkedDate = dateFromLink && Number.isFinite(dateFromLink.getTime()) ? dateFromLink : null;
+  const dateFromLink =
+    requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+      ? new Date(`${requestedDate}T12:00:00`)
+      : null;
+  const instantFromLink = requestedInstant ? new Date(requestedInstant) : null;
+  const linkedDate =
+    instantFromLink && Number.isFinite(instantFromLink.getTime())
+      ? instantFromLink
+      : dateFromLink && Number.isFinite(dateFromLink.getTime())
+        ? dateFromLink
+        : null;
   const { user } = useAuth();
   const mayBook = (APPOINTMENT_WRITE as readonly string[]).includes(user?.role ?? '');
   const [currentDate, setCurrentDate] = useState(linkedDate ?? new Date());
-  const [currentView, setCurrentView] = useState<View>(params.get('view') === 'day' ? Views.DAY : Views.WEEK);
+  const [currentView, setCurrentView] = useState<View>(
+    params.get('view') === 'day' ? Views.DAY : Views.WEEK,
+  );
   useEffect(() => {
     if (params.get('view') === 'day') setCurrentView(Views.DAY);
+    const at = params.get('at');
+    if (at && Number.isFinite(new Date(at).getTime())) {
+      setCurrentDate(new Date(at));
+      return;
+    }
     const date = params.get('date');
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const parsed = new Date(`${date}T12:00:00`);
       if (Number.isFinite(parsed.getTime())) setCurrentDate(parsed);
     }
   }, [params]);
+  const [selectedFlight, setSelectedFlight] = useState<PatientCalendarEvent | null>(null);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [newDialogDate, setNewDialogDate] = useState(new Date());
@@ -453,7 +559,10 @@ function AppointmentCalendar() {
         return [startOfDay(currentDate).toISOString(), endOfDay(currentDate).toISOString()];
       case Views.AGENDA:
         // react-big-calendar's agenda runs a month forward from the current date.
-        return [startOfDay(currentDate).toISOString(), endOfDay(addDays(currentDate, 30)).toISOString()];
+        return [
+          startOfDay(currentDate).toISOString(),
+          endOfDay(addDays(currentDate, 30)).toISOString(),
+        ];
       default:
         return [
           startOfWeek(currentDate, { locale: enUS }).toISOString(),
@@ -463,33 +572,48 @@ function AppointmentCalendar() {
   }, [currentDate, currentView]);
 
   const calendarQuery = useAppointments(rangeFrom, rangeTo);
-  const { data: appointments, isLoading } = calendarQuery;
+  const { data: appointments } = calendarQuery;
+  const flightQuery = usePatientSchedule(rangeFrom, rangeTo);
+  const isLoading = calendarQuery.isLoading || flightQuery.isLoading;
 
-  // Map API appointments → calendar events
   const events = useMemo(
-    () =>
-      (appointments ?? []).map((appt) => ({
+    () => [
+      ...(appointments ?? []).map((appt) => ({
         id: appt.id,
-        title: `${appt.patient.firstName} ${appt.patient.lastName} — ${
-          APPOINTMENT_TYPES.find((t) => t.value === appt.type)?.label ?? appt.type
-        }`,
+        title: `${appt.patient.firstName} ${appt.patient.lastName} — ${APPOINTMENT_TYPES.find((t) => t.value === appt.type)?.label ?? appt.type}`,
         start: new Date(appt.startTime),
         end: new Date(appt.endTime),
         resource: appt,
+        flight: undefined as PatientCalendarEvent | undefined,
       })),
-    [appointments]
+      ...(flightQuery.data ?? []).map((f) => ({
+        id: f.id,
+        title: `${f.kind === 'ARRIVAL' ? 'Arrival' : 'Departure'} · ${f.patientName} · ${f.flightNumber}`,
+        start: new Date(f.startTime),
+        end: new Date(f.endTime),
+        resource: undefined as Appointment | undefined,
+        flight: f,
+      })),
+    ],
+    [appointments, flightQuery.data],
+  );
+  const handleSelectEvent = useCallback(
+    (event: { resource?: Appointment; flight?: PatientCalendarEvent }) => {
+      if (event.flight) setSelectedFlight(event.flight);
+      else if (event.resource) setSelectedAppt(event.resource);
+    },
+    [],
   );
 
-  const handleSelectEvent = useCallback((event: { resource?: Appointment }) => {
-    if (event.resource) setSelectedAppt(event.resource);
-  }, []);
-
-  const handleSelectSlot = useCallback(({ start }: { start: Date }) => {
-    // Dragging out a slot is a way of starting a booking, so it answers to the same right.
-    if (!mayBook) return;
-    setNewDialogDate(start);
-    setNewDialogOpen(true);
-  }, [mayBook]);
+  const handleSelectSlot = useCallback(
+    ({ start }: { start: Date }) => {
+      // Dragging out a slot is a way of starting a booking, so it answers to the same right.
+      if (!mayBook) return;
+      setNewDialogDate(start);
+      setNewDialogOpen(true);
+    },
+    [mayBook],
+  );
 
   // One step is whatever the current view shows, so the arrows always move by exactly the span on
   // screen — a day in day view, a week in week view.
@@ -524,7 +648,12 @@ function AppointmentCalendar() {
             button to a sales consultant led them into a dialog whose patient search returns
             nothing — patient records are not theirs — and a submit that would be refused. */}
         {mayBook && (
-          <Button onClick={() => { setNewDialogDate(new Date()); setNewDialogOpen(true); }}>
+          <Button
+            onClick={() => {
+              setNewDialogDate(new Date());
+              setNewDialogOpen(true);
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Create
           </Button>
@@ -548,7 +677,11 @@ function AppointmentCalendar() {
         </h1>
 
         <span className="text-xs text-muted-foreground">
-          {isLoading ? 'Loading…' : calendarQuery.isError ? 'Not loaded' : `${appointments?.length ?? 0} in view`}
+          {isLoading
+            ? 'Loading…'
+            : calendarQuery.isError || flightQuery.isError
+              ? 'Not loaded'
+              : `${events.length} in view`}
         </span>
 
         <div className="ml-auto flex gap-0.5 rounded-lg border p-0.5">
@@ -568,13 +701,25 @@ function AppointmentCalendar() {
         </div>
       </div>
 
+      <UpcomingPatientDates />
+      <p className="text-xs text-muted-foreground">
+        Clinic appointments · Patient arrivals · Departures. Calendar times use your device
+        timezone; flight details show the booked timezone.
+      </p>
       {/* Calendar */}
       {isLoading ? (
         <Skeleton className="w-full flex-1 rounded-lg" style={{ minHeight: 500 }} />
-      ) : calendarQuery.isError ? (
+      ) : calendarQuery.isError || flightQuery.isError ? (
         // An empty grid is the one thing this screen must never show on failure: a receptionist
         // reads a blank week as a free week and books over it.
-        <QueryError error={calendarQuery.error} onRetry={calendarQuery.refetch} variant="page" />
+        <QueryError
+          error={calendarQuery.error ?? flightQuery.error}
+          onRetry={() => {
+            void calendarQuery.refetch();
+            void flightQuery.refetch();
+          }}
+          variant="page"
+        />
       ) : (
         <div className="min-h-0 flex-1" style={{ minHeight: 560 }}>
           <Calendar
@@ -604,6 +749,42 @@ function AppointmentCalendar() {
       )}
 
       {/* Dialogs */}
+      <Dialog
+        open={!!selectedFlight}
+        onOpenChange={(open) => {
+          if (!open) setSelectedFlight(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedFlight?.kind === 'ARRIVAL' ? 'Patient arrival' : 'Patient departure'} ·{' '}
+              {selectedFlight?.patientName}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedFlight && (
+            <div className="space-y-3 text-sm">
+              <p>
+                Visit {selectedFlight.visit} · {selectedFlight.flightNumber} ·{' '}
+                {selectedFlight.route}
+              </p>
+              <p className="font-medium">
+                {selectedFlight.localTime ||
+                  new Date(selectedFlight.startTime).toLocaleString('en-GB', {
+                    timeZone: selectedFlight.timezone,
+                  })}{' '}
+                ({selectedFlight.timezone})
+              </p>
+              <Link
+                className="block text-primary underline"
+                href={`/travel?bookingId=${selectedFlight.bookingId}`}
+              >
+                Open travel booking
+              </Link>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <AppointmentDetailDialog appointment={selectedAppt} onClose={() => setSelectedAppt(null)} />
       <NewAppointmentDialog
         open={newDialogOpen}
@@ -615,5 +796,9 @@ function AppointmentCalendar() {
 }
 
 export default function AppointmentsPage() {
-  return <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-lg" />}><AppointmentCalendar /></Suspense>;
+  return (
+    <Suspense fallback={<Skeleton className="h-[60vh] w-full rounded-lg" />}>
+      <AppointmentCalendar />
+    </Suspense>
+  );
 }

@@ -6,13 +6,11 @@ import { StaffAlertsService } from './staff-alerts.service';
 function fixture() {
   const db = {
     user: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          isActive: true,
-          notificationPhone: '+12025550123',
-          notificationPreferences: { whatsapp: true, optIn: true },
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        isActive: true,
+        notificationPhone: '+12025550123',
+        notificationPreferences: { whatsapp: true, optIn: true },
+      }),
     },
     clinicSettings: {
       findUnique: jest.fn().mockResolvedValue({ notificationSettings: { enabled: true } }),
@@ -116,5 +114,114 @@ it('does not use free-form Cloud API text for business-initiated staff alerts', 
         error: expect.stringContaining('templates'),
       }),
     }),
+  );
+});
+
+function patientFixture(channel = 'IN_APP', push = false) {
+  const f = fixture();
+  const now = new Date('2026-10-09T10:00:00Z');
+  const at = new Date('2026-10-09T11:00:00Z');
+  f.db.user.findUnique.mockResolvedValue({
+    isActive: true,
+    role: 'CLINIC_MANAGER',
+    email: 'fictional@example.org',
+    notificationPhone: '+12025550123',
+    notificationPreferences: { push },
+  } as never);
+  Object.assign(f.db, {
+    appointment: {
+      findFirst: jest.fn().mockResolvedValue({
+        startTime: at,
+        patientId: 'p',
+        patient: { firstName: 'Fictional', lastName: 'Patient' },
+      }),
+    },
+  });
+  Object.assign(f.db.notification, { updateMany: jest.fn() });
+  const alert = {
+    id: 'patient-alert',
+    userId: 's1',
+    eventId: null,
+    kind: 'PATIENT_DATE',
+    channel,
+    state: 'QUEUED',
+    attempts: 0,
+    schedule: { kind: 'APPOINTMENT', id: 'appointment', at: at.toISOString(), hours: 2, cycle: 1 },
+  } as never;
+  return {
+    ...f,
+    now,
+    at,
+    alert,
+    sendPush: jest
+      .spyOn(
+        f.service as unknown as { sendPush: (id: string, payload: object) => Promise<void> },
+        'sendPush',
+      )
+      .mockResolvedValue(),
+  };
+}
+it('delivers in-app patient reminders with a date link even outside staff working hours', async () => {
+  const f = patientFixture();
+  f.db.user.findUnique.mockResolvedValue({
+    isActive: true,
+    role: 'CLINIC_MANAGER',
+    email: 'fictional@example.org',
+    notificationPreferences: { days: [1] },
+  } as never);
+  await f.service.deliver(f.alert, f.now);
+  expect(f.db.notification.upsert).toHaveBeenCalledWith(
+    expect.objectContaining({
+      create: expect.objectContaining({
+        title: 'Clinic appointment · Fictional Patient',
+        relatedEntityType: 'APPOINTMENT',
+        relatedEntityId: 'appointment',
+        body: expect.stringContaining('/appointments?view=day&at='),
+      }),
+    }),
+  );
+  expect(f.sender.sendText).not.toHaveBeenCalled();
+});
+it('sends patient mobile push only to opted-in staff', async () => {
+  const off = patientFixture('PUSH');
+  await off.service.deliver(off.alert, off.now);
+  expect(off.sendPush).not.toHaveBeenCalled();
+  const on = patientFixture('PUSH', true);
+  await on.service.deliver(on.alert, on.now);
+  expect(on.sendPush).toHaveBeenCalledWith(
+    's1',
+    expect.objectContaining({
+      title: 'Clinic appointment · Fictional Patient',
+      url: expect.stringContaining('/appointments?view=day&at='),
+    }),
+  );
+});
+it('cancels missed older reminder bands rather than sending several notices together', async () => {
+  const f = patientFixture();
+  await f.service.deliver(
+    {
+      ...(f.alert as object),
+      schedule: { kind: 'APPOINTMENT', id: 'appointment', at: f.at.toISOString(), hours: 168 },
+    } as never,
+    f.now,
+  );
+  expect(f.db.staffAlert.update).toHaveBeenCalledWith(
+    expect.objectContaining({ data: expect.objectContaining({ state: 'CANCELLED' }) }),
+  );
+  expect(f.db.notification.upsert).not.toHaveBeenCalled();
+});
+it('rechecks patient appointment permission before a reminder is sent', async () => {
+  const f = patientFixture();
+  f.db.user.findUnique.mockResolvedValue({
+    isActive: true,
+    role: 'CLINIC_MANAGER',
+    email: 'fictional@example.org',
+    notificationPreferences: {},
+    accessProfile: { permissions: { 'appointments.read': false } },
+  } as never);
+  await f.service.deliver(f.alert, f.now);
+  expect(f.db.notification.upsert).not.toHaveBeenCalled();
+  expect(f.db.staffAlert.update).toHaveBeenCalledWith(
+    expect.objectContaining({ data: expect.objectContaining({ state: 'CANCELLED' }) }),
   );
 });

@@ -20,7 +20,13 @@ export interface Appointment {
 // `enabled` defaults to true so existing callers (full calendar views) are
 // unaffected; the lead detail sheet passes false until it actually needs a
 // converted patient's appointment history, keeping that fetch lazy.
-export function useAppointments(from?: string, to?: string, dentistId?: string, patientId?: string, enabled = true) {
+export function useAppointments(
+  from?: string,
+  to?: string,
+  dentistId?: string,
+  patientId?: string,
+  enabled = true,
+) {
   const { accessToken } = useAuth();
   const params = new URLSearchParams();
   if (from) params.set('from', from);
@@ -46,8 +52,16 @@ export function useCreateAppointment() {
       startTime: string;
       endTime: string;
       notes?: string;
-    }) => apiRequest('/api/appointments', { method: 'POST', body: JSON.stringify(data) }, accessToken ?? undefined),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['appointments'] }),
+    }) =>
+      apiRequest(
+        '/api/appointments',
+        { method: 'POST', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['appointments'] });
+      void qc.invalidateQueries({ queryKey: ['patients'] });
+    },
   });
 }
 
@@ -56,7 +70,14 @@ export function useUpdateAppointment(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { status?: string; notes?: string; cancelReason?: string }) =>
-      apiRequest(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }, accessToken ?? undefined),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['appointments'] }),
+      apiRequest(
+        `/api/appointments/${id}`,
+        { method: 'PATCH', body: JSON.stringify(data) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['appointments'] });
+      void qc.invalidateQueries({ queryKey: ['patients'] });
+    },
   });
 }

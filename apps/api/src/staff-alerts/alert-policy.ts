@@ -22,6 +22,13 @@ export const StaffPreferencesSchema = z
   })
   .refine((v) => v.start !== v.end, 'Working hours cannot be empty');
 export const AlertSettingsSchema = z.object({
+  patientRemindersEnabled: z.boolean().default(true),
+  patientReminderHours: z
+    .array(z.number().int().min(1).max(672))
+    .min(1)
+    .max(5)
+    .refine((v) => new Set(v).size === v.length, 'Reminder times must be different')
+    .default([168, 24, 2]),
   enabled: z.boolean().default(false),
   enabledSince: z.string().datetime().nullable().default(null),
   supervisorId: z.string().nullable().default(null),

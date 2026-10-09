@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { LeadCoach } from '@/components/coaching/lead-coach';
 
+import { TreatmentStatus } from '@/components/patients/treatment-status';
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -747,7 +748,7 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
   const record = useRecordPayment(invoiceId);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('CASH');
-  const [visitNumber,setVisitNumber] = useState('');
+  const [visitNumber, setVisitNumber] = useState('');
   const handleSubmit = () => {
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
@@ -755,7 +756,7 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
       return;
     }
     record.mutate(
-      { amount: amt, method, visitNumber:visitNumber?Number(visitNumber):undefined },
+      { amount: amt, method, visitNumber: visitNumber ? Number(visitNumber) : undefined },
       {
         onSuccess: () => {
           toast.success('Payment recorded');
@@ -772,9 +773,16 @@ function QuickPayDialog({ invoiceId, onClose }: { invoiceId: string; onClose: ()
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <label className="block text-sm">Payment applies to visit
-            <select className="block min-h-11 w-full rounded border p-2" value={visitNumber} onChange={e=>setVisitNumber(e.target.value)}>
-              <option value="">Whole case / unallocated</option><option value="1">First visit</option><option value="2">Second visit</option>
+          <label className="block text-sm">
+            Payment applies to visit
+            <select
+              className="block min-h-11 w-full rounded border p-2"
+              value={visitNumber}
+              onChange={(e) => setVisitNumber(e.target.value)}
+            >
+              <option value="">Whole case / unallocated</option>
+              <option value="1">First visit</option>
+              <option value="2">Second visit</option>
             </select>
           </label>
           <div className="space-y-1">
@@ -906,6 +914,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           Flight tickets and travel visits
         </Link>
       )}
+      <TreatmentStatus patient={patient} />
       <PatientGuidanceCard patientId={patient.id} />
 
       {/* Info cards */}

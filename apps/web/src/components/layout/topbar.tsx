@@ -1,5 +1,6 @@
 'use client';
 
+import { NotificationBell } from '@/components/notifications/notification-inbox';
 import { LogOut, Search, User } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { CommandPalette } from './command-palette';
@@ -38,13 +39,21 @@ export function Topbar() {
 
       <CommandPalette />
       <div className="flex items-center gap-3">
-        <Link href="/install" className="inline-flex min-h-11 items-center rounded-md px-2 text-sm text-primary hover:bg-muted">Install CRM</Link>
+        <Link
+          href="/install"
+          className="inline-flex min-h-11 items-center rounded-md px-2 text-sm text-primary hover:bg-muted"
+        >
+          Install CRM
+        </Link>
+        <NotificationBell />
         <ThemeToggle />
         {user && (
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium leading-none">{user.email}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{user.accessProfileName ?? ROLE_LABELS[user.role] ?? user.role}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {user.accessProfileName ?? ROLE_LABELS[user.role] ?? user.role}
+              </p>
             </div>
             <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
               <User className="h-5 w-5 text-primary" />
