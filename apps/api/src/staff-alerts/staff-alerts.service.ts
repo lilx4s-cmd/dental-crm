@@ -1,10 +1,17 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { JwtPayload, canSeeAllLeads, canSupervise } from '@dental-crm/shared';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  JwtPayload,
+  canSeeAllLeads,
+  canSupervise,
+  patientReminderBand,
+  CLINIC_TIMEZONE,
+} from '@dental-crm/shared';
 import { randomUUID } from 'crypto';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, StaffAlert } from '@prisma/client';
 import * as webPush from 'web-push';
+import { resolveScheduleEvent, ScheduleContextSchema } from '../patient-schedule/schedule-event';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppSenderService } from '../whatsapp/whatsapp-sender.service';
 import { WhatsAppWebService } from '../whatsapp/whatsapp-web.service';
@@ -41,6 +48,56 @@ export class StaffAlertsService {
         !!this.config.get('VAPID_PRIVATE_KEY') &&
         !!this.config.get('VAPID_SUBJECT'),
     };
+  }
+  async notifications(userId: string) {
+    const where = { userId, channel: 'IN_APP' as const, status: { not: 'FAILED' as const } };
+    const [data, unread] = await Promise.all([
+      this.db.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          createdAt: true,
+          readAt: true,
+          relatedEntityType: true,
+          relatedEntityId: true,
+        },
+      }),
+      this.db.notification.count({ where: { ...where, readAt: null } }),
+    ]);
+    const alerts = await this.db.staffAlert.findMany({
+      where: { userId, id: { in: data.map((n) => n.id) }, kind: 'PATIENT_DATE' },
+      select: { id: true, schedule: true },
+    });
+    const contexts = new Map(
+      alerts.map((a) => [a.id, ScheduleContextSchema.safeParse(a.schedule)]),
+    );
+    return {
+      unread,
+      data: data.map((n) => {
+        const context = contexts.get(n.id);
+        const path =
+          n.relatedEntityType === 'TRAVEL_BOOKING'
+            ? `/travel?bookingId=${encodeURIComponent(n.relatedEntityId ?? '')}`
+            : n.relatedEntityType === 'APPOINTMENT' && context?.success
+              ? `/appointments?view=day&at=${encodeURIComponent(context.data.at)}`
+              : n.relatedEntityType === 'LEAD' && n.relatedEntityId
+                ? `/pipeline?leadId=${encodeURIComponent(n.relatedEntityId)}`
+                : '/my-day';
+        return { ...n, path };
+      }),
+    };
+  }
+  async readNotification(userId: string, id: string) {
+    const result = await this.db.notification.updateMany({
+      where: { id, userId, channel: 'IN_APP' },
+      data: { readAt: new Date(), status: 'READ' },
+    });
+    if (!result.count) throw new NotFoundException('Notification not found');
+    return { ok: true };
   }
   async status(userId: string) {
     const staff = await this.db.user.findUniqueOrThrow({
@@ -117,12 +174,30 @@ export class StaffAlertsService {
           'Choose an active clinic manager or administrator who can access unassigned leads',
         );
     }
-    return this.db.clinicSettings.update({
+    const result = await this.db.clinicSettings.update({
       where: { id: 'singleton' },
       data: { notificationSettings: json(parsed.data) },
       select: { notificationSettings: true },
     });
+    if (
+      previous.patientRemindersEnabled !== parsed.data.patientRemindersEnabled ||
+      JSON.stringify(previous.patientReminderHours) !==
+        JSON.stringify(parsed.data.patientReminderHours)
+    ) {
+      await this.db.calendarSync.updateMany({
+        where: {
+          state: { not: 'PROCESSING' },
+          booking: {
+            status: { in: ['CONFIRMED', 'ARRIVED', 'COMPLETED'] },
+            OR: [{ arrivalAt: { gt: new Date() } }, { departureAt: { gt: new Date() } }],
+          },
+        },
+        data: { state: 'PENDING', attempts: 0, nextAt: new Date(), error: null, lockedAt: null },
+      });
+    }
+    return result;
   }
+
   async preferences(userId: string, phone: unknown, input: unknown) {
     const parsed = StaffPreferencesSchema.safeParse(input);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map((i) => i.message));
@@ -333,27 +408,40 @@ export class StaffAlertsService {
   async run(now: Date) {
     const settings = await this.settings();
     await this.db.staffAlert.updateMany({
-      where: { state: 'SENDING', attemptedAt: { lt: new Date(now.getTime() - 5 * 60000) } },
+      where: {
+        state: 'SENDING',
+        channel: 'IN_APP',
+        attemptedAt: { lt: new Date(now.getTime() - 5 * 60000) },
+      },
+      data: { state: 'QUEUED', error: 'Resuming idempotent CRM notification after worker restart' },
+    });
+    await this.db.staffAlert.updateMany({
+      where: {
+        state: 'SENDING',
+        channel: { not: 'IN_APP' },
+        attemptedAt: { lt: new Date(now.getTime() - 5 * 60000) },
+      },
       data: {
         state: 'UNCERTAIN',
         error:
           'Worker stopped during send. Check recipient/provider before sending a new test; automatic retry is disabled.',
       },
     });
-    if (!settings.enabled) return;
-    const events = await this.db.leadAssignmentEvent.findMany({
-      where: {
-        closedAt: null,
-        OR: [
-          { initializedAt: null },
-          { remindedAt: null, reminderAt: { lte: now } },
-          { escalatedAt: null, escalationAt: { lte: now } },
-        ],
-      },
-      include: { lead: true },
-      orderBy: { createdAt: 'asc' },
-      take: 100,
-    });
+    const events = settings.enabled
+      ? await this.db.leadAssignmentEvent.findMany({
+          where: {
+            closedAt: null,
+            OR: [
+              { initializedAt: null },
+              { remindedAt: null, reminderAt: { lte: now } },
+              { escalatedAt: null, escalationAt: { lte: now } },
+            ],
+          },
+          include: { lead: true },
+          orderBy: { createdAt: 'asc' },
+          take: 100,
+        })
+      : [];
     for (const e of events) {
       if (settings.enabledSince && e.createdAt < new Date(settings.enabledSince)) {
         await this.db.leadAssignmentEvent.update({ where: { id: e.id }, data: { closedAt: now } });
@@ -414,7 +502,11 @@ export class StaffAlertsService {
       }
     }
     const queue = await this.db.staffAlert.findMany({
-      where: { state: 'QUEUED', dueAt: { lte: now } },
+      where: {
+        state: 'QUEUED',
+        dueAt: { lte: now },
+        ...(!settings.enabled ? { kind: { in: ['PATIENT_DATE', 'TEST'] } } : {}),
+      },
       orderBy: { dueAt: 'asc' },
       take: 100,
     });
@@ -423,7 +515,14 @@ export class StaffAlertsService {
   async deliver(alert: StaffAlert, now: Date, test = false) {
     const staff = await this.db.user.findUnique({
       where: { id: alert.userId },
-      select: { isActive: true, notificationPhone: true, notificationPreferences: true },
+      select: {
+        isActive: true,
+        notificationPhone: true,
+        notificationPreferences: true,
+        role: true,
+        email: true,
+        accessProfile: { select: { permissions: true } },
+      },
     });
     if (!staff?.isActive)
       return this.db.staffAlert.update({
@@ -431,6 +530,47 @@ export class StaffAlertsService {
         data: { state: 'CANCELLED', error: 'Employee inactive' },
       });
     const p = StaffPreferencesSchema.parse(staff.notificationPreferences ?? {});
+    const settings = await this.settings();
+    let schedule: Awaited<ReturnType<typeof resolveScheduleEvent>> = null;
+    if (alert.kind === 'PATIENT_DATE') {
+      const context = ScheduleContextSchema.safeParse(alert.schedule);
+      if (
+        context.success &&
+        settings.patientRemindersEnabled &&
+        settings.patientReminderHours.includes(context.data.hours)
+      ) {
+        schedule = await resolveScheduleEvent(
+          this.db,
+          context.data,
+          {
+            sub: alert.userId,
+            email: staff.email,
+            role: staff.role,
+            permissions: staff.accessProfile?.permissions as Record<string, boolean> | undefined,
+          },
+          now,
+        );
+        if (
+          schedule &&
+          patientReminderBand(schedule.at, now, settings.patientReminderHours) !==
+            context.data.hours
+        )
+          schedule = null;
+      }
+      if (!schedule || !['IN_APP', 'PUSH'].includes(alert.channel)) {
+        await this.db.notification.updateMany({
+          where: { id: alert.id, readAt: null },
+          data: { readAt: now, status: 'READ' },
+        });
+        return this.db.staffAlert.update({
+          where: { id: alert.id },
+          data: {
+            state: 'CANCELLED',
+            error: 'Patient reminder disabled, stale or no longer assigned',
+          },
+        });
+      }
+    }
     const event = alert.eventId
       ? await this.db.leadAssignmentEvent.findUnique({
           where: { id: alert.eventId },
@@ -448,21 +588,34 @@ export class StaffAlertsService {
         where: { id: alert.id },
         data: { state: 'CANCELLED', error: 'Stale alert' },
       });
-    if (!test && !isWorking(now, p))
+    if (!test && !(schedule && alert.channel === 'IN_APP') && !isWorking(now, p))
       return this.db.staffAlert.update({
         where: { id: alert.id },
         data: { dueAt: workingDeadline(now, 0, p) },
       });
-    const url = `${(this.config.get<string[]>('cors.origin') ?? [])[0] ?? this.config.get<string>('webUrl')}${event ? '/pipeline?leadId=' + encodeURIComponent(event.leadId) : '/my-day'}`;
-    const settings = await this.settings();
-    const body = alertText(
-      alert.kind,
-      p.language,
-      event?.lead.preferredLanguage ?? null,
-      event?.lead.source ?? '',
-      url,
-      settings.reminderMinutes,
-    );
+    const path =
+      schedule?.path ??
+      (event ? '/pipeline?leadId=' + encodeURIComponent(event.leadId) : '/my-day');
+    const url = `${(this.config.get<string[]>('cors.origin') ?? [])[0] ?? this.config.get<string>('webUrl')}${path}`;
+    const title = schedule ? `${schedule.label} · ${schedule.patientName}` : 'Lead alert';
+    const when = schedule
+      ? schedule.localTime ||
+        new Intl.DateTimeFormat('en-GB', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone: CLINIC_TIMEZONE,
+        }).format(schedule.at)
+      : '';
+    const body = schedule
+      ? `${schedule.patientName} — ${schedule.label}: ${when} (${schedule.timezone}). Open the booking: ${url}`
+      : alertText(
+          alert.kind,
+          p.language,
+          event?.lead.preferredLanguage ?? null,
+          event?.lead.source ?? '',
+          url,
+          settings.reminderMinutes,
+        );
     if (alert.channel === 'WHATSAPP') {
       if (!p.whatsapp || !p.optIn || !staff.notificationPhone)
         return this.db.staffAlert.update({
@@ -510,10 +663,12 @@ export class StaffAlertsService {
             id: alert.id,
             userId: alert.userId,
             channel: 'IN_APP',
-            title: 'Lead alert',
+            title,
             body,
-            relatedEntityType: 'LEAD',
-            relatedEntityId: event?.leadId,
+            status: 'SENT',
+            sentAt: now,
+            relatedEntityType: schedule?.type ?? 'LEAD',
+            relatedEntityId: schedule?.entityId ?? event?.leadId,
           },
           update: {},
         });
@@ -521,8 +676,12 @@ export class StaffAlertsService {
         await this.sender.sendText(staff.notificationPhone!, body);
       } else {
         await this.sendPush(alert.userId, {
-          title: 'CRM lead alert',
-          body: alert.kind === 'TEST' ? 'Test notification' : 'A CRM update needs your attention.',
+          title: schedule ? title : 'CRM lead alert',
+          body: schedule
+            ? `${when} (${schedule.timezone})`
+            : alert.kind === 'TEST'
+              ? 'Test notification'
+              : 'A CRM update needs your attention.',
           url,
           tag: alert.id,
         });
@@ -533,7 +692,8 @@ export class StaffAlertsService {
       });
     } catch (e) {
       const status =
-        (e as {providerStatus?:number}).providerStatus ?? (e as { statusCode?: number; status?: number }).statusCode ??
+        (e as { providerStatus?: number }).providerStatus ??
+        (e as { statusCode?: number; status?: number }).statusCode ??
         (e as { status?: number }).status;
       const error = (e instanceof Error ? e.message.slice(0, 500) : 'Provider error').replace(
         /Bearer\s+\S+/gi,

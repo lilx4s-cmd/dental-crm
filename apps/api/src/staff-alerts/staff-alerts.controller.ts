@@ -14,6 +14,12 @@ export class StaffAlertsController {
   ) {
     return this.alerts.recordContact(id, body, u);
   }
+  @Get('notifications') notifications(@CurrentUser() u: JwtPayload) {
+    return this.alerts.notifications(u.sub);
+  }
+  @Patch('notifications/:id/read') read(@CurrentUser() u: JwtPayload, @Param('id') id: string) {
+    return this.alerts.readNotification(u.sub, id);
+  }
   @Get('me') me(@CurrentUser() u: JwtPayload) {
     return this.alerts.status(u.sub);
   }

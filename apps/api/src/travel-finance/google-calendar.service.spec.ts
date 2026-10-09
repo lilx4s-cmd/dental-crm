@@ -4,6 +4,7 @@ const booking = {
   revision: 1,
   calendarCycle: 1,
   visit: 1,
+  patient: { firstName: 'Fictional', lastName: 'Patient' },
   lead: { assignedTo: { firstName: 'Staff', lastName: 'A' } },
   details: {
     patientId: '00000000-0000-4000-8000-000000000001',
@@ -25,6 +26,7 @@ const booking = {
 };
 function fixture() {
   const db = {
+    clinicSettings: { findUnique: jest.fn().mockResolvedValue({ notificationSettings: {} }) },
     travelBooking: { findUniqueOrThrow: jest.fn().mockResolvedValue(booking) },
     calendarSync: { updateMany: jest.fn() },
   };
@@ -49,6 +51,15 @@ it('uses stable event IDs and updates existing events without invitations or med
   expect(request.mock.calls[0][0]).toContain('sendUpdates=none');
   const payload = JSON.parse(request.mock.calls[0][1].body);
   expect(payload.id).toMatch(/^[a-f0-9]{64}$/);
+  expect(payload.summary).toContain('Fictional Patient');
+  expect(payload.reminders).toEqual({
+    useDefault: false,
+    overrides: [
+      { method: 'popup', minutes: 10080 },
+      { method: 'popup', minutes: 1440 },
+      { method: 'popup', minutes: 120 },
+    ],
+  });
   expect(payload.attendees).toBeUndefined();
   expect(payload.description).not.toMatch(/medical|document|allerg/i);
   expect(payload.start).toEqual({

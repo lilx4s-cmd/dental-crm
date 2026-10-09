@@ -81,6 +81,7 @@ export const AUDIT_RULES: readonly AuditRule[] = [
   // A conversion is the moment a lead becomes a patient record — the most consequential single
   // write in the pipeline, and not a creation of the lead it names.
   { path: /^leads\/[^/]+\/convert$/, methods: ['POST'], entityType: 'Lead', idParam: ID, action: 'UPDATE' },
+  { path: /^patients\/[^/]+\/treatment-status$/, methods: ['PATCH'], entityType: 'Patient', idParam: ID, action: 'UPDATE' },
   { path: /^patients\/[^/]+\/tags\//, methods: ['POST', 'DELETE'], entityType: 'Patient', idParam: ID, action: 'UPDATE' },
   { path: /^invoices\/[^/]+\/payments$/, methods: ['POST'], entityType: 'Invoice', idParam: ID, action: 'UPDATE' },
   {

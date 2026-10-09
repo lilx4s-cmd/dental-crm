@@ -1,4 +1,5 @@
 'use client';
+import { NotificationInbox } from '@/components/notifications/notification-inbox';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/auth-context';
@@ -30,6 +31,8 @@ interface Staff {
 interface AdminData {
   settings: {
     enabled: boolean;
+    patientRemindersEnabled: boolean;
+    patientReminderHours: number[];
     supervisorId: string | null;
     reminderMinutes: number;
     escalationMinutes: number;
@@ -233,13 +236,18 @@ export default function NotificationsPage() {
   const [selected, setSelected] = useState(''),
     [settings, setSettings] = useState<AdminData['settings'] | null>(null),
     [result, setResult] = useState('');
+  const [reminderHoursText, setReminderHoursText] = useState('168,24,2');
   useEffect(() => {
-    if (data.data && !settings) setSettings(data.data.settings);
+    if (data.data && !settings) {
+      setSettings(data.data.settings);
+      setReminderHoursText((data.data.settings.patientReminderHours ?? [168, 24, 2]).join(','));
+    }
   }, [data.data, settings]);
   const staff = data.data?.staff.find((s) => s.id === selected);
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <h1 className="text-2xl font-semibold">Notifications</h1>
+      <NotificationInbox />
       <NotificationSetup always />
       {own.isError && <p role="alert">Unable to load your notification preferences.</p>}
       {own.data && (
@@ -280,6 +288,27 @@ export default function NotificationsPage() {
                     />
                     Enable automatic lead alerts
                   </label>
+                  <label className="flex min-h-11 items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.patientRemindersEnabled}
+                      onChange={(e) =>
+                        setSettings({ ...settings, patientRemindersEnabled: e.target.checked })
+                      }
+                    />
+                    Enable patient appointment and flight reminders
+                  </label>
+                  <label className="block">
+                    Patient reminders before the date (hours, comma-separated)
+                    <Input
+                      value={reminderHoursText}
+                      onChange={(e) => setReminderHoursText(e.target.value)}
+                    />
+                  </label>
+                  <p className="text-sm text-muted-foreground">
+                    Defaults: 168,24,2 (7 days, 1 day, 2 hours). Responsible staff and managers
+                    receive CRM reminders; enabled mobile push follows staff working hours.
+                  </p>
                   <label className="block">
                     Supervisor for unassigned leads and escalations
                     <select
@@ -342,7 +371,15 @@ export default function NotificationsPage() {
                     onClick={() =>
                       void apiRequest(
                         '/api/staff-alerts/settings',
-                        { method: 'PATCH', body: JSON.stringify(settings) },
+                        {
+                          method: 'PATCH',
+                          body: JSON.stringify({
+                            ...settings,
+                            patientReminderHours: reminderHoursText
+                              .split(',')
+                              .map((h) => Number(h.trim())),
+                          }),
+                        },
                         accessToken ?? undefined,
                       )
                         .then(() => {

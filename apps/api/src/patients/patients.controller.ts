@@ -1,6 +1,14 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, HttpStatus,
-  Param, Patch, Post, Query,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@dental-crm/shared';
@@ -11,6 +19,7 @@ import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { UpdateCaseEconomicsDto } from './dto/case-economics.dto';
 import { PatientsQueryDto } from './dto/patients-query.dto';
+import { TreatmentStatusDto } from './dto/treatment-status.dto';
 
 @ApiTags('patients')
 @ApiBearerAuth()
@@ -25,6 +34,18 @@ export class PatientsController {
   @ApiOperation({ summary: 'List patients with search and pagination' })
   findAll(@Query() query: PatientsQueryDto) {
     return this.patientsService.findAll(query);
+  }
+
+  @Get('summary')
+  @Roles(...CLINICAL)
+  summary(@Query() query: PatientsQueryDto) {
+    return this.patientsService.summary(query);
+  }
+
+  @Patch(':id/treatment-status')
+  @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.RECEPTION)
+  treatmentStatus(@Param('id') id: string, @Body() dto: TreatmentStatusDto) {
+    return this.patientsService.treatmentStatus(id, dto.status);
   }
 
   @Post()
