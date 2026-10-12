@@ -22,12 +22,14 @@ it('creates a priced proposal using the clinic currency and the package selected
   fireEvent.change(screen.getByPlaceholderText('Description'), { target: { value: 'Implant placement' } });
   fireEvent.change(screen.getByPlaceholderText('Unit price'), { target: { value: '500' } });
   fireEvent.change(screen.getByPlaceholderText('Qty'), { target: { value: '6' } });
+  fireEvent.change(screen.getByLabelText('Price exception reason'), { target: { value: 'Approved package pricing' } });
   fireEvent.mouseDown(screen.getByRole('tab', { name: 'Package & Payment' }));
   fireEvent.change(screen.getByLabelText('Deposit (USD)'), { target: { value: '300' } });
   fireEvent.change(screen.getByLabelText('Card fee %'), { target: { value: '5' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Plan' }));
   expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
     patientId: 'fixture-patient', title: 'Implant proposal', currency: 'USD',
+    overrideReason: 'Approved package pricing',
     depositAmount: 300, cardFeePercent: 5, packageIncludes: ['HOTEL'],
     paymentTerms: 'Each visit is paid separately.',
     items: [expect.objectContaining({ description: 'Implant placement', quantity: 6, unitPrice: 500, cost: 3000 })],

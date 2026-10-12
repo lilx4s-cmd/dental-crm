@@ -7,6 +7,7 @@ import {
   Query,
   Res,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -19,6 +20,7 @@ import {
   PLAN_STAFF_ROLES,
 } from '../treatment-plans/treatment-plans.controller';
 import { DocumentsService } from './documents.service';
+import { CaseAccess, CaseAccessGuard } from '../common/guards/case-access.guard';
 @Controller('documents')
 @Roles(...PLAN_COORDINATION_ROLES)
 export class DocumentsController {
@@ -40,7 +42,8 @@ export class DocumentsController {
   @Get('verify/:token') @Public() verify(@Param('token') token: string) {
     return this.documents.verify(token);
   }
-  @Post('items/:id/complete') @Roles(...PLAN_STAFF_ROLES) @Permission('plans.write') complete(
+  @Post('items/:id/complete') @Roles(...PLAN_STAFF_ROLES) @Permission('plans.write')
+  @UseGuards(CaseAccessGuard) @CaseAccess({ type: 'PLAN_ITEM', field: 'id' }) complete(
     @Param('id') id: string,
     @Body('completedAt') completedAt: string,
   ) {

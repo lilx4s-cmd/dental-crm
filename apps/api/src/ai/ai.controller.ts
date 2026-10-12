@@ -1,4 +1,6 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Permission, RoleBoundary } from '../common/decorators/permission.decorator';
+import { CaseAccess, CaseAccessGuard } from '../common/guards/case-access.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload, Role } from '@dental-crm/shared';
@@ -14,6 +16,9 @@ import { DraftWhatsAppMessageDto } from './dto/draft-whatsapp-message.dto';
 // /treatment-plans/:id/... (matching that resource's existing route family) while the other
 // two AI helpers live under /ai/... — this controller just declares full paths for each.
 @Controller()
+@RoleBoundary()
+@UseGuards(CaseAccessGuard)
+@CaseAccess()
 export class AiController {
   constructor(
     private readonly aiService: AiService,
@@ -28,6 +33,7 @@ export class AiController {
    * "who is arriving this week" is exactly their job.
    */
   @Post('ai/assistant')
+  @Permission('leads.read')
   @Roles(Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.SALES_CONSULTANT, Role.RECEPTION)
   async askAssistant(@Body() dto: AskAssistantDto, @CurrentUser() user: JwtPayload) {
     const snapshot = await this.leadsService.assistantSnapshot(user);
@@ -38,18 +44,23 @@ export class AiController {
   // Staff-triggered only â€” never exposed on the public @Public() portal routes. The portal
   // only ever displays the cached aiSummary field written here.
   @Post('treatment-plans/:id/generate-summary')
+  @Permission('plans.write')
+  @CaseAccess({ type: 'PLAN', field: 'id' })
   @Roles(...PLAN_COORDINATION_ROLES)
   generateSummary(@Param('id') id: string, @Body() dto: GenerateSummaryDto) {
     return this.aiService.generatePlanSummary(id, dto.language);
   }
 
   @Post('ai/suggest-items')
+  @Permission('plans.write')
   @Roles(...PLAN_STAFF_ROLES)
   suggestItems(@Body() dto: SuggestItemsDto) {
     return this.aiService.suggestItems(dto.diagnosisText, dto.categoryNames);
   }
 
   @Post('ai/draft-whatsapp-message')
+  @Permission('plans.read')
+  @CaseAccess({ type: 'PATIENT', field: 'patientId', source: 'body', optional: true }, { type: 'PLAN', field: 'treatmentPlanId', source: 'body', optional: true })
   @Roles(...PLAN_COORDINATION_ROLES)
   draftWhatsAppMessage(@Body() dto: DraftWhatsAppMessageDto) {
     return this.aiService.draftWhatsAppMessage(dto.patientId, dto.treatmentPlanId, dto.context);

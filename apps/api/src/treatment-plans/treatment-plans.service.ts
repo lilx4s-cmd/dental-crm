@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
-import { computePlanTotal } from '@dental-crm/shared';
+import { computePlanTotal, JwtPayload } from '@dental-crm/shared';
+import { canonicalPlanItems, validateCommercialCreate, validateCommercialUpdate } from './commercial-policy';
+import { approvedPriceConfiguration } from '../common/approved-price-configuration';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatment-plan.dto';
@@ -32,102 +34,7 @@ const PLAN_SELECT = {
   doctorRecommendation: true,
   diagnosisSnapshot: true,
   aiSummary: true,
-  // What the price covers, and how it is paid. Listed explicitly because PLAN_SELECT is a
-  // whitelist: a column missing from it is a column the dossier silently prints nothing for.
-  packageIncludes: true,
-  depositAmount: true,
-  cardFeePercent: true,
-  cashDiscountPercent: true,
-  flightRefundNote: true,
-  paymentTerms: true,
-  language: true,
-  assignedDentistId: true,
-  assignedCoordinatorId: true,
-  createdAt: true,
-  updatedAt: true,
-  patient: {
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      gender: true,
-      email: true,
-      phone: true,
-      dateOfBirth: true,
-      city: true,
-      country: true,
-      // Read live rather than snapshotted alongside diagnosisSnapshot: a treatment plan is a
-      // point-in-time quote, but an allergy list printed on a clinical document must never be
-      // stale. If it changes, every document reprinted from here should reflect that immediately.
-      allergies: true,
-      diagnosis: true,
-      medicalConditions: true,
-      medications: true,
-      previousSurgeries: true,
-    },
-  },
-  createdBy: { select: { id: true, firstName: true, lastName: true } },
-  assignedDentist: { select: { id: true, firstName: true, lastName: true, specialization: true } },
-  assignedCoordinator: { select: { id: true, firstName: true, lastName: true } },
-  items: {
-    select: {
-      id: true,
-      description: true,
-      toothNumber: true,
-      quantity: true,
-      cost: true,
-      unitPrice: true,
-      discount: true,
-      material: true,
-      brand: true,
-      clinicalNotes: true,
-      status: true,
-      completedAt: true,
-      phaseNumber: true,
-      toothCondition: true,
-      treatmentCategory: { select: { id: true, name: true } },
-    },
-  },
-  diagnoses: {
-    select: { id: true, condition: true, toothNumbers: true, notes: true },
-    orderBy: { createdAt: 'asc' as const },
-  },
-  phases: {
-    select: {
-      id: true,
-      phaseNumber: true,
-      name: true,
-      discountAmount: true,
-      discountPercent: true,
-      healingPeriodMonths: true,
-    },
-    orderBy: { phaseNumber: 'asc' as const },
-  },
-  stay: {
-    select: {
-      id: true,
-      arrivalDate: true,
-      arrivalFlight: true,
-      departureDate: true,
-      departureFlight: true,
-      hotelName: true,
-      hotelAddress: true,
-      roomType: true,
-      nights: true,
-      companions: true,
-      checkInDate: true,
-      checkOutDate: true,
-      airportTransfer: true,
-      clinicTransfer: true,
-      notes: true,
-    },
-  },
-  scheduleItems: {
-    select: {
-      id: true,
-      date: true,
-      time: true,
-      title: true,
+  // What the price cove…676 tokens truncated…e: true,
       location: true,
       notes: true,
       // Whether this line is actually in the diary. Without it the itinerary promises a day the
@@ -193,12 +100,12 @@ export class TreatmentPlansService {
     return plan;
   }
 
-  async create(dto: CreateTreatmentPlanDto, createdById: string) {
-    // `cost` is already the authoritative per-line total (unitPrice*qty - discount, computed
-    // client-side), so phase subtotals are sums of line costs — not re-derived from
-    // unitPrice/quantity, which would double-apply the line discount. Phase-level discounts come
-    // off on top, via the shared pricing helper the builder and the PDF also use.
-    const itemsTotal = computePlanTotal(dto.items ?? [], dto.phases ?? []);
+  async create(dto: CreateTreatmentPlanDto, createdById: string, user?: JwtPayload) {
+    // Canonical line totals are recomputed on the server, then validated against approved
+    // prices and the actor's exception permissions before persistence. Phase discounts
+    // apply once on top through the shared pricing helper.
+    const items = canonicalPlanItems(dto);
+    const itemsTotal = computePlanTotal(items ?? [], dto.phases ?? []);
 
     // Snapshot the patient's current diagnosis so the patient-facing presentation stays stable
     // even if the live diagnosis is edited later.
@@ -222,11 +129,14 @@ export class TreatmentPlansService {
         defaultCashDiscountPercent: true,
         defaultDepositPercent: true,
         defaultPaymentTerms: true,
+        documentConfiguration: true,
       },
     });
 
     // A deposit is configured as a percentage but quoted as an amount: "€500 to reserve your
     // dates" is answerable, "20%" is a sum the patient has to work out themselves.
+    const approved = await approvedPriceConfiguration(this.prisma, settings?.documentConfiguration);
+    validateCommercialCreate(dto, settings, user, approved);
     const depositFromPercent =
       settings?.defaultDepositPercent != null
         ? Math.round(itemsTotal * (Number(settings.defaultDepositPercent) / 100) * 100) / 100
@@ -254,9 +164,9 @@ export class TreatmentPlansService {
         flightRefundNote: dto.flightRefundNote,
         paymentTerms: dto.paymentTerms ?? settings?.defaultPaymentTerms ?? undefined,
         language: dto.language ?? 'en',
-        items: dto.items?.length
+        items: items?.length
           ? {
-              create: dto.items.map((item) => ({
+              create: items.map((item) => ({
                 treatmentCategoryId: item.treatmentCategoryId,
                 toothNumber: item.toothNumber,
                 description: item.description,
@@ -475,8 +385,9 @@ export class TreatmentPlansService {
     return document?.pdfData ?? null;
   }
 
-  async update(id: string, dto: UpdateTreatmentPlanDto) {
+  async update(id: string, dto: UpdateTreatmentPlanDto, user?: JwtPayload) {
     const plan = await this.findOne(id);
+    validateCommercialUpdate(dto, plan, user);
     const document =
       plan.consultation && dto.approvalStatus === 'APPROVED'
         ? await this.prisma.documentVersion.findFirst({

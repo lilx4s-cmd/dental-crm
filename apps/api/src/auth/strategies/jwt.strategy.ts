@@ -27,9 +27,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (payload.purpose === TWO_FACTOR_PURPOSE) {
       throw new UnauthorizedException('Finish signing in with your authentication code.');
     }
+    // Older tokens upgrade through the existing refresh flow. They cannot evade session revocation.
+    if (!payload.sid || typeof payload.sid !== 'string') throw new UnauthorizedException('Refresh your session to continue');
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, include: { accessProfile: true } });
     if (!user || !user.isActive) throw new UnauthorizedException('User not found or inactive');
-    return { sub: user.id, email: user.email, role: user.role, permissions: user.accessProfile?.permissions as Record<string, boolean> | undefined, accessProfileName: user.accessProfile?.name };
+    const session = await this.prisma.refreshToken.findFirst({ where: { id: payload.sid, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } });
+    if (!session) throw new UnauthorizedException('Session has ended');
+    return { sub: user.id, email: user.email, role: user.role, sid: payload.sid, permissions: user.accessProfile?.permissions as Record<string, boolean> | undefined, accessProfileName: user.accessProfile?.name };
   }
 }

@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Permission, RoleBoundary } from '../common/decorators/permission.decorator';
+import { CaseAccess, CaseAccessGuard } from '../common/guards/case-access.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtPayload } from '@dental-crm/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -17,17 +19,24 @@ import { CreateLabOrderDto, UpdateLabOrderDto } from './dto/lab-order.dto';
 @ApiTags('lab-orders')
 @ApiBearerAuth()
 @Controller()
+@RoleBoundary()
+@UseGuards(CaseAccessGuard)
+@CaseAccess({ type: 'LAB_ORDER', field: 'id' })
 export class LabOrdersController {
   constructor(private readonly service: LabOrdersService) {}
 
   @Get('lab-orders')
+  @Permission('plans.read')
+  @CaseAccess()
   @Roles(...PLAN_COORDINATION)
   @ApiOperation({ summary: 'Cases still out at the lab, soonest due first' })
-  findOpen() {
-    return this.service.findOpen();
+  findOpen(@CurrentUser() user: JwtPayload) {
+    return this.service.findOpen(user);
   }
 
   @Get('treatment-plans/:planId/lab-orders')
+  @Permission('plans.read')
+  @CaseAccess({ type: 'PLAN', field: 'planId' })
   @Roles(...PLAN_COORDINATION)
   @ApiOperation({ summary: 'Lab orders for one treatment plan' })
   findForPlan(@Param('planId') planId: string) {
@@ -35,6 +44,8 @@ export class LabOrdersController {
   }
 
   @Post('treatment-plans/:planId/lab-orders')
+  @Permission('plans.write')
+  @CaseAccess({ type: 'PLAN', field: 'planId' })
   @Roles(...PLAN_COORDINATION)
   @ApiOperation({ summary: 'Send a case to the laboratory' })
   create(
@@ -46,6 +57,7 @@ export class LabOrdersController {
   }
 
   @Patch('lab-orders/:id')
+  @Permission('plans.write')
   @Roles(...PLAN_COORDINATION)
   @ApiOperation({ summary: 'Update a lab order, including its status' })
   update(@Param('id') id: string, @Body() dto: UpdateLabOrderDto) {
@@ -53,6 +65,7 @@ export class LabOrdersController {
   }
 
   @Delete('lab-orders/:id')
+  @Permission('plans.write')
   @Roles(...PLAN_COORDINATION)
   @ApiOperation({ summary: 'Delete a lab order' })
   remove(@Param('id') id: string) {

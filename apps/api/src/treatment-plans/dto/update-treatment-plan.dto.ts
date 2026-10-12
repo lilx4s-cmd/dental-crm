@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsEnum, IsNumber, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 import { TreatmentStatus, PatientApprovalStatus } from '@dental-crm/shared';
 
 // Replaces the previous loose `@Body('status') status: string` handling with a
@@ -7,6 +7,7 @@ import { TreatmentStatus, PatientApprovalStatus } from '@dental-crm/shared';
 // (see update-lead-stage.dto.ts). Every field is optional so callers can patch
 // status, approval, assignment, or narrative fields independently.
 export class UpdateTreatmentPlanDto {
+  @IsOptional() @IsString() @MaxLength(1000) overrideReason?: string;
   @ApiPropertyOptional({ enum: TreatmentStatus })
   @IsOptional()
   @IsEnum(TreatmentStatus)

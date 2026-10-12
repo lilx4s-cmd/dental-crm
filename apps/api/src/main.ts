@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import 'reflect-metadata';
 import { AppModule } from './app.module';
+import { CRM_CORS_METHODS } from './common/http-policy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -32,7 +33,7 @@ async function bootstrap() {
   app.enableCors({
     origin: corsOrigins,
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: CRM_CORS_METHODS,
     // The web app and the API are on different origins, so by default JavaScript in the browser
     // can read only a handful of response headers — everything else is stripped before it reaches
     // fetch(), silently and with no error. The CSV export needs both of these: the filename it

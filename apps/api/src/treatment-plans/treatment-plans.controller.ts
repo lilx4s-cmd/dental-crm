@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, Res, UseGuards } from '@nestjs/common';
+import { CaseAccess, CaseAccessGuard } from '../common/guards/case-access.guard';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -21,6 +22,8 @@ export const PLAN_STAFF_ROLES = [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.DEN
 export const PLAN_COORDINATION_ROLES = [...PLAN_STAFF_ROLES, Role.SALES_CONSULTANT];
 
 @Controller('treatment-plans')
+@UseGuards(CaseAccessGuard)
+@CaseAccess({ type: 'PLAN', field: 'id' })
 export class TreatmentPlansController {
   constructor(
     private readonly service: TreatmentPlansService,
@@ -39,6 +42,7 @@ export class TreatmentPlansController {
   // Reading a plan follows the same group allowed to create one — a coordinator quoting the trip
   // has to see what was quoted. Reception is out: they book chairs, not treatment.
   @Get()
+  @CaseAccess({ type: 'PATIENT', field: 'patientId', source: 'query' })
   @Roles(...PLAN_COORDINATION_ROLES)
   findByPatient(@Query('patientId') patientId: string) {
     return this.service.findByPatient(patientId);
@@ -46,6 +50,7 @@ export class TreatmentPlansController {
 
   // The clinic's price list, not any one patient's plan.
   @Get('categories')
+  @CaseAccess()
   @Roles(...PLAN_COORDINATION_ROLES)
   findCategories() {
     return this.service.findCategories();
@@ -58,12 +63,14 @@ export class TreatmentPlansController {
   }
 
   @Post()
+  @CaseAccess({ type: 'PATIENT', field: 'patientId', source: 'body' })
   @Roles(...PLAN_COORDINATION_ROLES)
   create(@Body() dto: CreateTreatmentPlanDto, @CurrentUser() user: JwtPayload) {
-    return this.service.create(dto, user.sub);
+    return this.service.create(dto, user.sub, user);
   }
 
   @Post('categories')
+  @CaseAccess()
   @Roles(...PLAN_STAFF_ROLES)
   createCategory(@Body('name') name: string, @Body('description') description?: string) {
     return this.service.createCategory(name, description);
@@ -71,8 +78,8 @@ export class TreatmentPlansController {
 
   @Patch(':id')
   @Roles(...PLAN_COORDINATION_ROLES)
-  update(@Param('id') id: string, @Body() dto: UpdateTreatmentPlanDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateTreatmentPlanDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
   }
 
   @Post(':id/comments')

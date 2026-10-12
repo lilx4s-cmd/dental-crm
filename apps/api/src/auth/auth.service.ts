@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSRF_COOKIE } from '../common/guards/csrf.guard';
 import { TwoFactorService } from './two-factor.service';
@@ -146,9 +146,9 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<AuthTokens> {
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const { rawToken: refreshToken, sessionId } = await this.createRefreshToken(user.id, ip, userAgent);
+    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role, sid: sessionId };
     const accessToken = await this.signAccessToken(payload);
-    const { rawToken: refreshToken } = await this.createRefreshToken(user.id, ip, userAgent);
 
     const csrfToken = this.setRefreshCookie(res, refreshToken);
 
@@ -337,14 +337,14 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     if (claimed.count !== 1) throw new ForbiddenException('This session was refreshed in another request. Please retry.');
-    const { rawToken: newRawToken, tokenHash: newHash } = await this.createRefreshToken(user.id, stored.createdByIp ?? undefined, stored.userAgent ?? undefined);
+    const { rawToken: newRawToken, tokenHash: newHash, sessionId } = await this.createRefreshToken(user.id, stored.createdByIp ?? undefined, stored.userAgent ?? undefined);
 
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date(), replacedByTokenHash: newHash },
     });
 
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role, sid: sessionId };
     const accessToken = await this.signAccessToken(payload);
 
     // Rotated with the refresh token, so the client always holds the pair that matches the
@@ -353,7 +353,8 @@ export class AuthService {
     return { accessToken, csrfToken };
   }
 
-  async logout(userId: string, rawToken: string, res: Response): Promise<void> {
+  async logout(userId: string, rawToken: string, res: Response, sessionId?: string): Promise<void> {
+    if (sessionId) await this.prisma.refreshToken.updateMany({ where: { id: sessionId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
     const sessions = await this.prisma.refreshToken.findMany({
       where: { userId, revokedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -382,7 +383,8 @@ export class AuthService {
     });
   }
 
-  private async createRefreshToken(userId: string, ip?: string, userAgent?: string): Promise<{ rawToken: string; tokenHash: string }> {
+  private async createRefreshToken(userId: string, ip?: string, userAgent?: string): Promise<{ rawToken: string; tokenHash: string; sessionId: string }> {
+    const sessionId = randomUUID();
     const rawToken = this.jwtService.sign(
       { jti: randomBytes(16).toString('hex'), sub: userId },
       {
@@ -396,10 +398,10 @@ export class AuthService {
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     await this.prisma.refreshToken.create({
-      data: { userId, tokenHash, expiresAt, createdByIp: ip, userAgent },
+      data: { id: sessionId, userId, tokenHash, expiresAt, createdByIp: ip, userAgent },
     });
 
-    return { rawToken, tokenHash };
+    return { rawToken, tokenHash, sessionId };
   }
 
   private async hashRefreshToken(raw: string): Promise<string> {
