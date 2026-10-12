@@ -89,7 +89,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const token = (req.cookies?.['refresh_token'] as string) ?? '';
-    await this.authService.logout(user.sub, token, res);
+    await this.authService.logout(user.sub, token, res, user.sid);
   }
 
   @Get('me')

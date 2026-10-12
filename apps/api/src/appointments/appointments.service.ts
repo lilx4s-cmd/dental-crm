@@ -69,7 +69,10 @@ export class AppointmentsService {
   }
 
   async update(id: string, dto: UpdateAppointmentDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    const start = dto.startTime === undefined ? existing.startTime : new Date(dto.startTime);
+    const end = dto.endTime === undefined ? existing.endTime : new Date(dto.endTime);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new BadRequestException('End time must be after start time');
     const data: Prisma.AppointmentUpdateInput = {};
     if (dto.dentistId !== undefined) data.dentist = { connect: { id: dto.dentistId } };
     if (dto.resourceId !== undefined) data.resource = { connect: { id: dto.resourceId } };

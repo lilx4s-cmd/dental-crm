@@ -176,6 +176,7 @@ export interface CreateTreatmentPlanPhaseInput {
 }
 
 export interface CreateTreatmentPlanInput {
+  overrideReason?: string;
   patientId: string;
   title: string;
   notes?: string;

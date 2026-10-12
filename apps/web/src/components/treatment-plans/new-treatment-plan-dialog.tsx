@@ -65,6 +65,7 @@ export function NewTreatmentPlanDialog({
 
   const [title, setTitle] = useState(initialPlan ? initialPlan.title + ' - revised proposal' : '');
   const [notes, setNotes] = useState(initialPlan?.notes ?? '');
+  const [overrideReason, setOverrideReason] = useState('');
   const [currencyChoice, setCurrency] = useState(initialPlan?.currency ?? '');
   const currency = currencyChoice || settings?.currency || 'EUR';
   const [assignedDentistId, setAssignedDentistId] = useState(initialPlan?.assignedDentistId ?? '');
@@ -158,6 +159,7 @@ export function NewTreatmentPlanDialog({
   const reset = () => {
     setTitle('');
     setNotes('');
+    setOverrideReason('');
     setAssignedDentistId('');
     setAssignedCoordinatorId('');
     setDoctorRecommendation('');
@@ -228,6 +230,7 @@ export function NewTreatmentPlanDialog({
         title: title.trim(),
         currency,
         notes: notes || undefined,
+        overrideReason: overrideReason.trim() || undefined,
         assignedDentistId: assignedDentistId || undefined,
         assignedCoordinatorId: assignedCoordinatorId || undefined,
         doctorRecommendation: doctorRecommendation || undefined,
@@ -281,6 +284,8 @@ export function NewTreatmentPlanDialog({
             <div className="space-y-1">
               <Label>Notes</Label>
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal note (optional)" />
+              <Label htmlFor="plan-price-exception-reason">Price exception reason</Label>
+              <Input id="plan-price-exception-reason" maxLength={1000} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Required for discounts or non-catalogue prices; approval permission is also required" />
             </div>
           </div>
 

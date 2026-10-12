@@ -10,18 +10,21 @@ import {
   IsDateString,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { $Enums } from '@prisma/client';
+import { PROCEDURES } from '@dental-crm/shared';
 
 export class CreateTreatmentPlanItemDto {
+  @IsOptional() @IsEnum(PROCEDURES) procedureType?: (typeof PROCEDURES)[number];
+  @IsOptional() @IsString() @MaxLength(1000) overrideReason?: string;
   @IsOptional() @IsString() treatmentCategoryId?: string;
   @IsOptional() @IsString() toothNumber?: string;
   @IsString() @IsNotEmpty() description: string;
   @IsInt() @Min(1) quantity: number;
-  // `cost` is the authoritative line total (flows into TreatmentPlan.totalCost + InvoiceItem).
-  // The frontend computes cost = unitPrice * quantity - discount and submits it; unitPrice/discount
-  // are additive input-convenience fields that get persisted for reference/editing.
+  // The server checks this submitted total against unitPrice * quantity - discount and
+  // approved catalogue prices before persisting the canonical line total.
   @IsNumber() @Min(0) cost: number;
   @IsOptional() @IsString() material?: string;
   @IsOptional() @IsString() brand?: string;
@@ -86,6 +89,7 @@ export class UpdateItineraryDto {
 }
 
 export class CreateTreatmentPlanDto {
+  @IsOptional() @IsString() @MaxLength(1000) overrideReason?: string;
   @IsString() @IsNotEmpty() patientId: string;
   @IsString() @IsNotEmpty() title: string;
   @IsOptional() @IsString() notes?: string;

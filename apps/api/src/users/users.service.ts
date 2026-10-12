@@ -92,9 +92,8 @@ export class UsersService {
   /**
    * Signs a user out of every device.
    *
-   * Access tokens are stateless and live 15 minutes, so this closes the refresh path rather than
-   * killing the current request instantly — the session dies at the next refresh. Deactivating the
-   * account is the immediate lever, since isActive is checked on every request.
+   * Each access token is bound to its refresh-session row. Revoking that row stops subsequent
+   * authenticated requests immediately; deactivation additionally blocks any new sign-in.
    */
   async revokeSessions(id: string) {
     await this.findOne(id);

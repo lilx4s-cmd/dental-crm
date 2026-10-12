@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
-import { computePlanTotal } from '@dental-crm/shared';
+import { computePlanTotal, JwtPayload } from '@dental-crm/shared';
+import { canonicalPlanItems, validateCommercialCreate, validateCommercialUpdate } from './commercial-policy';
+import { approvedPriceConfiguration } from '../common/approved-price-configuration';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTreatmentPlanDto, UpdateItineraryDto } from './dto/create-treatment-plan.dto';
@@ -193,12 +195,12 @@ export class TreatmentPlansService {
     return plan;
   }
 
-  async create(dto: CreateTreatmentPlanDto, createdById: string) {
-    // `cost` is already the authoritative per-line total (unitPrice*qty - discount, computed
-    // client-side), so phase subtotals are sums of line costs — not re-derived from
-    // unitPrice/quantity, which would double-apply the line discount. Phase-level discounts come
-    // off on top, via the shared pricing helper the builder and the PDF also use.
-    const itemsTotal = computePlanTotal(dto.items ?? [], dto.phases ?? []);
+  async create(dto: CreateTreatmentPlanDto, createdById: string, user?: JwtPayload) {
+    // Canonical line totals are recomputed on the server, then validated against approved
+    // prices and the actor's exception permissions before persistence. Phase discounts
+    // apply once on top through the shared pricing helper.
+    const items = canonicalPlanItems(dto);
+    const itemsTotal = computePlanTotal(items ?? [], dto.phases ?? []);
 
     // Snapshot the patient's current diagnosis so the patient-facing presentation stays stable
     // even if the live diagnosis is edited later.
@@ -222,11 +224,14 @@ export class TreatmentPlansService {
         defaultCashDiscountPercent: true,
         defaultDepositPercent: true,
         defaultPaymentTerms: true,
+        documentConfiguration: true,
       },
     });
 
     // A deposit is configured as a percentage but quoted as an amount: "€500 to reserve your
     // dates" is answerable, "20%" is a sum the patient has to work out themselves.
+    const approved = await approvedPriceConfiguration(this.prisma, settings?.documentConfiguration);
+    validateCommercialCreate(dto, settings, user, approved);
     const depositFromPercent =
       settings?.defaultDepositPercent != null
         ? Math.round(itemsTotal * (Number(settings.defaultDepositPercent) / 100) * 100) / 100
@@ -254,9 +259,9 @@ export class TreatmentPlansService {
         flightRefundNote: dto.flightRefundNote,
         paymentTerms: dto.paymentTerms ?? settings?.defaultPaymentTerms ?? undefined,
         language: dto.language ?? 'en',
-        items: dto.items?.length
+        items: items?.length
           ? {
-              create: dto.items.map((item) => ({
+              create: items.map((item) => ({
                 treatmentCategoryId: item.treatmentCategoryId,
                 toothNumber: item.toothNumber,
                 description: item.description,
@@ -475,8 +480,9 @@ export class TreatmentPlansService {
     return document?.pdfData ?? null;
   }
 
-  async update(id: string, dto: UpdateTreatmentPlanDto) {
+  async update(id: string, dto: UpdateTreatmentPlanDto, user?: JwtPayload) {
     const plan = await this.findOne(id);
+    validateCommercialUpdate(dto, plan, user);
     const document =
       plan.consultation && dto.approvalStatus === 'APPROVED'
         ? await this.prisma.documentVersion.findFirst({

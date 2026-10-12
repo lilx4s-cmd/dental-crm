@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { ConfirmFileDto } from './dto/confirm-file.dto';
 import { MalwareScanService } from './malware-scan';
+import { assertCaseRecordAccess } from '../common/patient-case-access';
 import {
   canAccessFilesFor,
   canSeeAllLeads,
@@ -131,6 +132,9 @@ export class FilesService {
   }
 
   private async assertRecordScope(ownerType: string, ownerId: string, user: JwtPayload) {
+    const planRecords = { TREATMENT_PLAN: 'PLAN', TREATMENT_PLAN_ITEM: 'PLAN_ITEM', WARRANTY: 'WARRANTY' } as const;
+    const record = planRecords[ownerType as keyof typeof planRecords];
+    if (record) await assertCaseRecordAccess(this.prisma, record, ownerId, user);
     if (ownerType === 'LEAD' && !canSeeAllLeads(user)) {
       const lead = await this.prisma.lead.findFirst({ where: { id: ownerId, OR: [{ assignedToId: user.sub }, ...(canSupervise(user) ? [{ supervisorId: user.sub }] : [])] }, select: { id: true } });
       if (!lead) throw new NotFoundException('Record not found');

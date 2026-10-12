@@ -1,4 +1,6 @@
 import { TravelFinanceService } from '../travel-finance/travel-finance.service';
+import { assertPatientCaseAccess } from '../common/patient-case-access';
+import { approvedPriceConfiguration } from '../common/approved-price-configuration';
 import { z } from 'zod';
 import { DOCUMENT_LANGUAGES } from '@dental-crm/shared';
 import {
@@ -16,12 +18,9 @@ import * as QRCode from 'qrcode';
 import {
   ConsultationSchema,
   ConsultationPaymentTermsSchema,
-  DocumentConfigurationSchema,
   consultationTotals,
   consultationCopy,
   hasPermission,
-  canSeeAllLeads,
-  canSupervise,
   Role,
   type JwtPayload,
   type Consultation,
@@ -57,29 +56,7 @@ export class DocumentsService {
     @Optional() private readonly finance?:TravelFinanceService,
   ) {}
   async assertPatientAccess(patientId: string, user: JwtPayload) {
-    if (
-      user.role !== Role.SALES_CONSULTANT &&
-      hasPermission(
-        user,
-        'patients.read',
-        [Role.SUPER_ADMIN, Role.CLINIC_MANAGER, Role.DENTIST, Role.RECEPTION].includes(
-          user.role as 'SUPER_ADMIN' | 'CLINIC_MANAGER' | 'DENTIST' | 'RECEPTION',
-        ),
-      )
-    )
-      return;
-    const patient = await this.prisma.patient.findFirst({
-      where: {
-        id: patientId,
-        convertedFromLead: canSeeAllLeads(user)
-          ? {}
-          : canSupervise(user)
-            ? { OR: [{ assignedToId: user.sub }, { supervisorId: user.sub }] }
-            : { assignedToId: user.sub },
-      },
-      select: { id: true },
-    });
-    if (!patient) throw new NotFoundException('Patient not available');
+    await assertPatientCaseAccess(this.prisma, patientId, user);
   }
   async context(patientId?: string, leadId?: string, user?: JwtPayload) {
     if (!patientId && !leadId) throw new BadRequestException('Choose a patient or deal');
@@ -114,50 +91,7 @@ export class DocumentsService {
     if (user) await this.assertPatientAccess(patient.id, user);
     const clinic = await this.prisma.clinicSettings.findUnique({ where: { id: 'singleton' } });
     if (!clinic) throw new BadRequestException('Configure clinic settings first');
-    const config = DocumentConfigurationSchema.parse(clinic.documentConfiguration ?? {});
-    const catalog = await this.prisma.costCatalogVersion.findMany({
-      where: { effectiveAt: { lte: new Date() } },
-      orderBy: [{ key: 'asc' }, { version: 'desc' }],
-      take: 1000,
-    });
-    const latest = new Map<string, (typeof catalog)[number]>();
-    for (const item of catalog) if (!latest.has(item.key)) latest.set(item.key, item);
-    const types: Record<string, (typeof config.priceList)[number]['type']> = {
-      IMPLANT: 'implant',
-      CROWN: 'crown',
-      VENEER: 'veneer',
-      EXTRACTION: 'extraction',
-      GRAFT: 'graft',
-      SINUS: 'sinus',
-      TEMPORARY: 'temporary',
-    };
-    for (const entry of latest.values()) {
-      const c = entry.details as {
-        category: string;
-        currency: string;
-        sellingPrice: string | null;
-        material?: string;
-        brand?: string;
-      };
-      if (!entry.active || !types[c.category] || c.sellingPrice === null) continue;
-      const price = {
-        type: types[c.category],
-        currency: c.currency,
-        unitPrice: Number(c.sellingPrice),
-        material: c.material ?? '',
-        brand: c.brand ?? '',
-      };
-      config.priceList = config.priceList.filter(
-        (p) =>
-          !(
-            p.type === price.type &&
-            p.currency === price.currency &&
-            p.material === price.material &&
-            p.brand === price.brand
-          ),
-      );
-      config.priceList.push(price);
-    }
+    const config = await approvedPriceConfiguration(this.prisma, clinic.documentConfiguration);
 
     const payment = {
       terms: clinic.defaultPaymentTerms,
@@ -217,6 +151,8 @@ export class DocumentsService {
         currency: consultation.currency,
         language: consultation.language,
         items: consultation.lines.map((l) => ({
+          procedureType: l.type,
+          overrideReason: l.overrideReason,
           description: l.description || t[l.type],
           quantity: l.quantity,
           toothNumber: l.positions.join(', ') || undefined,
@@ -247,6 +183,7 @@ export class DocumentsService {
         depositAmount: payment.depositAmount ?? (payment.depositPercent == null ? undefined : Math.round(price.total * payment.depositPercent) / 100),
       },
       createdById,
+      user,
     );
     await this.prisma.treatmentPlan.update({
       where: { id: plan.id },

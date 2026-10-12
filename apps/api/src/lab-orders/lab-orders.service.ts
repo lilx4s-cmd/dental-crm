@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtPayload } from '@dental-crm/shared';
+import { patientCaseWhere } from '../common/patient-case-access';
 import { CreateLabOrderDto, UpdateLabOrderDto } from './dto/lab-order.dto';
 
 const LAB_ORDER_SELECT = {
@@ -51,9 +53,9 @@ export class LabOrdersService {
    * The question this exists to answer is "what is late, and what is due this week" — which is the
    * only reason to track lab work in a CRM rather than in the lab's own system.
    */
-  findOpen() {
+  findOpen(user: JwtPayload) {
     return this.prisma.labOrder.findMany({
-      where: { status: { in: OPEN_STATUSES } },
+      where: { status: { in: OPEN_STATUSES }, treatmentPlan: { patient: patientCaseWhere(user) } },
       select: LAB_ORDER_SELECT,
       orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }],
     });

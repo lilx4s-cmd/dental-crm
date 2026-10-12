@@ -6,6 +6,8 @@ export interface JwtPayload {
   role: Role;
   permissions?: Record<string, boolean>;
   accessProfileName?: string;
+  /** Refresh-session row backing this access token; its revocation is checked on every request. */
+  sid?: string;
   iat?: number;
   exp?: number;
 }

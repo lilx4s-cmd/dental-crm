@@ -3,6 +3,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { PrismaService } from '../../prisma/prisma.service';
 const payload = {
   sub: 'staff',
+  sid: 'test-session',
   email: 'old@test.com',
   role: 'SUPER_ADMIN' as const,
   permissions: { 'leads.all': true },
@@ -23,7 +24,7 @@ describe('Current access on every request', () => {
       });
     const strategy = new JwtStrategy(
       { get: () => 'test-only-signing-secret' } as unknown as ConfigService,
-      { user: { findUnique } } as unknown as PrismaService,
+      { user: { findUnique }, refreshToken: { findFirst: jest.fn().mockResolvedValue({ id: 'test-session' }) } } as unknown as PrismaService,
     );
     expect(await strategy.validate(payload)).toMatchObject({
       role: 'SALES_CONSULTANT',
